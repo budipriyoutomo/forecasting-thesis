@@ -1,0 +1,119 @@
+# Task Breakdown & Roadmap Implementasi
+## ForecastIQ — Raw Material & Inventory Forecasting Platform (PPIC)
+
+Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → Refactor). Jangan mulai fase berikutnya sebelum test fase sebelumnya PASSED dan coverage memenuhi minimum di `AGENTS.md` §3.
+
+---
+
+## Fase 0 — Monorepo Setup ✅
+- [x] Inisialisasi repo Git, struktur folder sesuai `ARCHITECTURE.md` §3.
+- [x] `AGENTS.md`, `.gitignore`, `.env.example` (backend & frontend).
+- [x] Backend: FastAPI skeleton (`/health`, CORS, exception handler), `pyproject.toml`, koneksi Postgres async lazy (`app/db/session.py`), Alembic init (`backend/alembic/`, URL dari `DATABASE_URL`).
+- [x] Frontend: Next.js App Router + TypeScript + Tailwind + shadcn/ui + TanStack Query provider, halaman depan cek koneksi backend.
+- [x] `docker-compose.yml` untuk dev + `Makefile` (install/dev/test/cov/migrate).
+- [x] CI dasar: lint + typecheck + test + coverage gate (`.github/workflows/ci.yml`).
+
+**Selesai jika:** health check endpoint jalan, frontend bisa fetch ke backend, CI hijau di commit kosong.
+
+> Catatan: versi dependency backend dilonggarkan dari pin `==` ke `>=` (lihat komentar di `backend/requirements.txt`) karena pin versi 2024 memaksa build dari source di Python 3.14 (tidak ada wheel prebuilt).
+
+## Fase 1 — Auth (Supabase Auth/JWT)
+- [ ] Model `users` (id, email, name, role, is_verified) + migration.
+- [ ] Integrasi Supabase Auth, endpoint `POST /api/v1/auth/login`, `GET /api/v1/auth/me`.
+- [ ] Dependency FastAPI untuk role-based access control (admin/ppic/purchasing/viewer).
+- [ ] **TDD**: test 401 tanpa token, 401 token expired, happy path login, role check di endpoint contoh.
+- [ ] Frontend: halaman login + proteksi route (middleware).
+
+**Selesai jika:** user bisa login, role membatasi akses sesuai desain, semua test auth PASSED.
+
+## Fase 2 — Master Data Material
+- [ ] Model `materials` (code, name, category, unit, lead_time_days, moq, manual_safety_stock) + migration.
+- [ ] CRUD endpoint `api/v1/materials` + import via CSV/Excel.
+- [ ] **TDD**: happy path CRUD, validation error (kode duplikat), 404 material tidak ada, 403 non-admin coba ubah.
+- [ ] Frontend: halaman `materials/` — tabel, form tambah/edit, upload import.
+
+**Selesai jika:** admin bisa kelola master data material penuh dari UI, coverage endpoint ≥ 90%.
+
+## Fase 3 — Data Ingestion (Upload & Storage)
+- [ ] Model `upload_sessions` + `consumption_history` + migration.
+- [ ] `storage_service.py`: upload ke R2 `temp/uploads/{session_id}/`, TTL 1 jam.
+- [ ] `data_ingestion_service.py`: parsing CSV (pandas), validasi kolom wajib (kode material, tanggal, quantity), deteksi banyak SKU dalam 1 file.
+- [ ] Endpoint upload + preview + validasi → jika valid, **move** file ke `permanent/datasets/`.
+- [ ] Cron cleanup (setiap 30 menit) hapus temp file yang expired.
+- [ ] **TDD**: happy path upload, `UPLOAD_INVALID_FORMAT`, `UPLOAD_FILE_TOO_LARGE`, `INSUFFICIENT_DATA`, `SESSION_EXPIRED`.
+- [ ] Frontend: halaman upload + preview + riwayat upload.
+
+**Selesai jika:** upload CSV multi-SKU tervalidasi, tersimpan permanen, dan riwayat upload bisa dilihat.
+
+## Fase 4 — Auto Model Selection Engine + Manual Override (Core — Prioritas Tertinggi)
+- [ ] `types.py`: dataclass `ForecastPoint`, `EngineResult`.
+- [ ] `classification.py`: hitung ADI/CV², mapping kuadran Syntetos-Boylan. **TDD dulu** dengan data historis contoh per kuadran (smooth/erratic/intermittent/lumpy).
+- [ ] `engines/README.md` (kontrak fungsi untuk engine baru — signature, self-contained backtest+fit+predict+explanation).
+- [ ] Implementasi **1 fungsi per metode** (TDD per fungsi, satu test file per metode): `ets_engine.py` (`forecast_ets`), `arima_engine.py` (`forecast_arima`), `lightgbm_engine.py` (`forecast_lightgbm`), **`croston_engine.py`** (`forecast_croston` — wajib untuk kuadran intermittent/lumpy, lihat `RECONCILIATION.md`).
+- [ ] `prophet_engine.py`: stub/TODO dulu (dependency berat) — **jangan didaftarkan ke registry** sampai benar diimplementasikan.
+- [ ] `registry.py`: `MODEL_REGISTRY` (dict nama→fungsi), `get_enabled_methods()`, `filter_candidates()` per kuadran, baca `FORECAST_ENGINES_ENABLED` dari env.
+- [ ] `scoring_engine.py`: MASE + guardrail (bias/tracking signal) + fit kuadran, bobot dari env — dipakai mode auto saja.
+- [ ] `forecast_service.py`: orkestrasi dengan 2 cabang — **manual** (skip klasifikasi+scoring, langsung panggil 1 fungsi sesuai `method` yang diminta user, tanpa fallback bila gagal) dan **auto** (klasifikasi → filter kandidat → backtest tiap kandidat → scoring → pilih skor tertinggi).
+- [ ] Model `forecast_runs` + `forecast_results` (+ kolom `selection_mode`) + migration.
+- [ ] Endpoint trigger forecast run (banyak material sekaligus, field `method` opsional di request body — lihat `ARCHITECTURE.md` §6.8) + polling status.
+- [ ] Frontend: `MethodSelector.tsx` (dropdown "Otomatis (Direkomendasikan)" + daftar metode aktif) di halaman `forecast/new/config`, sebelum tombol generate.
+- [ ] **TDD menyeluruh** (prioritas tertinggi — ini inti value produk): setiap kuadran punya minimal 1 test dengan data fixture; test mode manual (sukses & `UNSUPPORTED_FORECAST_METHOD`); test `MODEL_SELECTION_FAILED` saat semua kandidat auto gagal; test `INSUFFICIENT_DATA`.
+
+**Selesai jika:** forecast run bisa dijalankan end-to-end untuk banyak material sekaligus (baik mode otomatis maupun manual), setiap kuadran demand (termasuk intermittent/lumpy) menghasilkan forecast (bukan selalu `MODEL_SELECTION_FAILED`), coverage forecasting module ≥ 85%.
+
+## Fase 5 — Safety Stock & Reorder Point
+- [ ] Model `reorder_recommendations` + migration.
+- [ ] `reorder_service.py`: safety stock (variabilitas demand, lead time, service level), reorder point, recommended order qty (mempertimbangkan MOQ).
+- [ ] Endpoint rekomendasi reorder + filter status (urgent/safe/overstock).
+- [ ] **TDD**: berbagai skenario (lead time pendek/panjang, MOQ besar, demand stabil vs volatile) — verifikasi manual hasil hitung sebelum dianggap benar.
+
+**Selesai jika:** rekomendasi reorder benar secara matematis dan bisa diverifikasi manual dengan data contoh.
+
+## Fase 6 — Planner Override & Audit Trail
+- [ ] Model `overrides` (target_type, target_id, previous_value, new_value, reason NOT NULL) + migration.
+- [ ] `override_service.py`: buat override baru (append-only, tidak overwrite), validasi `reason` wajib (`OVERRIDE_REASON_REQUIRED` jika kosong).
+- [ ] Endpoint `POST /api/v1/overrides`, `GET /api/v1/overrides?target_id=...`.
+- [ ] **TDD**: happy path override, error saat reason kosong, override tidak menghapus data asli (assert data lama tetap ada).
+- [ ] Frontend: komponen override + tampilan riwayat audit trail.
+
+**Selesai jika:** planner bisa override forecast/reorder dengan alasan wajib, riwayat lengkap dan tidak pernah menimpa data asli.
+
+## Fase 7 — Dashboard & Visualisasi
+- [ ] Endpoint `dashboard/summary`.
+- [ ] Halaman dashboard: ringkasan status stok, grafik tren aktual vs forecast (dengan confidence interval), tabel rekomendasi reorder, riwayat override.
+- [ ] Komponen `ExplanationBox` — menampilkan penjelasan bahasa natural per hasil forecast.
+
+**Selesai jika:** user non-teknis bisa memahami status forecast, reorder, dan alasan override hanya dari dashboard.
+
+## Fase 8 — Export & Laporan
+- [ ] Export hasil forecast & rekomendasi reorder ke Excel.
+- [ ] Export laporan ringkasan ke PDF.
+- [ ] Simpan hasil export ke `permanent/exports/{user_id}/{run_id}/`.
+
+**Selesai jika:** file export terbuka dan datanya sesuai dashboard.
+
+## Fase 9 — Hardening, Testing E2E & Deployment
+- [ ] Integration test end-to-end: upload → forecast run → reorder → override → dashboard.
+- [ ] Review keamanan (rate limiting upload, validasi file, CORS production).
+- [ ] Setup deployment: Backend → Railway, Frontend → Vercel, DB/Auth → Supabase, Storage → Cloudflare R2.
+- [ ] `JWT_SECRET_KEY` production-grade (256-bit random, secret manager).
+- [ ] Sentry / error tracking backend + frontend.
+- [ ] Dokumentasi pemakaian untuk end-user (user manual singkat).
+
+**Selesai jika:** aplikasi siap dipakai tim PPIC di lingkungan mendekati production, semua test PASSED, coverage memenuhi minimum di semua layer.
+
+---
+
+## Prioritas Jika Waktu Terbatas (MVP Tercepat)
+
+1. Fase 0 (setup)
+2. Fase 2 (master data material, versi sederhana)
+3. Fase 3 (upload & ingestion)
+4. **Fase 4 (Auto Model Selection Engine — termasuk Croston, jangan dilewati meski buru-buru, karena ini yang membedakan produk ini dari sekadar "moving average calculator")**
+5. Fase 5 (reorder point — versi sederhana)
+6. Fase 7 (dashboard versi sederhana)
+
+Fase 1 (auth lengkap dengan semua role), Fase 6 (override UI lengkap), Fase 8 (export), dan Fase 9 (hardening penuh) bisa menyusul setelah MVP tervalidasi oleh user PPIC riil.
+
+---
+*Lihat `RECONCILIATION.md` untuk konteks kenapa Fase 4 memasukkan Croston/SBA sebagai engine wajib MVP, bukan opsional.*

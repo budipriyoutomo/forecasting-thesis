@@ -1,0 +1,30 @@
+import type { ApiResponse, HealthData } from "@/types/api";
+import type { UploadResponseData } from "@/types/upload";
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+// Semua response backend mengikuti envelope { success, data|error } (AGENTS.md §4),
+// jadi setiap fungsi di sini mengembalikan ApiResponse<T>, bukan data mentah —
+// error bisnis diteruskan apa adanya, tidak dilempar sebagai exception.
+async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  const res = await fetch(`${BASE_URL}${path}`, init);
+  return (await res.json()) as ApiResponse<T>;
+}
+
+// Contoh pola API client — perluas per endpoint di docs/ARCHITECTURE.md §5.
+export const api = {
+  health: (): Promise<ApiResponse<HealthData>> => request<HealthData>("/health", { cache: "no-store" }),
+
+  uploads: {
+    create: (file: File, token: string): Promise<ApiResponse<UploadResponseData>> => {
+      const form = new FormData();
+      form.append("file", file);
+
+      return request<UploadResponseData>("/api/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+    },
+  },
+};
