@@ -25,3 +25,9 @@ class SqlOverrideRepository:
             .order_by(Override.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def list_recent(self, limit: int = 20) -> list[Override]:
+        result = await self._session.execute(
+            select(Override).order_by(Override.created_at.desc()).limit(limit)
+        )
+        return list(result.scalars().all())

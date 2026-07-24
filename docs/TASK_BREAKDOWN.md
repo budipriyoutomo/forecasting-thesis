@@ -92,12 +92,14 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Coverage backend Fase 6: override layer 100%, total 95%. Frontend 35 test PASSED.
 
-## Fase 7 — Dashboard & Visualisasi
-- [ ] Endpoint `dashboard/summary`.
-- [ ] Halaman dashboard: ringkasan status stok, grafik tren aktual vs forecast (dengan confidence interval), tabel rekomendasi reorder, riwayat override.
-- [ ] Komponen `ExplanationBox` — menampilkan penjelasan bahasa natural per hasil forecast.
+## Fase 7 — Dashboard & Visualisasi ✅
+- [x] Endpoint `GET /api/v1/dashboard/summary` (`dashboard_service`): jumlah material, run terakhir + MASE rata-rata, distribusi status reorder, jumlah override terbaru.
+- [x] Halaman dashboard: stat tiles (material, perlu-reorder, akurasi, override), ringkasan run terakhir, distribusi reorder. `ForecastChart` (recharts) tren forecast + confidence interval band; overlay aktual opsional.
+- [x] Komponen `ExplanationBox` — penjelasan bahasa natural per hasil forecast (dipakai di `ForecastResults`).
 
 **Selesai jika:** user non-teknis bisa memahami status forecast, reorder, dan alasan override hanya dari dashboard.
+
+> Coverage backend Fase 7: dashboard layer 100%, total 95%. Frontend 38 test PASSED. ForecastChart di-uji lewat typecheck (render recharts di jsdom di-skip).
 
 ## Fase 8 — Export & Laporan
 - [ ] Export hasil forecast & rekomendasi reorder ke Excel.

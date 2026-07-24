@@ -107,6 +107,18 @@ describe("api.materials", () => {
   });
 });
 
+describe("api.dashboard.summary", () => {
+  it("GET /dashboard/summary dengan Bearer token", async () => {
+    const spy = mockFetch({ success: true, data: {} });
+
+    await api.dashboard.summary("tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/dashboard\/summary$/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+});
+
 describe("api.forecast", () => {
   it("createRun POST /forecast/runs dengan body JSON", async () => {
     const spy = mockFetch({ success: true, data: { run: {}, results: [] } });

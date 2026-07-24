@@ -38,3 +38,14 @@ async def test_list_by_target():
     repo = SqlOverrideRepository(session)
 
     assert await repo.list_by_target("t1") == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_list_recent():
+    session = _session()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = ["a"]
+    session.execute.return_value = result
+    repo = SqlOverrideRepository(session)
+
+    assert await repo.list_recent(limit=5) == ["a"]

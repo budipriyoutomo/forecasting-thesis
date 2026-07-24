@@ -1,5 +1,6 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
+import type { DashboardSummary } from "@/types/dashboard";
 import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Material, MaterialInput } from "@/types/material";
 import type { Override, OverrideInput } from "@/types/override";
@@ -62,6 +63,14 @@ export const api = {
       request<{ id: string; deleted: boolean }>(`/api/v1/materials/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
+  dashboard: {
+    summary: (token: string): Promise<ApiResponse<DashboardSummary>> =>
+      request<DashboardSummary>("/api/v1/dashboard/summary", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       }),
   },
 

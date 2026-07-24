@@ -50,6 +50,17 @@ async def test_get_result():
 
 
 @pytest.mark.asyncio
+async def test_get_latest_run_for_user():
+    session = _session()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = "run"
+    session.execute.return_value = result
+    repo = SqlForecastRepository(session)
+
+    assert await repo.get_latest_run_for_user("u1") == "run"
+
+
+@pytest.mark.asyncio
 async def test_save_run():
     session = _session()
     repo = SqlForecastRepository(session)

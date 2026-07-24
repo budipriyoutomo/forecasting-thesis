@@ -16,6 +16,7 @@ from app.repositories.upload_session_repository import (
 )
 from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
+from app.services.dashboard_service import DashboardService
 from app.services.forecast_run_service import ForecastRunService
 from app.services.material_service import MaterialService
 from app.services.override_service import OverrideService
@@ -93,6 +94,15 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         forecast_repo=SqlForecastRepository(session),
         materials=SqlMaterialRepository(session),
         consumptions=SqlConsumptionHistoryRepository(session),
+    )
+
+
+def get_dashboard_service(session: AsyncSession = Depends(get_db)) -> DashboardService:
+    return DashboardService(
+        materials=SqlMaterialRepository(session),
+        forecast_repo=SqlForecastRepository(session),
+        reorder_repo=SqlReorderRepository(session),
+        override_repo=SqlOverrideRepository(session),
     )
 
 

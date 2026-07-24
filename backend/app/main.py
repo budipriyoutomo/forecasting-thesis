@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import auth, forecast, materials, overrides, reorder, uploads
+from app.api.v1 import auth, dashboard, forecast, materials, overrides, reorder, uploads
 from app.config import get_settings
 from app.utils.exceptions import AppError
 
@@ -31,6 +31,7 @@ app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(forecast.router, prefix="/api/v1")
 app.include_router(reorder.router, prefix="/api/v1")
 app.include_router(overrides.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
 
 
 @app.exception_handler(AppError)

@@ -1,5 +1,7 @@
 "use client";
 
+import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
+import { ForecastChart } from "@/components/forecast/ForecastChart";
 import type { ForecastRunResponse } from "@/types/forecast";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -36,8 +38,8 @@ export function ForecastResults({ data }: { data: ForecastRunResponse }) {
                   {r.demand_class && <> · pola {r.demand_class}</>}
                   {r.mase != null && <> · MASE {r.mase.toFixed(2)}</>}
                 </p>
-                {r.explanation && <p className="text-muted-foreground">{r.explanation}</p>}
-                <p className="text-muted-foreground">{r.forecast.length} titik forecast.</p>
+                <ExplanationBox explanation={r.explanation} />
+                <ForecastChart forecast={r.forecast} />
               </div>
             )}
           </div>
