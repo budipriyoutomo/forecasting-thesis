@@ -121,3 +121,15 @@ describe("api.uploads.create", () => {
     expect(init?.body).toBeInstanceOf(FormData);
   });
 });
+
+describe("api.uploads.list", () => {
+  it("GET /uploads dengan Bearer token", async () => {
+    const spy = mockFetch({ success: true, data: [] });
+
+    await api.uploads.list("tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/uploads$/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+});

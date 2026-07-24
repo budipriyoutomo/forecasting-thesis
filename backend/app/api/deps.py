@@ -7,10 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.repositories.material_repository import SqlMaterialRepository
+from app.repositories.upload_session_repository import (
+    SqlConsumptionHistoryRepository,
+    SqlUploadSessionRepository,
+)
 from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
 from app.services.material_service import MaterialService
+from app.services.storage_service import StorageService, build_r2_client
 from app.services.supabase_auth import SupabaseAuthenticator
+from app.services.upload_service import UploadService
 from app.utils.auth import decode_access_token
 from app.utils.exceptions import AuthTokenExpiredError, AuthTokenMissingOrInvalidError, ForbiddenRoleError
 
@@ -56,3 +62,12 @@ def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
 
 def get_material_service(session: AsyncSession = Depends(get_db)) -> MaterialService:
     return MaterialService(SqlMaterialRepository(session))
+
+
+def get_upload_service(session: AsyncSession = Depends(get_db)) -> UploadService:
+    return UploadService(
+        storage=StorageService(build_r2_client()),
+        sessions=SqlUploadSessionRepository(session),
+        consumptions=SqlConsumptionHistoryRepository(session),
+        materials=SqlMaterialRepository(session),
+    )

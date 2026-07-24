@@ -1,13 +1,15 @@
 """
-Endpoint upload — POST /api/v1/uploads
+Endpoint upload konsumsi raw material — /api/v1/uploads (Fase 3).
 
-Lihat AGENTS.md §4 (response standard) dan §3 (test wajib per endpoint).
+POST upload CSV → validasi → simpan permanen + riwayat. GET riwayat & detail.
+Semua orkestrasi lewat UploadService (tidak inline). Lihat AGENTS.md §4 (envelope)
+dan docs/ARCHITECTURE.md §7 (storage flow).
 """
 from fastapi import APIRouter, Depends, UploadFile
 
-from app.api.deps import CurrentUser, get_current_user
-from app.schemas.upload import UploadResponseData
-from app.services import data_ingestion_service
+from app.api.deps import CurrentUser, get_current_user, get_upload_service
+from app.schemas.upload import to_upload_response, to_upload_summary
+from app.services.upload_service import UploadService
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -16,17 +18,31 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 async def upload_consumption_history(
     file: UploadFile,
     current_user: CurrentUser = Depends(get_current_user),
+    service: UploadService = Depends(get_upload_service),
 ):
     content = await file.read()
-    result = data_ingestion_service.parse_and_validate_csv(file.filename, content)
-
-    # Validasi bentuk response lewat schema sebelum dikirim ke client —
-    # kalau service berubah tanpa update schema, ini akan langsung gagal
-    # saat test/dev, bukan diam-diam mengirim shape yang salah ke frontend.
-    validated = UploadResponseData(**result)
-
+    session = await service.create_from_upload(current_user.user_id, file.filename, content)
     return {
         "success": True,
-        "data": validated.model_dump(),
-        "message": "File berhasil divalidasi",
+        "data": to_upload_response(session).model_dump(),
+        "message": "File berhasil divalidasi dan disimpan",
     }
+
+
+@router.get("")
+async def list_uploads(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: UploadService = Depends(get_upload_service),
+):
+    sessions = await service.list_sessions(current_user.user_id)
+    return {"success": True, "data": [to_upload_summary(s).model_dump() for s in sessions]}
+
+
+@router.get("/{session_id}")
+async def get_upload(
+    session_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: UploadService = Depends(get_upload_service),
+):
+    session = await service.get_session(current_user.user_id, session_id)
+    return {"success": True, "data": to_upload_response(session).model_dump()}

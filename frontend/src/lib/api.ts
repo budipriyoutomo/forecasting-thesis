@@ -1,7 +1,7 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { Material, MaterialInput } from "@/types/material";
-import type { UploadResponseData } from "@/types/upload";
+import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -73,5 +73,11 @@ export const api = {
         body: form,
       });
     },
+
+    list: (token: string): Promise<ApiResponse<UploadSessionSummary[]>> =>
+      request<UploadSessionSummary[]>("/api/v1/uploads", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
   },
 };

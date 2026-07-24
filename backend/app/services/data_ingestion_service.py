@@ -12,6 +12,8 @@ Kolom wajib CSV: material_code, date, quantity
 """
 import io
 import uuid
+from datetime import date as date_type
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
@@ -19,6 +21,43 @@ from app.config import get_settings
 from app.utils.exceptions import InsufficientDataError, UploadInvalidFormatError
 
 REQUIRED_COLUMNS = {"material_code", "date", "quantity"}
+
+
+def _normalized_df(content: bytes) -> pd.DataFrame:
+    """Baca CSV dan normalisasi nama kolom (strip + lowercase)."""
+    try:
+        df = pd.read_csv(io.BytesIO(content))
+    except Exception as exc:
+        raise UploadInvalidFormatError(f"Gagal membaca isi CSV: {exc}") from exc
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df
+
+
+def extract_consumption_rows(content: bytes) -> list[dict]:
+    """Ambil baris konsumsi ternormalisasi untuk disimpan ke consumption_history.
+
+    Baris dengan tanggal/quantity tidak valid di-skip (sudah divalidasi ringkas
+    di `parse_and_validate_csv`; di sini fokus ke baris yang benar-benar bisa
+    disimpan). Mengembalikan list of {material_code, date, quantity}.
+    """
+    df = _normalized_df(content)
+    rows: list[dict] = []
+    for _, raw in df.iterrows():
+        code = str(raw.get("material_code", "")).strip()
+        if not code or code.lower() == "nan":
+            continue
+        try:
+            parsed_date = pd.to_datetime(raw.get("date")).date()
+        except (ValueError, TypeError):
+            continue
+        try:
+            qty = Decimal(str(raw.get("quantity")))
+        except (InvalidOperation, ValueError, TypeError):
+            continue
+        if not isinstance(parsed_date, date_type):
+            continue
+        rows.append({"material_code": code, "date": parsed_date, "quantity": qty})
+    return rows
 
 
 def parse_and_validate_csv(filename: str, content: bytes) -> dict:

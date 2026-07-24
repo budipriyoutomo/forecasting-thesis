@@ -8,5 +8,16 @@ export interface UploadResponseData {
   status: "pending" | "validated";
 }
 
+// Ringkasan satu upload di daftar riwayat (GET /uploads) — cocok dengan
+// backend/app/schemas/upload.py UploadSessionSummary.
+export interface UploadSessionSummary {
+  session_id: string;
+  file_name: string;
+  n_rows: number;
+  n_materials_detected: number;
+  status: string;
+  created_at: string | null;
+}
+
 // Envelope response ada di types/api.ts — di-re-export supaya import lama tetap jalan.
 export type { ApiSuccess, ApiError, ApiResponse } from "./api";

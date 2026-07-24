@@ -90,3 +90,25 @@ async def test_delete_delegasi():
 
     session.delete.assert_awaited_once_with(material)
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_map_codes_to_ids_kosong_tanpa_query():
+    session = _session()
+    repo = SqlMaterialRepository(session)
+
+    assert await repo.map_codes_to_ids(set()) == {}
+    session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_map_codes_to_ids_mengembalikan_peta():
+    session = _session()
+    result = MagicMock()
+    result.all.return_value = [("RM-001", "id-1"), ("RM-002", "id-2")]
+    session.execute.return_value = result
+    repo = SqlMaterialRepository(session)
+
+    mapping = await repo.map_codes_to_ids({"RM-001", "RM-002"})
+
+    assert mapping == {"RM-001": "id-1", "RM-002": "id-2"}

@@ -86,6 +86,11 @@ class SessionExpiredError(AppError):
     code = "SESSION_EXPIRED"
 
 
+class StorageUploadFailedError(AppError):
+    status_code = 503
+    code = "STORAGE_UPLOAD_FAILED"
+
+
 class OverrideReasonRequiredError(AppError):
     status_code = 400
     code = "OVERRIDE_REASON_REQUIRED"

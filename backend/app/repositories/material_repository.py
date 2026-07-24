@@ -22,6 +22,15 @@ class SqlMaterialRepository:
         result = await self._session.execute(select(Material).where(Material.code == code))
         return result.scalar_one_or_none()
 
+    async def map_codes_to_ids(self, codes: set[str]) -> dict[str, str]:
+        """Peta code → id untuk kode yang terdaftar (untuk resolusi consumption_history)."""
+        if not codes:
+            return {}
+        result = await self._session.execute(
+            select(Material.code, Material.id).where(Material.code.in_(codes))
+        )
+        return {code: str(mid) for code, mid in result.all()}
+
     async def add(self, material: Material) -> Material:
         self._session.add(material)
         await self._session.flush()

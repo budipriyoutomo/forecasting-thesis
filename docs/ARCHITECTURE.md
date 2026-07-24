@@ -174,7 +174,8 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| material_id | UUID FK → materials | |
+| material_code | VARCHAR | kode material dari file (selalu diisi) — lihat RECONCILIATION #14 |
+| material_id | UUID FK → materials, **nullable** | diisi bila kode cocok dengan master data; null bila belum terdaftar |
 | date | DATE | |
 | quantity | NUMERIC | |
 | upload_session_id | UUID FK → upload_sessions | |

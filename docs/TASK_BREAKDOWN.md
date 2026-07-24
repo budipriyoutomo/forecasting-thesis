@@ -39,16 +39,18 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Coverage backend Fase 2: model/repository/service/endpoint material 100%, total 95%. Frontend: 18 test PASSED. Import Excel (.xlsx) ditunda — CSV dulu; menambah Excel = tambah parser di `material_service.import_*` tanpa ubah endpoint.
 
-## Fase 3 — Data Ingestion (Upload & Storage)
-- [ ] Model `upload_sessions` + `consumption_history` + migration.
-- [ ] `storage_service.py`: upload ke R2 `temp/uploads/{session_id}/`, TTL 1 jam.
-- [ ] `data_ingestion_service.py`: parsing CSV (pandas), validasi kolom wajib (kode material, tanggal, quantity), deteksi banyak SKU dalam 1 file.
-- [ ] Endpoint upload + preview + validasi → jika valid, **move** file ke `permanent/datasets/`.
-- [ ] Cron cleanup (setiap 30 menit) hapus temp file yang expired.
-- [ ] **TDD**: happy path upload, `UPLOAD_INVALID_FORMAT`, `UPLOAD_FILE_TOO_LARGE`, `INSUFFICIENT_DATA`, `SESSION_EXPIRED`.
-- [ ] Frontend: halaman upload + preview + riwayat upload.
+## Fase 3 — Data Ingestion (Upload & Storage) ✅
+- [x] Model `upload_sessions` + `consumption_history` + migration (`9a85016d7be7`). `consumption_history` deviasi: `material_code` + `material_id` nullable (RECONCILIATION #14).
+- [x] `storage_service.py`: upload ke R2 `temp/uploads/{session_id}/`, move ke `permanent/datasets/`, client S3 injectable (`build_r2_client`).
+- [x] `data_ingestion_service.py`: parsing CSV (pandas), validasi kolom wajib (material_code, date, quantity), deteksi banyak SKU, `extract_consumption_rows` untuk persist.
+- [x] Endpoint `POST /uploads` (validasi → temp → permanent → persist session + consumption), `GET /uploads` (riwayat), `GET /uploads/{id}` (detail, 404/403).
+- [x] Cron cleanup (`app/jobs/cleanup_temp_uploads.py`, `python -m app.jobs.cleanup_temp_uploads`) — tandai `expired` + hapus temp; tanpa Celery/Redis (MVP sync-first).
+- [x] **TDD**: happy path, `UPLOAD_INVALID_FORMAT`, `UPLOAD_FILE_TOO_LARGE`, `INSUFFICIENT_DATA`, `SESSION_EXPIRED` (guard pending kedaluwarsa), 404/403, cleanup, storage (mock S3).
+- [x] Frontend: halaman upload (`forecast/new`) + preview + riwayat upload.
 
 **Selesai jika:** upload CSV multi-SKU tervalidasi, tersimpan permanen, dan riwayat upload bisa dilihat.
+
+> Coverage backend Fase 3: upload_service 97%, storage 98%, repos 100%, endpoint 100%, total 95%. Frontend 21 test PASSED. Resolusi `material_id` dari master data; kode belum terdaftar → warning (bukan auto-create material).
 
 ## Fase 4 — Auto Model Selection Engine + Manual Override (Core — Prioritas Tertinggi)
 - [ ] `types.py`: dataclass `ForecastPoint`, `EngineResult`.

@@ -13,6 +13,37 @@ class UploadResponseData(BaseModel):
     status: str  # "pending" | "validated"
 
 
+class UploadSessionSummary(BaseModel):
+    session_id: str
+    file_name: str
+    n_rows: int
+    n_materials_detected: int
+    status: str
+    created_at: str | None = None
+
+
+def to_upload_response(session) -> UploadResponseData:
+    return UploadResponseData(
+        session_id=str(session.id),
+        n_rows=session.n_rows,
+        n_materials_detected=session.n_materials_detected,
+        preview=list(session.preview_data or []),
+        warnings=list(session.warnings or []),
+        status=session.status,
+    )
+
+
+def to_upload_summary(session) -> UploadSessionSummary:
+    return UploadSessionSummary(
+        session_id=str(session.id),
+        file_name=session.file_name,
+        n_rows=session.n_rows,
+        n_materials_detected=session.n_materials_detected,
+        status=session.status,
+        created_at=session.created_at.isoformat() if session.created_at else None,
+    )
+
+
 class SuccessResponse(BaseModel):
     success: bool = True
     data: dict | UploadResponseData
