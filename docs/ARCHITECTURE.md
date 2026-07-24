@@ -254,7 +254,8 @@ POST   /api/v1/forecast/runs              # trigger forecast run (horizon, metho
 GET    /api/v1/forecast/runs/{run_id}
 GET    /api/v1/forecast/results?material_id=...
 
-GET    /api/v1/reorder/recommendations
+POST   /api/v1/reorder/recommendations         # generate + persist untuk 1 run (body: run_id, current_stock opsional)
+GET    /api/v1/reorder/recommendations?run_id=&status=   # filter status urgent/safe/overstock
 GET    /api/v1/reorder/recommendations/export?format=xlsx|pdf
 
 POST   /api/v1/overrides                  # buat override baru

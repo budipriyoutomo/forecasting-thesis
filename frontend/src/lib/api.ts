@@ -2,6 +2,7 @@ import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Material, MaterialInput } from "@/types/material";
+import type { ReorderRecommendation } from "@/types/reorder";
 import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -82,6 +83,32 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),
+  },
+
+  reorder: {
+    generate: (
+      runId: string,
+      currentStock: Record<string, number>,
+      token: string,
+    ): Promise<ApiResponse<ReorderRecommendation[]>> =>
+      request<ReorderRecommendation[]>("/api/v1/reorder/recommendations", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ run_id: runId, current_stock: currentStock }),
+      }),
+
+    list: (
+      runId: string,
+      status: string | null,
+      token: string,
+    ): Promise<ApiResponse<ReorderRecommendation[]>> => {
+      const qs = new URLSearchParams({ run_id: runId });
+      if (status) qs.set("status", status);
+      return request<ReorderRecommendation[]>(`/api/v1/reorder/recommendations?${qs.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+    },
   },
 
   uploads: {

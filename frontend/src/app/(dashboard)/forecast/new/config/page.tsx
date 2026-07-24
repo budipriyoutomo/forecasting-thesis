@@ -3,14 +3,17 @@
 import { useState } from "react";
 
 import { MethodSelector } from "@/components/config/MethodSelector";
+import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { Button } from "@/components/ui/button";
 import { useCreateForecastRun } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
+import { useGenerateReorder } from "@/hooks/useReorder";
 
 export default function ForecastConfigPage() {
   const { data: materials } = useMaterials();
   const run = useCreateForecastRun();
+  const reorder = useGenerateReorder();
 
   const [selected, setSelected] = useState<string[]>([]);
   const [horizon, setHorizon] = useState(30);
@@ -73,7 +76,26 @@ export default function ForecastConfigPage() {
         </Button>
       </div>
 
-      {run.data && <ForecastResults data={run.data} />}
+      {run.data && (
+        <>
+          <ForecastResults data={run.data} />
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={reorder.isPending}
+                onClick={() => reorder.mutate({ runId: run.data!.run.run_id })}
+              >
+                {reorder.isPending ? "Menghitung…" : "Hitung reorder"}
+              </Button>
+            </div>
+            {reorder.isError && <p className="text-sm text-destructive">{reorder.error.message}</p>}
+            {reorder.data && <ReorderTable recommendations={reorder.data} />}
+          </section>
+        </>
+      )}
     </main>
   );
 }

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     ENGINE_TIMEOUT_SECONDS: int = 45
     FORECAST_TIMEOUT_SECONDS: int = 120
 
+    # Reorder / safety stock (Fase 5). Z = faktor service level (1.65 ≈ 95%).
+    SERVICE_LEVEL_Z: float = 1.65
+
     # Database (dipakai mulai Fase 1 — belum wajib untuk scaffold ini)
     DATABASE_URL: str | None = None
 

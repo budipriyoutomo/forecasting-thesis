@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.repositories.forecast_repository import SqlForecastRepository
 from app.repositories.material_repository import SqlMaterialRepository
+from app.repositories.reorder_repository import SqlReorderRepository
 from app.repositories.upload_session_repository import (
     SqlConsumptionHistoryRepository,
     SqlUploadSessionRepository,
@@ -16,6 +17,7 @@ from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
 from app.services.forecast_run_service import ForecastRunService
 from app.services.material_service import MaterialService
+from app.services.reorder_service import ReorderService
 from app.services.storage_service import StorageService, build_r2_client
 from app.services.supabase_auth import SupabaseAuthenticator
 from app.services.upload_service import UploadService
@@ -77,6 +79,15 @@ def get_upload_service(session: AsyncSession = Depends(get_db)) -> UploadService
 
 def get_forecast_run_service(session: AsyncSession = Depends(get_db)) -> ForecastRunService:
     return ForecastRunService(
+        forecast_repo=SqlForecastRepository(session),
+        materials=SqlMaterialRepository(session),
+        consumptions=SqlConsumptionHistoryRepository(session),
+    )
+
+
+def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderService:
+    return ReorderService(
+        reorder_repo=SqlReorderRepository(session),
         forecast_repo=SqlForecastRepository(session),
         materials=SqlMaterialRepository(session),
         consumptions=SqlConsumptionHistoryRepository(session),

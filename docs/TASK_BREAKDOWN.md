@@ -70,13 +70,16 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > ✅ **Selesai (Fase 4 lengkap).** Model `forecast_runs`+`forecast_results` (+`status` per-material, RECONCILIATION #15) + migration `fae350da01a7`. `forecast_run_service` orkestrasi banyak material: ambil histori dari `consumption_history` → `forecast_service` (satu-satunya entry engine) → persist. Kegagalan 1 material tak menggagalkan run; metode manual tak dikenal ditolak 400 di awal. Endpoint `POST /forecast/runs`, `GET /forecast/runs/{id}` (polling), `GET /forecast/results?material_id=`, `GET /forecast/methods`. Frontend: `MethodSelector` + halaman `forecast/new/config` (pilih material, method, horizon → generate → hasil + explanation). TDD: tiap kuadran (smooth/erratic/intermittent/lumpy) menghasilkan forecast, manual sukses & `UNSUPPORTED_FORECAST_METHOD`, `INSUFFICIENT_DATA` per-material, 404 material, polling. Coverage: forecast layer 100%, engine module ≥85%, total 95%. Frontend 26 test PASSED.
 
-## Fase 5 — Safety Stock & Reorder Point
-- [ ] Model `reorder_recommendations` + migration.
-- [ ] `reorder_service.py`: safety stock (variabilitas demand, lead time, service level), reorder point, recommended order qty (mempertimbangkan MOQ).
-- [ ] Endpoint rekomendasi reorder + filter status (urgent/safe/overstock).
-- [ ] **TDD**: berbagai skenario (lead time pendek/panjang, MOQ besar, demand stabil vs volatile) — verifikasi manual hasil hitung sebelum dianggap benar.
+## Fase 5 — Safety Stock & Reorder Point ✅
+- [x] Model `reorder_recommendations` + migration (`8e5cdd610f80`).
+- [x] `reorder_service.py`: `compute_reorder` (FUNGSI MURNI) — SS = Z·σ·√LT (atau manual override), ROP = μ·LT + SS, order qty = max(MOQ, ceil(S−current)), status urgent/safe/overstock. `SERVICE_LEVEL_Z` dari env (default 1.65 ≈ 95%).
+- [x] Endpoint `POST /reorder/recommendations` (generate) + `GET /reorder/recommendations?run_id=&status=` (filter). Lihat RECONCILIATION #16 (POST + `current_stock` sebagai input request).
+- [x] **TDD**: lead pendek/panjang, MOQ besar, demand stabil vs volatile, manual SS, batas urgent/safe/overstock — semua angka diverifikasi manual di `test_reorder_compute.py`.
+- [x] Frontend: `ReorderTable` (filter status) di halaman `forecast/new/config` + hook `useReorder`.
 
 **Selesai jika:** rekomendasi reorder benar secara matematis dan bisa diverifikasi manual dengan data contoh.
+
+> Coverage backend Fase 5: reorder layer ~100% (service 97%), total 95%. Frontend 31 test PASSED. `current_stock` diterima per-request (default 0), tidak dipersist — skema tak menyimpan stok live.
 
 ## Fase 6 — Planner Override & Audit Trail
 - [ ] Model `overrides` (target_type, target_id, previous_value, new_value, reason NOT NULL) + migration.

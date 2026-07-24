@@ -140,6 +140,28 @@ describe("api.forecast", () => {
   });
 });
 
+describe("api.reorder", () => {
+  it("generate POST /reorder/recommendations dengan run_id + current_stock", async () => {
+    const spy = mockFetch({ success: true, data: [] });
+
+    await api.reorder.generate("r1", { m1: 5 }, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/reorder\/recommendations$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ run_id: "r1", current_stock: { m1: 5 } });
+  });
+
+  it("list GET dengan filter status di query", async () => {
+    const spy = mockFetch({ success: true, data: [] });
+
+    await api.reorder.list("r1", "urgent", "tok");
+
+    expect(String(spy.mock.calls[0][0])).toMatch(/run_id=r1/);
+    expect(String(spy.mock.calls[0][0])).toMatch(/status=urgent/);
+  });
+});
+
 describe("api.uploads.create", () => {
   it("mengirim file sebagai multipart dengan header Authorization", async () => {
     const spy = mockFetch({ success: true, data: { session_id: "s-1" } });
