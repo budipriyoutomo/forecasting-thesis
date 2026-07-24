@@ -283,8 +283,10 @@ UPLOAD_INVALID_FORMAT        UPLOAD_FILE_TOO_LARGE        SESSION_NOT_FOUND
 SESSION_EXPIRED              INSUFFICIENT_DATA            MODEL_SELECTION_FAILED
 FORECAST_RUN_NOT_FOUND       BACKTEST_FAILED              OVERRIDE_REASON_REQUIRED
 STORAGE_UPLOAD_FAILED        RATE_LIMIT_EXCEEDED          UNSUPPORTED_FORECAST_METHOD
+OVERRIDE_TARGET_NOT_FOUND
 ```
 > `UNSUPPORTED_FORECAST_METHOD` (400): dipakai saat user memilih metode manual (§6.8) yang namanya tidak terdaftar di registry atau tidak aktif di `FORECAST_ENGINES_ENABLED`.
+> `OVERRIDE_TARGET_NOT_FOUND` (404): target override tidak ada — ditambahkan Fase 6.
 > `AUTH_FORBIDDEN` (403): role user tidak diizinkan akses resource (RBAC, FR-8.2) — ditambahkan Fase 1.
 > `MATERIAL_CODE_EXISTS` (409): kode material harus unik; konflik saat create/import — ditambahkan Fase 2.
 

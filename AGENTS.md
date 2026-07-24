@@ -101,10 +101,12 @@ UPLOAD_INVALID_FORMAT         UPLOAD_FILE_TOO_LARGE         SESSION_NOT_FOUND
 SESSION_EXPIRED               INSUFFICIENT_DATA             MODEL_SELECTION_FAILED
 FORECAST_RUN_NOT_FOUND        BACKTEST_FAILED               OVERRIDE_REASON_REQUIRED
 STORAGE_UPLOAD_FAILED         RATE_LIMIT_EXCEEDED           UNSUPPORTED_FORECAST_METHOD
+OVERRIDE_TARGET_NOT_FOUND
 ```
 > Daftar ini final hasil penggabungan. Jangan tambah error code sepihak — kalau butuh code baru, tambahkan di sini dulu (dan di `ARCHITECTURE.md` §5) sebelum dipakai di kode.
 > `AUTH_FORBIDDEN` (403): ditambahkan di Fase 1 untuk RBAC — role user tidak diizinkan akses resource (FR-8.2). Lihat `RECONCILIATION.md`.
 > `MATERIAL_CODE_EXISTS` (409): ditambahkan di Fase 2 — kode material harus unik; konflik saat create/import. Lihat `RECONCILIATION.md`.
+> `OVERRIDE_TARGET_NOT_FOUND` (404): ditambahkan di Fase 6 — target override (forecast_result/reorder_recommendation) tidak ada. Lihat `RECONCILIATION.md`.
 
 ### HTTP Status Code
 `200` berhasil | `201` resource dibuat | `400` input validation error | `401` unauthorized | `403` forbidden | `404` not found | `422` invalid secara bisnis | `429` rate limit | `500` internal error | `503` dependency eksternal (Supabase/R2) unavailable

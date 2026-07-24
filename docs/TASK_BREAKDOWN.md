@@ -81,14 +81,16 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Coverage backend Fase 5: reorder layer ~100% (service 97%), total 95%. Frontend 31 test PASSED. `current_stock` diterima per-request (default 0), tidak dipersist — skema tak menyimpan stok live.
 
-## Fase 6 — Planner Override & Audit Trail
-- [ ] Model `overrides` (target_type, target_id, previous_value, new_value, reason NOT NULL) + migration.
-- [ ] `override_service.py`: buat override baru (append-only, tidak overwrite), validasi `reason` wajib (`OVERRIDE_REASON_REQUIRED` jika kosong).
-- [ ] Endpoint `POST /api/v1/overrides`, `GET /api/v1/overrides?target_id=...`.
-- [ ] **TDD**: happy path override, error saat reason kosong, override tidak menghapus data asli (assert data lama tetap ada).
-- [ ] Frontend: komponen override + tampilan riwayat audit trail.
+## Fase 6 — Planner Override & Audit Trail ✅
+- [x] Model `overrides` (target_type, target_id, previous_value, new_value, reason NOT NULL) + migration (`6366f084a6d9`).
+- [x] `override_service.py`: append-only (baris baru, tidak overwrite), `reason` wajib (`OVERRIDE_REASON_REQUIRED`), snapshot `previous_value` dari target, target polimorfik via resolvers.
+- [x] Endpoint `POST /api/v1/overrides`, `GET /api/v1/overrides?target_id=...`. Target tak ada → `OVERRIDE_TARGET_NOT_FOUND` (404, RECONCILIATION #17); target_type invalid → 422 (Literal).
+- [x] **TDD**: happy path, reason kosong ditolak, override TIDAK mengubah data asli (assert nilai lama tetap), target 404, audit trail append-only (2 revisi tersimpan).
+- [x] Frontend: `OverrideForm` (reason wajib) + `AuditTrail` (sebelum→sesudah, alasan, waktu) + hook `useOverrides`.
 
 **Selesai jika:** planner bisa override forecast/reorder dengan alasan wajib, riwayat lengkap dan tidak pernah menimpa data asli.
+
+> Coverage backend Fase 6: override layer 100%, total 95%. Frontend 35 test PASSED.
 
 ## Fase 7 — Dashboard & Visualisasi
 - [ ] Endpoint `dashboard/summary`.

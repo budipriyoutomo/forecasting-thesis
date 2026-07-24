@@ -2,6 +2,7 @@ import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Material, MaterialInput } from "@/types/material";
+import type { Override, OverrideInput } from "@/types/override";
 import type { ReorderRecommendation } from "@/types/reorder";
 import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
 
@@ -109,6 +110,21 @@ export const api = {
         cache: "no-store",
       });
     },
+  },
+
+  overrides: {
+    create: (input: OverrideInput, token: string): Promise<ApiResponse<Override>> =>
+      request<Override>("/api/v1/overrides", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    list: (targetId: string, token: string): Promise<ApiResponse<Override[]>> =>
+      request<Override[]>(`/api/v1/overrides?target_id=${encodeURIComponent(targetId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
   },
 
   uploads: {

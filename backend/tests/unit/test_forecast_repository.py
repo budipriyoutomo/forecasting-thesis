@@ -41,6 +41,15 @@ async def test_get_run():
 
 
 @pytest.mark.asyncio
+async def test_get_result():
+    session = _session()
+    session.get.return_value = "result"
+    repo = SqlForecastRepository(session)
+
+    assert await repo.get_result("fr1") == "result"
+
+
+@pytest.mark.asyncio
 async def test_save_run():
     session = _session()
     repo = SqlForecastRepository(session)

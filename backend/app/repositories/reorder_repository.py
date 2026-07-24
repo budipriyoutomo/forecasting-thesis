@@ -26,3 +26,6 @@ class SqlReorderRepository:
             select(ReorderRecommendation).where(ReorderRecommendation.run_id == run_id)
         )
         return list(result.scalars().all())
+
+    async def get_recommendation(self, rec_id: str) -> ReorderRecommendation | None:
+        return await self._session.get(ReorderRecommendation, rec_id)

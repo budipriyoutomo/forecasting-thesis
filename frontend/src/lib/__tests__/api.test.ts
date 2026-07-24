@@ -162,6 +162,33 @@ describe("api.reorder", () => {
   });
 });
 
+describe("api.overrides", () => {
+  it("create POST /overrides dengan body lengkap", async () => {
+    const spy = mockFetch({ success: true, data: {} });
+    const input = {
+      target_type: "reorder_recommendation" as const,
+      target_id: "rec1",
+      new_value: { recommended_order_qty: 120 },
+      reason: "alasan valid",
+    };
+
+    await api.overrides.create(input, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/overrides$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual(input);
+  });
+
+  it("list GET /overrides?target_id=", async () => {
+    const spy = mockFetch({ success: true, data: [] });
+
+    await api.overrides.list("rec1", "tok");
+
+    expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/overrides\?target_id=rec1$/);
+  });
+});
+
 describe("api.uploads.create", () => {
   it("mengirim file sebagai multipart dengan header Authorization", async () => {
     const spy = mockFetch({ success: true, data: { session_id: "s-1" } });

@@ -21,6 +21,9 @@ class SqlForecastRepository:
     async def get_run(self, run_id: str) -> ForecastRun | None:
         return await self._session.get(ForecastRun, run_id)
 
+    async def get_result(self, result_id: str) -> ForecastResult | None:
+        return await self._session.get(ForecastResult, result_id)
+
     async def save_run(self, run: ForecastRun) -> ForecastRun:
         await self._session.flush()
         return run

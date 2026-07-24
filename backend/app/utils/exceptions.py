@@ -96,6 +96,13 @@ class OverrideReasonRequiredError(AppError):
     code = "OVERRIDE_REASON_REQUIRED"
 
 
+class OverrideTargetNotFoundError(AppError):
+    """Target override (forecast_result/reorder_recommendation) tidak ditemukan."""
+
+    status_code = 404
+    code = "OVERRIDE_TARGET_NOT_FOUND"
+
+
 class ModelSelectionFailedError(AppError):
     status_code = 422
     code = "MODEL_SELECTION_FAILED"

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.repositories.forecast_repository import SqlForecastRepository
 from app.repositories.material_repository import SqlMaterialRepository
+from app.repositories.override_repository import SqlOverrideRepository
 from app.repositories.reorder_repository import SqlReorderRepository
 from app.repositories.upload_session_repository import (
     SqlConsumptionHistoryRepository,
@@ -17,6 +18,7 @@ from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
 from app.services.forecast_run_service import ForecastRunService
 from app.services.material_service import MaterialService
+from app.services.override_service import OverrideService
 from app.services.reorder_service import ReorderService
 from app.services.storage_service import StorageService, build_r2_client
 from app.services.supabase_auth import SupabaseAuthenticator
@@ -92,3 +94,14 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         materials=SqlMaterialRepository(session),
         consumptions=SqlConsumptionHistoryRepository(session),
     )
+
+
+def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideService:
+    forecast_repo = SqlForecastRepository(session)
+    reorder_repo = SqlReorderRepository(session)
+    # Resolver polimorfik: target_type → cara mengambil objek target dari DB.
+    resolvers = {
+        "forecast_result": forecast_repo.get_result,
+        "reorder_recommendation": reorder_repo.get_recommendation,
+    }
+    return OverrideService(SqlOverrideRepository(session), resolvers)

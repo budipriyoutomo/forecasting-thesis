@@ -50,3 +50,12 @@ async def test_list_by_run():
     repo = SqlReorderRepository(session)
 
     assert await repo.list_by_run("r1") == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_get_recommendation():
+    session = _session()
+    session.get = AsyncMock(return_value="rec")
+    repo = SqlReorderRepository(session)
+
+    assert await repo.get_recommendation("rec1") == "rec"
