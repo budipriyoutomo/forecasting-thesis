@@ -63,6 +63,50 @@ describe("api.auth.me", () => {
   });
 });
 
+describe("api.materials", () => {
+  it("list GET /materials dengan Bearer token", async () => {
+    const spy = mockFetch({ success: true, data: [] });
+
+    await api.materials.list("tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/materials$/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+
+  it("create POST /materials dengan body JSON", async () => {
+    const spy = mockFetch({ success: true, data: {} });
+    const input = { code: "RM-1", name: "A", unit: "kg", lead_time_days: 3, moq: 10 };
+
+    await api.materials.create(input, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/materials$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual(input);
+  });
+
+  it("update PUT /materials/:id", async () => {
+    const spy = mockFetch({ success: true, data: {} });
+
+    await api.materials.update("m1", { name: "B" }, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/materials\/m1$/);
+    expect(init?.method).toBe("PUT");
+  });
+
+  it("remove DELETE /materials/:id", async () => {
+    const spy = mockFetch({ success: true, data: { id: "m1", deleted: true } });
+
+    await api.materials.remove("m1", "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/materials\/m1$/);
+    expect(init?.method).toBe("DELETE");
+  });
+});
+
 describe("api.uploads.create", () => {
   it("mengirim file sebagai multipart dengan header Authorization", async () => {
     const spy = mockFetch({ success: true, data: { session_id: "s-1" } });

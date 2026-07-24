@@ -40,6 +40,15 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency — satu session per request, selalu ditutup di akhir."""
+    """FastAPI dependency — satu session per request.
+
+    Commit otomatis kalau handler sukses, rollback kalau ada exception. Session
+    selalu ditutup oleh context manager.
+    """
     async with get_sessionmaker()() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

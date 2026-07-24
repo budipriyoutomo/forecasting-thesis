@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import auth, forecast, uploads
+from app.api.v1 import auth, forecast, materials, uploads
 from app.config import get_settings
 from app.utils.exceptions import AppError
 
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(materials.router, prefix="/api/v1")
 app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(forecast.router, prefix="/api/v1")
 

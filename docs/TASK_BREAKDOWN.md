@@ -28,13 +28,16 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Coverage backend Fase 1: services/endpoint/model auth 100%, total 95%. Frontend: 11 test PASSED (api client + LoginForm), lint + typecheck bersih.
 
-## Fase 2 — Master Data Material
-- [ ] Model `materials` (code, name, category, unit, lead_time_days, moq, manual_safety_stock) + migration.
-- [ ] CRUD endpoint `api/v1/materials` + import via CSV/Excel.
-- [ ] **TDD**: happy path CRUD, validation error (kode duplikat), 404 material tidak ada, 403 non-admin coba ubah.
-- [ ] Frontend: halaman `materials/` — tabel, form tambah/edit, upload import.
+## Fase 2 — Master Data Material ✅
+- [x] Model `materials` (code, name, category, unit, lead_time_days, moq, manual_safety_stock) + migration (`6428318b5bb5`).
+- [x] CRUD endpoint `api/v1/materials` (GET list/detail, POST, PUT, DELETE) + import via CSV (`POST /materials/import`).
+- [x] RBAC: baca semua role terautentikasi; tulis (create/update/delete/import) hanya `admin`.
+- [x] **TDD**: happy path CRUD, kode duplikat → 409 `MATERIAL_CODE_EXISTS` (kode baru, `RECONCILIATION.md` #13), 404 material tidak ada, 403 non-admin, import CSV (sukses, kolom wajib hilang, duplikat dalam file, angka tidak valid).
+- [x] Frontend: halaman `materials/` — tabel, form tambah/edit (react-hook-form + zod), hook `useMaterials`.
 
 **Selesai jika:** admin bisa kelola master data material penuh dari UI, coverage endpoint ≥ 90%.
+
+> Coverage backend Fase 2: model/repository/service/endpoint material 100%, total 95%. Frontend: 18 test PASSED. Import Excel (.xlsx) ditunda — CSV dulu; menambah Excel = tambah parser di `material_service.import_*` tanpa ubah endpoint.
 
 ## Fase 3 — Data Ingestion (Upload & Storage)
 - [ ] Model `upload_sessions` + `consumption_history` + migration.

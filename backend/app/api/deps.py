@@ -6,8 +6,10 @@ from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.repositories.material_repository import SqlMaterialRepository
 from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
+from app.services.material_service import MaterialService
 from app.services.supabase_auth import SupabaseAuthenticator
 from app.utils.auth import decode_access_token
 from app.utils.exceptions import AuthTokenExpiredError, AuthTokenMissingOrInvalidError, ForbiddenRoleError
@@ -50,3 +52,7 @@ def require_role(*roles: str):
 
 def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(SqlUserRepository(session), SupabaseAuthenticator())
+
+
+def get_material_service(session: AsyncSession = Depends(get_db)) -> MaterialService:
+    return MaterialService(SqlMaterialRepository(session))

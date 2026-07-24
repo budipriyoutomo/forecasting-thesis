@@ -1,5 +1,6 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
+import type { Material, MaterialInput } from "@/types/material";
 import type { UploadResponseData } from "@/types/upload";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -30,6 +31,34 @@ export const api = {
       request<User>("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
+      }),
+  },
+
+  materials: {
+    list: (token: string): Promise<ApiResponse<Material[]>> =>
+      request<Material[]>("/api/v1/materials", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    create: (input: MaterialInput, token: string): Promise<ApiResponse<Material>> =>
+      request<Material>("/api/v1/materials", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    update: (id: string, input: Partial<MaterialInput>, token: string): Promise<ApiResponse<Material>> =>
+      request<Material>(`/api/v1/materials/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/materials/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       }),
   },
 

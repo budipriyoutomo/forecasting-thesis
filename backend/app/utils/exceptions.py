@@ -69,6 +69,13 @@ class MaterialNotFoundError(AppError):
     code = "MATERIAL_NOT_FOUND"
 
 
+class MaterialCodeExistsError(AppError):
+    """Kode material sudah dipakai material lain (unik) — konflik saat create/import."""
+
+    status_code = 409
+    code = "MATERIAL_CODE_EXISTS"
+
+
 class SessionNotFoundError(AppError):
     status_code = 404
     code = "SESSION_NOT_FOUND"
