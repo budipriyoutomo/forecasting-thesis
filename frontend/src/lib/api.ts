@@ -1,5 +1,6 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
+import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Material, MaterialInput } from "@/types/material";
 import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
 
@@ -59,6 +60,27 @@ export const api = {
       request<{ id: string; deleted: boolean }>(`/api/v1/materials/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
+  forecast: {
+    methods: (token: string): Promise<ApiResponse<{ methods: string[] }>> =>
+      request<{ methods: string[] }>("/api/v1/forecast/methods", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    createRun: (input: ForecastRunInput, token: string): Promise<ApiResponse<ForecastRunResponse>> =>
+      request<ForecastRunResponse>("/api/v1/forecast/runs", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    getRun: (runId: string, token: string): Promise<ApiResponse<ForecastRunResponse>> =>
+      request<ForecastRunResponse>(`/api/v1/forecast/runs/${runId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       }),
   },
 

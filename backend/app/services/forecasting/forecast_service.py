@@ -38,6 +38,11 @@ def run_forecast_for_material(
 ) -> ForecastResultRecord:
     settings = get_settings()
 
+    # Material tanpa histori sama sekali → langsung INSUFFICIENT_DATA (df kosong
+    # tidak bisa dibuat rentang tanggalnya). Fail-fast sebelum to_daily_series.
+    if df.empty or "date" not in df.columns or df["quantity"].dropna().empty:
+        return ForecastResultRecord(status="INSUFFICIENT_DATA")
+
     # Gate pakai panjang rentang kalender (bukan jumlah baris mentah) — item
     # intermittent/lumpy secara alami punya sedikit baris observasi meski
     # rentang historisnya panjang, jadi tidak boleh salah dianggap kurang data.

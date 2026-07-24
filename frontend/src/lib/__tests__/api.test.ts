@@ -107,6 +107,39 @@ describe("api.materials", () => {
   });
 });
 
+describe("api.forecast", () => {
+  it("createRun POST /forecast/runs dengan body JSON", async () => {
+    const spy = mockFetch({ success: true, data: { run: {}, results: [] } });
+
+    await api.forecast.createRun({ material_ids: ["m1"], horizon: 30, method: null }, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/forecast\/runs$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      material_ids: ["m1"],
+      horizon: 30,
+      method: null,
+    });
+  });
+
+  it("methods GET /forecast/methods", async () => {
+    const spy = mockFetch({ success: true, data: { methods: ["ets"] } });
+
+    await api.forecast.methods("tok");
+
+    expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/forecast\/methods$/);
+  });
+
+  it("getRun GET /forecast/runs/:id", async () => {
+    const spy = mockFetch({ success: true, data: { run: {}, results: [] } });
+
+    await api.forecast.getRun("r1", "tok");
+
+    expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/forecast\/runs\/r1$/);
+  });
+});
+
 describe("api.uploads.create", () => {
   it("mengirim file sebagai multipart dengan header Authorization", async () => {
     const spy = mockFetch({ success: true, data: { session_id: "s-1" } });

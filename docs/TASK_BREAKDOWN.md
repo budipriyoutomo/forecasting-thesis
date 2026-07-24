@@ -68,6 +68,8 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 **Selesai jika:** forecast run bisa dijalankan end-to-end untuk banyak material sekaligus (baik mode otomatis maupun manual), setiap kuadran demand (termasuk intermittent/lumpy) menghasilkan forecast (bukan selalu `MODEL_SELECTION_FAILED`), coverage forecasting module ≥ 85%.
 
+> ✅ **Selesai (Fase 4 lengkap).** Model `forecast_runs`+`forecast_results` (+`status` per-material, RECONCILIATION #15) + migration `fae350da01a7`. `forecast_run_service` orkestrasi banyak material: ambil histori dari `consumption_history` → `forecast_service` (satu-satunya entry engine) → persist. Kegagalan 1 material tak menggagalkan run; metode manual tak dikenal ditolak 400 di awal. Endpoint `POST /forecast/runs`, `GET /forecast/runs/{id}` (polling), `GET /forecast/results?material_id=`, `GET /forecast/methods`. Frontend: `MethodSelector` + halaman `forecast/new/config` (pilih material, method, horizon → generate → hasil + explanation). TDD: tiap kuadran (smooth/erratic/intermittent/lumpy) menghasilkan forecast, manual sukses & `UNSUPPORTED_FORECAST_METHOD`, `INSUFFICIENT_DATA` per-material, 404 material, polling. Coverage: forecast layer 100%, engine module ≥85%, total 95%. Frontend 26 test PASSED.
+
 ## Fase 5 — Safety Stock & Reorder Point
 - [ ] Model `reorder_recommendations` + migration.
 - [ ] `reorder_service.py`: safety stock (variabilitas demand, lead time, service level), reorder point, recommended order qty (mempertimbangkan MOQ).

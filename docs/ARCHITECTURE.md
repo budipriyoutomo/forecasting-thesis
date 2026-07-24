@@ -199,6 +199,7 @@ forecastiq/
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
 | material_id | UUID FK → materials | |
+| status | VARCHAR(30) | COMPLETED / INSUFFICIENT_DATA / MODEL_SELECTION_FAILED — lihat §8 & RECONCILIATION #15 |
 | data_profile | JSONB | `{n_points, adi, cv2, demand_class, has_seasonality, is_stationary, missing_ratio, has_outliers}` |
 | method_used | VARCHAR(20) | ets / arima / prophet / lgbm / croston |
 | selection_mode | VARCHAR(10) | `auto` / `manual` — lihat §6.8 |

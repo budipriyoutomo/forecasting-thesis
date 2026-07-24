@@ -101,6 +101,11 @@ class ModelSelectionFailedError(AppError):
     code = "MODEL_SELECTION_FAILED"
 
 
+class ForecastRunNotFoundError(AppError):
+    status_code = 404
+    code = "FORECAST_RUN_NOT_FOUND"
+
+
 class UnsupportedForecastMethodError(AppError):
     status_code = 400
     code = "UNSUPPORTED_FORECAST_METHOD"

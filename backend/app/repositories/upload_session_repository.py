@@ -52,3 +52,19 @@ class SqlConsumptionHistoryRepository:
         self._session.add_all(rows)
         await self._session.flush()
         return len(rows)
+
+    async def list_for_material(self, material_id: str, material_code: str) -> list[ConsumptionHistory]:
+        """Ambil histori konsumsi satu material — cocokkan lewat id ATAU code.
+
+        Sebagian baris bisa punya material_id null (diupload sebelum material
+        terdaftar, RECONCILIATION #14), jadi code dipakai sebagai jaring pengaman.
+        """
+        result = await self._session.execute(
+            select(ConsumptionHistory)
+            .where(
+                (ConsumptionHistory.material_id == material_id)
+                | (ConsumptionHistory.material_code == material_code)
+            )
+            .order_by(ConsumptionHistory.date)
+        )
+        return list(result.scalars().all())
