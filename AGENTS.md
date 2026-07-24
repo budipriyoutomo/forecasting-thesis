@@ -96,13 +96,14 @@ Base URL: `/api/v1`. Semua endpoint memerlukan `Authorization: Bearer {token}` k
 ### Error codes yang valid (gunakan konstanta, bukan string bebas)
 ```
 AUTH_INVALID_CREDENTIALS     AUTH_TOKEN_EXPIRED            AUTH_EMAIL_NOT_VERIFIED
-MATERIAL_NOT_FOUND            UPLOAD_INVALID_FORMAT         UPLOAD_FILE_TOO_LARGE
-SESSION_NOT_FOUND             SESSION_EXPIRED                INSUFFICIENT_DATA
-MODEL_SELECTION_FAILED        FORECAST_RUN_NOT_FOUND         BACKTEST_FAILED
-OVERRIDE_REASON_REQUIRED      STORAGE_UPLOAD_FAILED          RATE_LIMIT_EXCEEDED
-UNSUPPORTED_FORECAST_METHOD
+AUTH_FORBIDDEN                MATERIAL_NOT_FOUND            UPLOAD_INVALID_FORMAT
+UPLOAD_FILE_TOO_LARGE         SESSION_NOT_FOUND             SESSION_EXPIRED
+INSUFFICIENT_DATA             MODEL_SELECTION_FAILED        FORECAST_RUN_NOT_FOUND
+BACKTEST_FAILED              OVERRIDE_REASON_REQUIRED       STORAGE_UPLOAD_FAILED
+RATE_LIMIT_EXCEEDED           UNSUPPORTED_FORECAST_METHOD
 ```
 > Daftar ini final hasil penggabungan. Jangan tambah error code sepihak — kalau butuh code baru, tambahkan di sini dulu (dan di `ARCHITECTURE.md` §5) sebelum dipakai di kode.
+> `AUTH_FORBIDDEN` (403): ditambahkan di Fase 1 untuk RBAC — role user tidak diizinkan akses resource (FR-8.2). Lihat `RECONCILIATION.md`.
 
 ### HTTP Status Code
 `200` berhasil | `201` resource dibuat | `400` input validation error | `401` unauthorized | `403` forbidden | `404` not found | `422` invalid secara bisnis | `429` rate limit | `500` internal error | `503` dependency eksternal (Supabase/R2) unavailable

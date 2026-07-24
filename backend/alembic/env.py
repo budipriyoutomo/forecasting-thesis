@@ -9,7 +9,7 @@ from alembic import context
 from sqlalchemy.engine import Connection
 
 from app.config import get_settings
-from app.db.base import Base
+from app.db.models_registry import Base  # mengumpulkan semua model untuk autogenerate
 from app.db.session import get_engine
 
 config = context.config

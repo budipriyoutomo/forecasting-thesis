@@ -38,6 +38,31 @@ describe("api.health", () => {
   });
 });
 
+describe("api.auth.login", () => {
+  it("POST /api/v1/auth/login dengan body JSON email+password", async () => {
+    const spy = mockFetch({ success: true, data: { access_token: "t", token_type: "bearer" } });
+
+    await api.auth.login("a@b.com", "secret");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/auth\/login$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ email: "a@b.com", password: "secret" });
+  });
+});
+
+describe("api.auth.me", () => {
+  it("GET /api/v1/auth/me dengan Bearer token", async () => {
+    const spy = mockFetch({ success: true, data: { id: "1", email: "a@b.com" } });
+
+    await api.auth.me("tok-9");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/auth\/me$/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok-9");
+  });
+});
+
 describe("api.uploads.create", () => {
   it("mengirim file sebagai multipart dengan header Authorization", async () => {
     const spy = mockFetch({ success: true, data: { session_id: "s-1" } });

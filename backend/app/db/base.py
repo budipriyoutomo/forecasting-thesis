@@ -11,5 +11,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# Import model di bawah ini seiring fase berjalan (mis. `from app.models.user import User  # noqa: F401`).
-# Tanpa import, tabelnya tidak ikut ke autogenerate migration.
+# Model TIDAK di-import di sini (menghindari circular import: model butuh Base).
+# Untuk autogenerate, model dikumpulkan di app/db/models_registry.py yang di-import
+# oleh alembic/env.py.

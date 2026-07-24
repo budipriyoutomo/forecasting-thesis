@@ -1,4 +1,5 @@
 import type { ApiResponse, HealthData } from "@/types/api";
+import type { LoginResponseData, User } from "@/types/auth";
 import type { UploadResponseData } from "@/types/upload";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -11,9 +12,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse
   return (await res.json()) as ApiResponse<T>;
 }
 
+const jsonHeaders = { "Content-Type": "application/json" };
+
 // Contoh pola API client — perluas per endpoint di docs/ARCHITECTURE.md §5.
 export const api = {
   health: (): Promise<ApiResponse<HealthData>> => request<HealthData>("/health", { cache: "no-store" }),
+
+  auth: {
+    login: (email: string, password: string): Promise<ApiResponse<LoginResponseData>> =>
+      request<LoginResponseData>("/api/v1/auth/login", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ email, password }),
+      }),
+
+    me: (token: string): Promise<ApiResponse<User>> =>
+      request<User>("/api/v1/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+  },
 
   uploads: {
     create: (file: File, token: string): Promise<ApiResponse<UploadResponseData>> => {

@@ -17,14 +17,16 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Catatan: versi dependency backend dilonggarkan dari pin `==` ke `>=` (lihat komentar di `backend/requirements.txt`) karena pin versi 2024 memaksa build dari source di Python 3.14 (tidak ada wheel prebuilt).
 
-## Fase 1 — Auth (Supabase Auth/JWT)
-- [ ] Model `users` (id, email, name, role, is_verified) + migration.
-- [ ] Integrasi Supabase Auth, endpoint `POST /api/v1/auth/login`, `GET /api/v1/auth/me`.
-- [ ] Dependency FastAPI untuk role-based access control (admin/ppic/purchasing/viewer).
-- [ ] **TDD**: test 401 tanpa token, 401 token expired, happy path login, role check di endpoint contoh.
-- [ ] Frontend: halaman login + proteksi route (middleware).
+## Fase 1 — Auth (Supabase Auth/JWT) ✅
+- [x] Model `users` (id, email, name, role, is_verified) + migration (`alembic/versions/67345c33f31f_*`).
+- [x] Integrasi Supabase Auth (`app/services/supabase_auth.py`, GoTrue), endpoint `POST /api/v1/auth/login`, `GET /api/v1/auth/me`. Backend menerbitkan JWT-nya sendiri (pola `app/utils/auth.py`); Supabase dipakai untuk verifikasi kredensial.
+- [x] Dependency FastAPI RBAC `require_role(*roles)` (admin/ppic/purchasing/viewer) → 403 `AUTH_FORBIDDEN` (kode baru, lihat `RECONCILIATION.md` #12).
+- [x] **TDD**: 401 tanpa token, 401 token expired, happy path login, kredensial salah (401), email belum verified (403), RBAC role check, + unit test authenticator (httpx mock) & repository (session mock).
+- [x] Frontend: halaman `/login` (react-hook-form + zod), `useAuth` (login/me/logout), middleware proteksi route grup dashboard (token di cookie), halaman dashboard menampilkan profil.
 
 **Selesai jika:** user bisa login, role membatasi akses sesuai desain, semua test auth PASSED.
+
+> Coverage backend Fase 1: services/endpoint/model auth 100%, total 95%. Frontend: 11 test PASSED (api client + LoginForm), lint + typecheck bersih.
 
 ## Fase 2 — Master Data Material
 - [ ] Model `materials` (code, name, category, unit, lead_time_days, moq, manual_safety_stock) + migration.

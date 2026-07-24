@@ -9,7 +9,7 @@ uvicorn[standard]>=0.30.6
 python-multipart>=0.0.9
 
 # Config & validation
-pydantic>=2.9.2
+pydantic[email]>=2.9.2
 pydantic-settings>=2.5.2
 
 # Auth

@@ -30,6 +30,25 @@ class AuthTokenExpiredError(AppError):
     code = "AUTH_TOKEN_EXPIRED"
 
 
+class InvalidCredentialsError(AppError):
+    """Login gagal — email/password salah. Kode sama dgn token invalid (AGENTS.md §4)."""
+
+    status_code = 401
+    code = "AUTH_INVALID_CREDENTIALS"
+
+
+class AuthEmailNotVerifiedError(AppError):
+    status_code = 403
+    code = "AUTH_EMAIL_NOT_VERIFIED"
+
+
+class ForbiddenRoleError(AppError):
+    """Role user tidak diizinkan akses resource (RBAC, FR-8.2)."""
+
+    status_code = 403
+    code = "AUTH_FORBIDDEN"
+
+
 class UploadInvalidFormatError(AppError):
     status_code = 400
     code = "UPLOAD_INVALID_FORMAT"

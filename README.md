@@ -65,7 +65,8 @@ make revision m="tambah tabel users"  # bikin migrasi baru
 
 Lihat `docs/TASK_BREAKDOWN.md` untuk daftar fase lengkap. Saat ini:
 
-- **Fase 0** (setup) selesai: monorepo + Makefile, FastAPI skeleton (`/health`, CORS, session DB async lazy), Alembic siap pakai (belum ada migrasi), Next.js App Router + Tailwind + shadcn/ui + TanStack Query, dan CI GitHub Actions (lint + typecheck + test + coverage gate).
+- **Fase 0** (setup) selesai: monorepo + Makefile, FastAPI skeleton (`/health`, CORS, session DB async lazy), Alembic siap pakai, Next.js App Router + Tailwind + shadcn/ui + TanStack Query, dan CI GitHub Actions (lint + typecheck + test + coverage gate).
+- **Fase 1** (auth) selesai: tabel `users` + migration, login via Supabase Auth (`POST /api/v1/auth/login`, `GET /api/v1/auth/me`) dengan JWT backend, RBAC `require_role` (admin/ppic/purchasing/viewer), frontend halaman `/login` + middleware proteksi route. Coverage backend 95%.
 - **Fase 4 inti** (Auto Model Selection Engine + Manual Override) sudah berjalan sebagai *service layer* (`app/services/forecasting/`), dengan 4 metode forecasting terimplementasi penuh — masing-masing **1 fungsi per metode** (`ets_engine.py`, `arima_engine.py`, `croston_engine.py`, `lightgbm_engine.py`) — plus endpoint `POST /api/v1/forecast/runs` yang mendukung mode **otomatis** (`method: null`) maupun **manual** (`method: "arima"`, dst — lihat `docs/ARCHITECTURE.md` §6.8).
 - `prophet_engine.py` sengaja **belum** diimplementasikan (dependency berat) — lihat docstring di file tsb.
 - Endpoint di atas belum tersambung ke database/R2 sungguhan (masih menerima data historis langsung di body request) — itu bagian **Fase 1–3** (auth, master data, upload persisten) yang belum dikerjakan.
