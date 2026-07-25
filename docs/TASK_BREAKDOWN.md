@@ -1,138 +1,169 @@
 # Task Breakdown & Roadmap Implementasi
-## ForecastIQ — Raw Material & Inventory Forecasting Platform (PPIC)
+## ForecastIQ — ML Forecasting, Inventory Decision & Warehouse Capacity Constraint (v3.1 — Rencana Migrasi)
 
-Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → Refactor). Jangan mulai fase berikutnya sebelum test fase sebelumnya PASSED dan coverage memenuhi minimum di `AGENTS.md` §3.
-
----
-
-## Fase 0 — Monorepo Setup ✅
-- [x] Inisialisasi repo Git, struktur folder sesuai `ARCHITECTURE.md` §3.
-- [x] `AGENTS.md`, `.gitignore`, `.env.example` (backend & frontend).
-- [x] Backend: FastAPI skeleton (`/health`, CORS, exception handler), `pyproject.toml`, koneksi Postgres async lazy (`app/db/session.py`), Alembic init (`backend/alembic/`, URL dari `DATABASE_URL`).
-- [x] Frontend: Next.js App Router + TypeScript + Tailwind + shadcn/ui + TanStack Query provider, halaman depan cek koneksi backend.
-- [x] `docker-compose.yml` untuk dev + `Makefile` (install/dev/test/cov/migrate).
-- [x] CI dasar: lint + typecheck + test + coverage gate (`.github/workflows/ci.yml`).
-
-**Selesai jika:** health check endpoint jalan, frontend bisa fetch ke backend, CI hijau di commit kosong.
-
-> Catatan: versi dependency backend dilonggarkan dari pin `==` ke `>=` (lihat komentar di `backend/requirements.txt`) karena pin versi 2024 memaksa build dari source di Python 3.14 (tidak ada wheel prebuilt).
-
-## Fase 1 — Auth (Supabase Auth/JWT) ✅
-- [x] Model `users` (id, email, name, role, is_verified) + migration (`alembic/versions/67345c33f31f_*`).
-- [x] Integrasi Supabase Auth (`app/services/supabase_auth.py`, GoTrue), endpoint `POST /api/v1/auth/login`, `GET /api/v1/auth/me`. Backend menerbitkan JWT-nya sendiri (pola `app/utils/auth.py`); Supabase dipakai untuk verifikasi kredensial.
-- [x] Dependency FastAPI RBAC `require_role(*roles)` (admin/ppic/purchasing/viewer) → 403 `AUTH_FORBIDDEN` (kode baru, lihat `RECONCILIATION.md` #12).
-- [x] **TDD**: 401 tanpa token, 401 token expired, happy path login, kredensial salah (401), email belum verified (403), RBAC role check, + unit test authenticator (httpx mock) & repository (session mock).
-- [x] Frontend: halaman `/login` (react-hook-form + zod), `useAuth` (login/me/logout), middleware proteksi route grup dashboard (token di cookie), halaman dashboard menampilkan profil.
-
-**Selesai jika:** user bisa login, role membatasi akses sesuai desain, semua test auth PASSED.
-
-> Coverage backend Fase 1: services/endpoint/model auth 100%, total 95%. Frontend: 11 test PASSED (api client + LoginForm), lint + typecheck bersih.
-
-## Fase 2 — Master Data Material ✅
-- [x] Model `materials` (code, name, category, unit, lead_time_days, moq, manual_safety_stock) + migration (`6428318b5bb5`).
-- [x] CRUD endpoint `api/v1/materials` (GET list/detail, POST, PUT, DELETE) + import via CSV (`POST /materials/import`).
-- [x] RBAC: baca semua role terautentikasi; tulis (create/update/delete/import) hanya `admin`.
-- [x] **TDD**: happy path CRUD, kode duplikat → 409 `MATERIAL_CODE_EXISTS` (kode baru, `RECONCILIATION.md` #13), 404 material tidak ada, 403 non-admin, import CSV (sukses, kolom wajib hilang, duplikat dalam file, angka tidak valid).
-- [x] Frontend: halaman `materials/` — tabel, form tambah/edit (react-hook-form + zod), hook `useMaterials`.
-
-**Selesai jika:** admin bisa kelola master data material penuh dari UI, coverage endpoint ≥ 90%.
-
-> Coverage backend Fase 2: model/repository/service/endpoint material 100%, total 95%. Frontend: 18 test PASSED. Import Excel (.xlsx) ditunda — CSV dulu; menambah Excel = tambah parser di `material_service.import_*` tanpa ubah endpoint.
-
-## Fase 3 — Data Ingestion (Upload & Storage) ✅
-- [x] Model `upload_sessions` + `consumption_history` + migration (`9a85016d7be7`). `consumption_history` deviasi: `material_code` + `material_id` nullable (RECONCILIATION #14).
-- [x] `storage_service.py`: upload ke R2 `temp/uploads/{session_id}/`, move ke `permanent/datasets/`, client S3 injectable (`build_r2_client`).
-- [x] `data_ingestion_service.py`: parsing CSV (pandas), validasi kolom wajib (material_code, date, quantity), deteksi banyak SKU, `extract_consumption_rows` untuk persist.
-- [x] Endpoint `POST /uploads` (validasi → temp → permanent → persist session + consumption), `GET /uploads` (riwayat), `GET /uploads/{id}` (detail, 404/403).
-- [x] Cron cleanup (`app/jobs/cleanup_temp_uploads.py`, `python -m app.jobs.cleanup_temp_uploads`) — tandai `expired` + hapus temp; tanpa Celery/Redis (MVP sync-first).
-- [x] **TDD**: happy path, `UPLOAD_INVALID_FORMAT`, `UPLOAD_FILE_TOO_LARGE`, `INSUFFICIENT_DATA`, `SESSION_EXPIRED` (guard pending kedaluwarsa), 404/403, cleanup, storage (mock S3).
-- [x] Frontend: halaman upload (`forecast/new`) + preview + riwayat upload.
-
-**Selesai jika:** upload CSV multi-SKU tervalidasi, tersimpan permanen, dan riwayat upload bisa dilihat.
-
-> Coverage backend Fase 3: upload_service 97%, storage 98%, repos 100%, endpoint 100%, total 95%. Frontend 21 test PASSED. Resolusi `material_id` dari master data; kode belum terdaftar → warning (bukan auto-create material).
-
-## Fase 4 — Auto Model Selection Engine + Manual Override (Core — Prioritas Tertinggi)
-- [ ] `types.py`: dataclass `ForecastPoint`, `EngineResult`.
-- [ ] `classification.py`: hitung ADI/CV², mapping kuadran Syntetos-Boylan. **TDD dulu** dengan data historis contoh per kuadran (smooth/erratic/intermittent/lumpy).
-- [ ] `engines/README.md` (kontrak fungsi untuk engine baru — signature, self-contained backtest+fit+predict+explanation).
-- [ ] Implementasi **1 fungsi per metode** (TDD per fungsi, satu test file per metode): `ets_engine.py` (`forecast_ets`), `arima_engine.py` (`forecast_arima`), `lightgbm_engine.py` (`forecast_lightgbm`), **`croston_engine.py`** (`forecast_croston` — wajib untuk kuadran intermittent/lumpy, lihat `RECONCILIATION.md`).
-- [ ] `prophet_engine.py`: stub/TODO dulu (dependency berat) — **jangan didaftarkan ke registry** sampai benar diimplementasikan.
-- [ ] `registry.py`: `MODEL_REGISTRY` (dict nama→fungsi), `get_enabled_methods()`, `filter_candidates()` per kuadran, baca `FORECAST_ENGINES_ENABLED` dari env.
-- [ ] `scoring_engine.py`: MASE + guardrail (bias/tracking signal) + fit kuadran, bobot dari env — dipakai mode auto saja.
-- [ ] `forecast_service.py`: orkestrasi dengan 2 cabang — **manual** (skip klasifikasi+scoring, langsung panggil 1 fungsi sesuai `method` yang diminta user, tanpa fallback bila gagal) dan **auto** (klasifikasi → filter kandidat → backtest tiap kandidat → scoring → pilih skor tertinggi).
-- [ ] Model `forecast_runs` + `forecast_results` (+ kolom `selection_mode`) + migration.
-- [ ] Endpoint trigger forecast run (banyak material sekaligus, field `method` opsional di request body — lihat `ARCHITECTURE.md` §6.8) + polling status.
-- [ ] Frontend: `MethodSelector.tsx` (dropdown "Otomatis (Direkomendasikan)" + daftar metode aktif) di halaman `forecast/new/config`, sebelum tombol generate.
-- [ ] **TDD menyeluruh** (prioritas tertinggi — ini inti value produk): setiap kuadran punya minimal 1 test dengan data fixture; test mode manual (sukses & `UNSUPPORTED_FORECAST_METHOD`); test `MODEL_SELECTION_FAILED` saat semua kandidat auto gagal; test `INSUFFICIENT_DATA`.
-
-**Selesai jika:** forecast run bisa dijalankan end-to-end untuk banyak material sekaligus (baik mode otomatis maupun manual), setiap kuadran demand (termasuk intermittent/lumpy) menghasilkan forecast (bukan selalu `MODEL_SELECTION_FAILED`), coverage forecasting module ≥ 85%.
-
-> ✅ **Selesai (Fase 4 lengkap).** Model `forecast_runs`+`forecast_results` (+`status` per-material, RECONCILIATION #15) + migration `fae350da01a7`. `forecast_run_service` orkestrasi banyak material: ambil histori dari `consumption_history` → `forecast_service` (satu-satunya entry engine) → persist. Kegagalan 1 material tak menggagalkan run; metode manual tak dikenal ditolak 400 di awal. Endpoint `POST /forecast/runs`, `GET /forecast/runs/{id}` (polling), `GET /forecast/results?material_id=`, `GET /forecast/methods`. Frontend: `MethodSelector` + halaman `forecast/new/config` (pilih material, method, horizon → generate → hasil + explanation). TDD: tiap kuadran (smooth/erratic/intermittent/lumpy) menghasilkan forecast, manual sukses & `UNSUPPORTED_FORECAST_METHOD`, `INSUFFICIENT_DATA` per-material, 404 material, polling. Coverage: forecast layer 100%, engine module ≥85%, total 95%. Frontend 26 test PASSED.
-
-## Fase 5 — Safety Stock & Reorder Point ✅
-- [x] Model `reorder_recommendations` + migration (`8e5cdd610f80`).
-- [x] `reorder_service.py`: `compute_reorder` (FUNGSI MURNI) — SS = Z·σ·√LT (atau manual override), ROP = μ·LT + SS, order qty = max(MOQ, ceil(S−current)), status urgent/safe/overstock. `SERVICE_LEVEL_Z` dari env (default 1.65 ≈ 95%).
-- [x] Endpoint `POST /reorder/recommendations` (generate) + `GET /reorder/recommendations?run_id=&status=` (filter). Lihat RECONCILIATION #16 (POST + `current_stock` sebagai input request).
-- [x] **TDD**: lead pendek/panjang, MOQ besar, demand stabil vs volatile, manual SS, batas urgent/safe/overstock — semua angka diverifikasi manual di `test_reorder_compute.py`.
-- [x] Frontend: `ReorderTable` (filter status) di halaman `forecast/new/config` + hook `useReorder`.
-
-**Selesai jika:** rekomendasi reorder benar secara matematis dan bisa diverifikasi manual dengan data contoh.
-
-> Coverage backend Fase 5: reorder layer ~100% (service 97%), total 95%. Frontend 31 test PASSED. `current_stock` diterima per-request (default 0), tidak dipersist — skema tak menyimpan stok live.
-
-## Fase 6 — Planner Override & Audit Trail ✅
-- [x] Model `overrides` (target_type, target_id, previous_value, new_value, reason NOT NULL) + migration (`6366f084a6d9`).
-- [x] `override_service.py`: append-only (baris baru, tidak overwrite), `reason` wajib (`OVERRIDE_REASON_REQUIRED`), snapshot `previous_value` dari target, target polimorfik via resolvers.
-- [x] Endpoint `POST /api/v1/overrides`, `GET /api/v1/overrides?target_id=...`. Target tak ada → `OVERRIDE_TARGET_NOT_FOUND` (404, RECONCILIATION #17); target_type invalid → 422 (Literal).
-- [x] **TDD**: happy path, reason kosong ditolak, override TIDAK mengubah data asli (assert nilai lama tetap), target 404, audit trail append-only (2 revisi tersimpan).
-- [x] Frontend: `OverrideForm` (reason wajib) + `AuditTrail` (sebelum→sesudah, alasan, waktu) + hook `useOverrides`.
-
-**Selesai jika:** planner bisa override forecast/reorder dengan alasan wajib, riwayat lengkap dan tidak pernah menimpa data asli.
-
-> Coverage backend Fase 6: override layer 100%, total 95%. Frontend 35 test PASSED.
-
-## Fase 7 — Dashboard & Visualisasi ✅
-- [x] Endpoint `GET /api/v1/dashboard/summary` (`dashboard_service`): jumlah material, run terakhir + MASE rata-rata, distribusi status reorder, jumlah override terbaru.
-- [x] Halaman dashboard: stat tiles (material, perlu-reorder, akurasi, override), ringkasan run terakhir, distribusi reorder. `ForecastChart` (recharts) tren forecast + confidence interval band; overlay aktual opsional.
-- [x] Komponen `ExplanationBox` — penjelasan bahasa natural per hasil forecast (dipakai di `ForecastResults`).
-
-**Selesai jika:** user non-teknis bisa memahami status forecast, reorder, dan alasan override hanya dari dashboard.
-
-> Coverage backend Fase 7: dashboard layer 100%, total 95%. Frontend 38 test PASSED. ForecastChart di-uji lewat typecheck (render recharts di jsdom di-skip).
-
-## Fase 8 — Export & Laporan ✅
-- [x] Export hasil forecast (`GET /forecast/runs/{run_id}/export`) & rekomendasi reorder (`GET /reorder/recommendations/export?format=xlsx`) ke Excel (openpyxl).
-- [x] Export laporan reorder ke PDF (`?format=pdf`, fpdf2).
-- [x] Simpan hasil export ke `permanent/exports/{user_id}/{run_id}/` (best-effort — kegagalan R2 tidak menggagalkan download).
-- [x] Frontend: tombol export (Excel/PDF) di halaman `forecast/new/config`, unduh via blob.
-
-**Selesai jika:** file export terbuka dan datanya sesuai dashboard.
-
-> Coverage backend Fase 8: export layer 100%, total 95%. Frontend 40 test PASSED. Builder (`build_forecast_xlsx`/`build_reorder_xlsx`/`build_reorder_pdf`) fungsi murni (bytes), diverifikasi dengan membuka ulang file (openpyxl load, cek `%PDF`).
-
-## Fase 9 — Hardening, Testing E2E & Deployment
-- [ ] Integration test end-to-end: upload → forecast run → reorder → override → dashboard.
-- [ ] Review keamanan (rate limiting upload, validasi file, CORS production).
-- [ ] Setup deployment: Backend → Railway, Frontend → Vercel, DB/Auth → Supabase, Storage → Cloudflare R2.
-- [ ] `JWT_SECRET_KEY` production-grade (256-bit random, secret manager).
-- [ ] Sentry / error tracking backend + frontend.
-- [ ] Dokumentasi pemakaian untuk end-user (user manual singkat).
-
-**Selesai jika:** aplikasi siap dipakai tim PPIC di lingkungan mendekati production, semua test PASSED, coverage memenuhi minimum di semua layer.
+> **Perubahan mendasar di revisi ini (v3.1):** dokumen ini **bukan lagi daftar fase greenfield**. Kode v2.0 (raw material, klasifikasi ADI/CV², engine ETS/ARIMA/LightGBM/Croston) **sudah selesai dibangun dan teruji** di repo GitHub (`budipriyoutomo/forecasting-thesis`) — Fase 0–8 versi lama sudah ✅ dengan migration, test, dan coverage tercatat di `docs/TASK_BREAKDOWN.md` (git). Keputusan user (25 Juli 2026, lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1"): **migrasi/refactor codebase existing menuju v3.0**, bukan membangun ulang dari nol dan bukan menjalankan dua codebase paralel selamanya.
+>
+> Setiap task di bawah ini ditandai statusnya terhadap kode v2.0 yang sudah ada:
+>
+> | Tanda | Arti | Tindakan |
+> |---|---|---|
+> | 🟢 **DIPERTAHANKAN** | Kode v2.0 sudah benar, dipakai langsung di v3.0 | Tidak ada perubahan, atau perubahan kecil (rename/adjust) |
+> | 🟡 **DIPERLUAS** | Kode v2.0 jadi basis, ditambah field/logic baru | Extend, jangan tulis ulang dari nol |
+> | 🔴 **DIGANTI TOTAL** | Kode v2.0 tidak dipakai lagi di jalur aktif | Pindah ke `legacy/`, tulis implementasi baru dari nol (TDD) |
+> | 🆕 **NET-NEW** | Tidak ada di v2.0 sama sekali | Bangun dari nol (TDD) |
+>
+> Setiap fase migrasi tetap mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → Refactor). Jangan mulai fase migrasi berikutnya sebelum test fase sebelumnya PASSED dan coverage memenuhi minimum di `AGENTS.md` §3.
 
 ---
 
-## Prioritas Jika Waktu Terbatas (MVP Tercepat)
+## 0. Strategi Migrasi — Branching, Parallel Testing, Cutover
 
-1. Fase 0 (setup)
-2. Fase 2 (master data material, versi sederhana)
-3. Fase 3 (upload & ingestion)
-4. **Fase 4 (Auto Model Selection Engine — termasuk Croston, jangan dilewati meski buru-buru, karena ini yang membedakan produk ini dari sekadar "moving average calculator")**
-5. Fase 5 (reorder point — versi sederhana)
-6. Fase 7 (dashboard versi sederhana)
+Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh** dilakukan dengan hapus-lalu-tulis-ulang di `main`. Urutan wajib:
 
-Fase 1 (auth lengkap dengan semua role), Fase 6 (override UI lengkap), Fase 8 (export), dan Fase 9 (hardening penuh) bisa menyusul setelah MVP tervalidasi oleh user PPIC riil.
+1. **Branching**: buat branch `migration/v3-thesis` dari `main` (HEAD kode v2.0 yang sudah ✅ Fase 0–8). Semua kerja migrasi terjadi di branch ini, PR kecil per fase migrasi (lihat §1–§9 di bawah), bukan satu PR raksasa.
+2. **Non-destructive first**: engine v2.0 (`ets_engine.py`, `arima_engine.py`, `lightgbm_engine.py`, `croston_engine.py`) dan `classification.py`/`scoring_engine.py` **dipindah** ke `engines/legacy/` dan **di-comment dari `MODEL_REGISTRY` aktif** — bukan dihapus (lihat `ARCHITECTURE.md` §6.9, `AGENTS.md` larangan #16). Ini membuat rollback trivial (uncomment) selama migrasi berlangsung.
+3. **Migration DB additive dulu**: setiap migration Alembic baru (`products`, `boms`, `warehouse_config`, dst.) bersifat *additive* (tabel baru / kolom nullable baru) — jangan drop kolom/tabel v2.0 lama (`consumption_history`, dst.) sampai fase cutover (§9) selesai dan diverifikasi di lingkungan mendekati production.
+4. **Parallel testing**: selama migrasi, test suite v2.0 lama (`test_forecast_api.py`, `test_material_api.py`, dst.) **tetap harus PASSED** — jangan dihapus sampai fitur yang digantikannya sudah punya test v3.0 yang setara. Jalankan `pytest` penuh (bukan cuma modul yang diubah) di tiap PR migrasi.
+5. **Feature flag via env, bukan branch kode**: `FORECAST_ENGINES_ENABLED` menentukan engine mana yang aktif (lihat `ARCHITECTURE.md` §6.5). Ini dipakai juga sebagai *kill switch* selama masa transisi — kalau engine baru bermasalah di staging, kembalikan `FORECAST_ENGINES_ENABLED` ke daftar lama tanpa deploy ulang kode.
+6. **Cutover terakhir, bukan pertama**: fase 9 (di bawah) adalah titik keputusan final — setelah seluruh fase migrasi lain selesai & diverifikasi, baru drop kolom/tabel v2.0 yang benar-benar tidak terpakai lagi dan merge `migration/v3-thesis` → `main`.
 
 ---
-*Lihat `RECONCILIATION.md` untuk konteks kenapa Fase 4 memasukkan Croston/SBA sebagai engine wajib MVP, bukan opsional.*
+
+## 1. Fase Migrasi 0 — Setup Migrasi & Audit Kode Existing
+
+- [ ] Buat branch `migration/v3-thesis` dari `main`.
+- [ ] Audit & dokumentasikan inventaris kode v2.0 yang relevan (checklist, isi di PR pertama):
+  - `backend/app/services/forecasting/registry.py`, `classification.py`, `scoring_engine.py` — 🔴 diganti (lihat §4)
+  - `backend/app/services/forecasting/engines/ets_engine.py`, `arima_engine.py`, `lightgbm_engine.py`, `croston_engine.py` — 🔴 dipindah ke `legacy/` (lihat §4)
+  - `backend/app/services/data_ingestion_service.py` — 🟡 diperluas (lihat §3)
+  - `backend/app/services/storage_service.py` — 🟢 dipertahankan (lihat §3)
+  - `backend/app/services/override_service.py` — 🟡 diperluas (lihat §8)
+  - `backend/app/services/export_service.py` (jika ada, cek nama pasti di git) — 🟡 diperluas (lihat §10)
+  - `backend/app/services/auth_service.py` — 🟢 dipertahankan (lihat §1)
+  - `backend/app/utils/exceptions.py` — 🟡 diperluas (tambah exception class untuk error code baru)
+  - `backend/alembic/versions/fae350da01a7_create_forecast_tables.py` (dan migration lain) — 🟢 dipertahankan sebagai riwayat, migration baru bersifat additive di atasnya
+  - Dashboard/export/upload frontend scaffolding — 🟡 diperluas
+- [ ] Tambah `FORECAST_ENGINES_ENABLED`, `FORECAST_RANKING_METRIC`, dan env var baru lain (`ARCHITECTURE.md` §6.5) ke `.env.example` — belum aktif dipakai, hanya disiapkan.
+- [ ] Pastikan seluruh test suite v2.0 lama PASSED di branch baru sebelum mulai fase migrasi berikutnya (baseline hijau).
+
+**Selesai jika:** branch migrasi siap, inventaris kode existing terdokumentasi dengan status 🟢/🟡/🔴/🆕, baseline test v2.0 hijau di branch baru.
+
+## 2. Fase Migrasi 1 — Auth 🟢 DIPERTAHANKAN
+
+- [ ] Verifikasi model `users`, Supabase Auth integration, endpoint `POST /api/v1/auth/login` & `GET /api/v1/auth/me`, RBAC dependency — **tidak ada perubahan skema atau logic**.
+- [ ] Tambah 1 hal baru: pastikan `AUTH_FORBIDDEN` (403, beda dari `AUTH_INVALID_CREDENTIALS`/`AUTH_TOKEN_EXPIRED` yang 401) sudah dipakai konsisten di seluruh endpoint baru v3.0 (products/materials/boms/warehouse/dst.) — cek apakah dependency RBAC v2.0 sudah return code ini atau perlu disesuaikan.
+- [ ] **TDD**: jalankan ulang test suite auth v2.0 existing, tambah test `AUTH_FORBIDDEN` untuk endpoint-endpoint baru di fase-fase berikutnya (bukan di fase ini).
+
+**Selesai jika:** tidak ada regresi di auth, `AUTH_FORBIDDEN` terverifikasi konsisten dipakai di fase-fase baru selanjutnya.
+
+## 3. Fase Migrasi 2 — Master Data: Produk (🆕), Material (🟡), BOM (🆕)
+
+- [ ] Model `materials` — 🟡 **diperluas** dari tabel material v2.0: tambah kolom `dimension` (JSONB `{length, width, height}`) dan `qty_per_pallet` (dipakai kalkulasi kapasitas gudang, §6). Migration additive (`ALTER TABLE ... ADD COLUMN`), bukan `DROP`+`CREATE`.
+- [ ] Model `products` — 🆕 net-new. `code` unik → `PRODUCT_CODE_EXISTS` jika duplikat (code baru, tambahkan ke `exceptions.py`).
+- [ ] Model `boms` — 🆕 net-new (product_id, material_id, qty_per_unit).
+- [ ] Endpoint `api/v1/products` (🆕, CRUD + import) dan `api/v1/boms` (🆕, CRUD + import). Endpoint `api/v1/materials` — 🟡 **diperluas** (tambah field dimension/qty_per_pallet ke request/response schema, cek apakah `MATERIAL_CODE_EXISTS` sudah ada di `exceptions.py` — sudah ada di git v2.0, tinggal dipakai konsisten di endpoint `products` juga).
+- [ ] **TDD**: test baru untuk `products`/`boms` (happy path, `PRODUCT_CODE_EXISTS`, `BOM_NOT_FOUND` referensi product_id/material_id tidak ada, `403 AUTH_FORBIDDEN`); test regresi untuk `materials` (field baru tidak merusak endpoint lama).
+- [ ] Frontend: halaman `products/` (🆕), `boms/` (🆕) — bisa reuse pola komponen tabel/form dari halaman `materials/` v2.0 yang sudah ada, jangan bangun dari nol.
+
+**Selesai jika:** admin bisa kelola produk + BOM dari UI (baru), material v2.0 tetap berfungsi dengan field tambahan, tidak ada regresi test lama.
+
+## 4. Fase Migrasi 3 — Data Ingestion & Historical Data (🟡 diperluas + rename)
+
+- [ ] Tabel `consumption_history` v2.0 → `demand_history` v3.0: **jangan rename kolom di tempat**. Buat tabel baru `demand_history` (migration additive) dengan kolom `product_id` (nullable, mengikuti pola `consumption_history.material_id` nullable v2.0 — lihat `RECONCILIATION.md` #14), `product_code` (snapshot), `forecast_existing`, `planning`, `actual`. Tulis script migrasi data satu-kali (bukan bagian dari alur aplikasi) untuk memindahkan histori lama jika relevan secara bisnis (didiskusikan dengan user — sebagian besar histori v2.0 adalah raw material, bukan produk jadi, jadi migrasi data historis mungkin **tidak berlaku** dan tabel baru dimulai kosong).
+- [ ] `data_ingestion_service.py` — 🟡 **diperluas**: logic parsing CSV & validasi kolom wajib v2.0 dipertahankan sebagai basis, tambah handling untuk 3 kolom paralel (`forecast_existing`/`planning`/`actual`) mengikuti struktur `Simulasi Thesis.xlsx` sheet "Bab I Plan vs Forecast", dan validasi terhadap `products.code` (bukan lagi hanya material code).
+- [ ] `storage_service.py` (R2 temp/permanent flow) — 🟢 **dipertahankan penuh**, tidak ada perubahan.
+- [ ] Model `upload_sessions` — 🟢 **dipertahankan**, hanya `n_products_detected` (rename dari field serupa jika perlu, cek nama field aktual di git) menyesuaikan istilah produk vs material.
+- [ ] **TDD**: test regresi upload v2.0 (format lama masih jalan jika masih dipakai untuk raw material — lihat §Keputusan Terbuka `RECONCILIATION.md` poin 1), test baru untuk 3-kolom produk jadi.
+
+**Selesai jika:** upload CSV 3-kolom (Forecast existing/Planning/Actual) per produk jadi tervalidasi dan tersimpan di `demand_history`, storage flow tidak ada regresi.
+
+## 5. Fase Migrasi 4 — Forecasting Engine (🔴 DIGANTI TOTAL — perubahan paling signifikan)
+
+- [ ] **Pindahkan, jangan hapus**: `classification.py`, `scoring_engine.py` (ADI/CV² → kuadran Syntetos-Boylan) — sudah tidak dipanggil di pipeline v3.0 (`ARCHITECTURE.md` §6 comparative selection tidak pakai klasifikasi). Simpan sebagai referensi/kemungkinan reuse untuk raw material forecasting di luar scope thesis (`RECONCILIATION.md` Keputusan Terbuka v3.0 poin 2) — jangan hapus filenya, tapi juga jangan dipanggil dari `forecast_service.py` baru.
+- [ ] **Pindahkan** `engines/ets_engine.py`, `engines/arima_engine.py`, `engines/lightgbm_engine.py`, `engines/croston_engine.py` → `engines/legacy/` (fisik pindah folder, bukan hapus). Comment dari `MODEL_REGISTRY` aktif (`ARCHITECTURE.md` §6.3).
+- [ ] `metrics.py` v2.0 (`mean_absolute_scaled_error`, `train_test_split_series` — lihat `engines/README.md` git) — 🟡 **diperluas** jadi basis `evaluation.py` baru: `mase()` (fungsi MASE lama) dipertahankan sebagai opsional (`COMPUTE_MASE` env), ditambah `mad()`, `mfe()`, `mse()`, `mape()` baru (fungsi murni, TDD dari nol karena belum ada di v2.0).
+- [ ] `preprocessing.py` (`to_daily_series` — lihat `engines/README.md` git) — 🟢 **dipertahankan** bila reusable untuk preprocessing data harian; sesuaikan bila engine baru butuh periode bulanan (data thesis per bulan, bukan harian — cek asumsi ini dengan data `Simulasi Thesis.xlsx`).
+- [ ] 🆕 **NET-NEW**, tulis dari nol dengan TDD (urutan disarankan — mulai dari yang paling sederhana ke kompleks):
+  - [ ] `moving_average_engine.py`
+  - [ ] `exponential_smoothing_engine.py`
+  - [ ] `random_forest_engine.py`
+  - [ ] `xgboost_engine.py`
+  - [ ] `lstm_engine.py` (paling kompleks, butuh TensorFlow — verifikasi build Docker dulu, lihat §9)
+- [ ] `registry.py` — 🔴 **ditulis ulang**: dari klasifikasi-berbasis-kuadran ke `dict[str, Callable]` datar sesuai `ARCHITECTURE.md` §6.3. Struktur dict lama bisa jadi referensi pola, tapi isi & alur pemilihannya beda total.
+- [ ] `forecast_service.py` — 🔴 **ditulis ulang**: orkestrasi lama (routing by kuadran) diganti Comparative Selection (`ARCHITECTURE.md` §6.1). **PENTING**: endpoint & response contract (`POST /api/v1/forecast/runs`, format `forecast_results`) sebisa mungkin **dipertahankan bentuknya** supaya frontend `forecast/` yang sudah ada tidak perlu ditulis ulang total — hanya field baru (`selection_mode`, `candidates_evaluated`, `mad`/`mfe`/`mse`/`mape`) yang ditambahkan.
+- [ ] Model `forecast_results` — 🟡 **diperluas**: tambah kolom `selection_mode`, `candidates_evaluated` (JSONB), `mad`/`mfe`/`mse`/`mape`, `mase` (nullable). `method_used` berubah domain nilai (dulu ets/arima/lightgbm/croston, sekarang moving_average/exponential_smoothing/random_forest/xgboost/lstm) — **bukan breaking di level kolom** (masih VARCHAR), tapi breaking di level nilai yang valid; dokumentasikan di changelog migration.
+- [ ] Frontend: `MethodSelector.tsx` — 🟡 diperluas (ganti daftar dropdown metode, dari nama kuadran ke 5 metode + opsi "Bandingkan Otomatis"). Komponen chart/tabel hasil forecast — 🟢 dipertahankan strukturnya, hanya sumber data field yang berubah.
+- [ ] **TDD menyeluruh** (prioritas tertinggi di seluruh migrasi): test tiap engine baru dengan fixture; test mode manual & otomatis; test `MODEL_SELECTION_FAILED`; test `INSUFFICIENT_DATA`/`LSTM_MIN_PERIODS`; **hapus/nonaktifkan test v2.0 yang spesifik ke klasifikasi ADI/CV² hanya setelah** confirmed tidak ada lagi jalur kode yang memanggilnya.
+
+**Selesai jika:** forecast run end-to-end pakai 5 metode baru (comparative + manual), `candidates_evaluated` tersimpan, engine v2.0 lama masih ada di `legacy/` tapi tidak terpanggil di jalur aktif, coverage ≥ 85%.
+
+## 6. Fase Migrasi 5 — BOM Breakdown, Safety Stock, Buffer Stock & EOQ (🟡 diperluas + 🆕 net-new)
+
+- [ ] `bom_service.py` — 🆕 net-new (belum ada konsep BOM di v2.0 raw-material-langsung).
+- [ ] Model `material_requirements` — 🆕 net-new.
+- [ ] `reorder_service.py` — 🟡 **diperluas**: safety stock (`SS = Z × STD × √L`) v2.0 kemungkinan sudah ada logicnya (cek implementasi aktual di git) — **dipertahankan** sebagai basis. Buffer stock dan **EOQ dinamis** (`TC = nS + Σ(Iₜ×H)`) adalah 🆕 net-new, ditambahkan ke service yang sama.
+- [ ] Model `reorder_recommendations` — 🟡 **diperluas**: tambah kolom `buffer_stock`, `eoq_qty`, `ordering_cost`, `holding_cost`, `total_inventory_cost`. `current_stock` **bukan** kolom baru — dikirim sebagai request param di endpoint generate (lihat §7 di bawah), bukan disimpan.
+- [ ] **Endpoint reorder — cek & perbaiki pola git**: git v2.0 sudah punya `POST /api/v1/reorder/recommendations` (generate+persist, dengan `current_stock`) selain `GET`. Pastikan pola ini **dipertahankan** di v3.0 (jangan turun jadi `GET`-only) — ini sudah diterapkan di `ARCHITECTURE.md` §5 v3.1, tinggal pastikan implementasi kode ikut.
+- [ ] **TDD**: skenario lead time, MOQ, demand stabil/volatile; `BOM_NOT_FOUND` (forecast tetap tersimpan); verifikasi manual perhitungan EOQ.
+
+**Selesai jika:** kebutuhan material terhitung dari forecast × BOM, buffer stock & EOQ benar secara matematis, endpoint `POST`+`GET` reorder konsisten dengan pola git v2.0.
+
+## 7. Fase Migrasi 6 — Validasi Kapasitas Gudang (🆕 NET-NEW — sesuai judul thesis)
+
+- [ ] Model `warehouse_config`, `warehouse_validations` — 🆕 net-new, tidak ada padanan di v2.0.
+- [ ] `warehouse_service.py` — 🆕 net-new: `compute_pallet_capacity()`, `compute_material_capacity()`, `validate_capacity()` (`ARCHITECTURE.md` §6.7).
+- [ ] Endpoint `GET/PUT /api/v1/warehouse/config`, `GET /api/v1/forecast/runs/{run_id}/warehouse-validation` — 🆕.
+- [ ] **TDD**: kapasitas cukup/tidak cukup, berbagai dimensi palet — verifikasi hitung manual.
+- [ ] Frontend: halaman `warehouse/` (🆕), indikator visual di halaman hasil forecast/reorder yang sudah ada (🟡 diperluas, tambah badge, bukan halaman baru).
+
+**Selesai jika:** validasi kapasitas gudang berbasis palet berjalan dan tampil sebagai flag non-blocking di UI existing.
+
+## 8. Fase Migrasi 7 — Optimasi Total Biaya & Evaluasi Kinerja Inventory (🆕 NET-NEW)
+
+- [ ] `cost_service.py` — 🆕 net-new: TIC, `compute_savings_pct()`.
+- [ ] `inventory_metrics_service.py` — 🆕 net-new: Service Level, Fill Rate, Stock Out Rate, Inventory Turnover.
+- [ ] Model `inventory_metrics` — 🆕 net-new.
+- [ ] Endpoint `cost-summary`, `inventory-metrics` — 🆕.
+- [ ] **TDD**: verifikasi rumus tiap metrik dengan data contoh dari Bab III thesis.
+
+**Selesai jika:** setiap forecast run menghasilkan TIC + % penghematan + 4 metrik kinerja yang bisa diverifikasi manual.
+
+## 9. Fase Migrasi 8 — Planner Override & Audit Trail (🟡 DIPERLUAS)
+
+- [ ] Model `overrides`, `override_service.py` — 🟢 **dipertahankan** sepenuhnya (append-only, `reason` wajib, `OVERRIDE_REASON_REQUIRED` sudah ada di v2.0).
+- [ ] 🆕 tambahan: `target_type` sekarang bisa merujuk entitas baru (`material_requirement` selain `forecast_result`/`reorder_recommendation`) — pastikan validasi `target_id` mendukung tabel baru ini.
+- [ ] 🆕 tambahan: `OVERRIDE_TARGET_NOT_FOUND` (sudah ada di implementasi git v2.0 — pastikan tetap dipakai & tervalidasi untuk `target_type` baru).
+- [ ] **TDD**: regresi override lama; test baru untuk override `material_requirement` dan `OVERRIDE_TARGET_NOT_FOUND` pada `target_type` baru.
+
+**Selesai jika:** override berfungsi untuk seluruh entitas v3.0 (termasuk yang net-new), tidak ada regresi dari v2.0.
+
+## 10. Fase Migrasi 9 — Dashboard, Export & Cutover Final
+
+- [ ] Dashboard (`dashboard/summary`) — 🟡 **diperluas**: scaffolding v2.0 dipertahankan, tambah widget baru (perbandingan Forecast ForecastIQ vs Forecast/Planning existing perusahaan, indikator kapasitas gudang, ringkasan TIC, metrik inventory).
+- [ ] `ExplanationBox` — 🟡 diperluas: format penjelasan bahasa natural v2.0 dipertahankan, isi/logic penjelasan disesuaikan ke Comparative Selection (bandingkan pemenang vs kandidat lain, bukan lagi "kenapa kuadran X dipilih").
+- [ ] Export service — 🟡 diperluas: tambah kolom BOM/EOQ/warehouse/TIC ke export Excel/PDF yang sudah ada.
+- [ ] **Cutover checklist** (lihat §0 poin 6):
+  - [ ] Seluruh fase migrasi 1–8 PASSED di staging/lingkungan mendekati production.
+  - [ ] Verifikasi image Docker backend dengan TensorFlow (untuk LSTM) build & run benar (ukuran image, cold start) — ini beban baru yang tidak ada di v2.0.
+  - [ ] Putuskan bersama user: kolom/tabel v2.0 mana yang benar-benar tidak terpakai lagi dan aman di-drop (mis. kolom klasifikasi kuadran jika ada di `forecast_results` lama) — lakukan lewat migration terpisah, terdokumentasi di `RECONCILIATION.md`.
+  - [ ] Merge `migration/v3-thesis` → `main`.
+  - [ ] Update `docs/TASK_BREAKDOWN.md` di git (checklist Fase 0-8 lama) untuk mencatat status migrasi selesai, bukan menghapus riwayatnya.
+
+**Selesai jika:** aplikasi v3.0 berjalan penuh di atas basis kode v2.0 yang dimigrasi, dashboard & export mencerminkan seluruh fitur baru, cutover ke `main` selesai dengan jejak keputusan lengkap di `RECONCILIATION.md`.
+
+---
+
+## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)
+
+1. Fase Migrasi 0 (setup & audit — wajib, jangan dilewati meski buru-buru, ini yang mencegah migrasi jadi rewrite liar)
+2. Fase Migrasi 2 (produk + BOM, versi sederhana — material sudah ada, tinggal diperluas)
+3. Fase Migrasi 3 (ingestion 3-kolom)
+4. **Fase Migrasi 4 (Forecasting Engine — jangan dilewati meski buru-buru; ini inti klaim akademik & produk, dan risiko migrasi tertinggi)**
+5. Fase Migrasi 5 (BOM breakdown + safety/buffer stock + EOQ, versi sederhana)
+6. Fase Migrasi 6 (Warehouse Capacity — minimal validasi dasar, komponen khas judul thesis)
+7. Fase Migrasi 9 bagian dashboard (versi sederhana, cutover penuh menyusul)
+
+Fase Migrasi 1 (auth — sudah 🟢, hampir tanpa kerja tambahan), Fase Migrasi 7 (cost & inventory metrics lengkap), Fase Migrasi 8 (override untuk entitas baru), dan cutover penuh di Fase Migrasi 9 bisa menyusul setelah MVP migrasi tervalidasi.
+
+---
+*Lihat `RECONCILIATION.md` §"Rekonsiliasi v3.0" untuk alasan perubahan metodologi (v2.0→v3.0) dan §"Rekonsiliasi v3.1" untuk keputusan migrasi kode existing serta merge dengan dokumen git aktual.*
