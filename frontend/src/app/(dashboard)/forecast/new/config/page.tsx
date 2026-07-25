@@ -6,6 +6,7 @@ import { MethodSelector } from "@/components/config/MethodSelector";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { Button } from "@/components/ui/button";
+import { useExport } from "@/hooks/useExport";
 import { useCreateForecastRun } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useGenerateReorder } from "@/hooks/useReorder";
@@ -14,6 +15,8 @@ export default function ForecastConfigPage() {
   const { data: materials } = useMaterials();
   const run = useCreateForecastRun();
   const reorder = useGenerateReorder();
+  const exporter = useExport();
+  const runId = run.data?.run.run_id;
 
   const [selected, setSelected] = useState<string[]>([]);
   const [horizon, setHorizon] = useState(30);
@@ -76,22 +79,56 @@ export default function ForecastConfigPage() {
         </Button>
       </div>
 
-      {run.data && (
+      {run.data && runId && (
         <>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">Hasil</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exporter.isPending}
+              onClick={() => exporter.mutate({ kind: "forecast", runId })}
+            >
+              Export forecast (Excel)
+            </Button>
+          </div>
           <ForecastResults data={run.data} />
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={reorder.isPending}
-                onClick={() => reorder.mutate({ runId: run.data!.run.run_id })}
-              >
-                {reorder.isPending ? "Menghitung…" : "Hitung reorder"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reorder.isPending}
+                  onClick={() => reorder.mutate({ runId })}
+                >
+                  {reorder.isPending ? "Menghitung…" : "Hitung reorder"}
+                </Button>
+                {reorder.data && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exporter.isPending}
+                      onClick={() => exporter.mutate({ kind: "reorder", runId, format: "xlsx" })}
+                    >
+                      Excel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exporter.isPending}
+                      onClick={() => exporter.mutate({ kind: "reorder", runId, format: "pdf" })}
+                    >
+                      PDF
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
             {reorder.isError && <p className="text-sm text-destructive">{reorder.error.message}</p>}
+            {exporter.isError && <p className="text-sm text-destructive">{exporter.error.message}</p>}
             {reorder.data && <ReorderTable recommendations={reorder.data} />}
           </section>
         </>

@@ -26,6 +26,18 @@ def test_upload_temp_menaruh_di_prefix_temp():
     assert args["Body"] == b"abc"
 
 
+def test_upload_export_menaruh_di_prefix_exports():
+    client = MagicMock()
+    svc = _svc(client)
+
+    key = svc.upload_export("user-1", "run-9", "reorder_run-9.pdf", b"%PDF")
+
+    assert key == "permanent/exports/user-1/run-9/reorder_run-9.pdf"
+    args = client.put_object.call_args.kwargs
+    assert args["Key"] == "permanent/exports/user-1/run-9/reorder_run-9.pdf"
+    assert args["Body"] == b"%PDF"
+
+
 def test_move_to_permanent_copy_lalu_hapus_temp():
     client = MagicMock()
     svc = _svc(client)

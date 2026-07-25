@@ -21,6 +21,10 @@ def _permanent_key(user_id: str, session_id: str) -> str:
     return f"permanent/datasets/{user_id}/{session_id}/raw.csv"
 
 
+def _export_key(user_id: str, run_id: str, filename: str) -> str:
+    return f"permanent/exports/{user_id}/{run_id}/{filename}"
+
+
 def build_r2_client():
     """Bangun client boto3 S3 untuk R2 dari settings. Raise kalau belum dikonfigurasi."""
     settings = get_settings()
@@ -63,6 +67,11 @@ class StorageService:
         except Exception as exc:
             raise StorageUploadFailedError("Gagal memindahkan file ke penyimpanan permanen.") from exc
         return dst
+
+    def upload_export(self, user_id: str, run_id: str, filename: str, content: bytes) -> str:
+        key = _export_key(user_id, run_id, filename)
+        self._put(key, content)
+        return key
 
     def delete_temp(self, session_id: str, filename: str) -> None:
         key = _temp_key(session_id, filename)

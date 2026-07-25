@@ -101,12 +101,15 @@ Setiap fase mengikuti workflow TDD wajib di `AGENTS.md` §3 (Red → Green → R
 
 > Coverage backend Fase 7: dashboard layer 100%, total 95%. Frontend 38 test PASSED. ForecastChart di-uji lewat typecheck (render recharts di jsdom di-skip).
 
-## Fase 8 — Export & Laporan
-- [ ] Export hasil forecast & rekomendasi reorder ke Excel.
-- [ ] Export laporan ringkasan ke PDF.
-- [ ] Simpan hasil export ke `permanent/exports/{user_id}/{run_id}/`.
+## Fase 8 — Export & Laporan ✅
+- [x] Export hasil forecast (`GET /forecast/runs/{run_id}/export`) & rekomendasi reorder (`GET /reorder/recommendations/export?format=xlsx`) ke Excel (openpyxl).
+- [x] Export laporan reorder ke PDF (`?format=pdf`, fpdf2).
+- [x] Simpan hasil export ke `permanent/exports/{user_id}/{run_id}/` (best-effort — kegagalan R2 tidak menggagalkan download).
+- [x] Frontend: tombol export (Excel/PDF) di halaman `forecast/new/config`, unduh via blob.
 
 **Selesai jika:** file export terbuka dan datanya sesuai dashboard.
+
+> Coverage backend Fase 8: export layer 100%, total 95%. Frontend 40 test PASSED. Builder (`build_forecast_xlsx`/`build_reorder_xlsx`/`build_reorder_pdf`) fungsi murni (bytes), diverifikasi dengan membuka ulang file (openpyxl load, cek `%PDF`).
 
 ## Fase 9 — Hardening, Testing E2E & Deployment
 - [ ] Integration test end-to-end: upload → forecast run → reorder → override → dashboard.

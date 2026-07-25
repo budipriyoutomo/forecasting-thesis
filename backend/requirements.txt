@@ -26,6 +26,10 @@ asyncpg>=0.30.0
 # Object storage (Fase 3+)
 boto3>=1.35.24        # kompatibel dengan Cloudflare R2 (S3 API)
 
+# Export (Fase 8)
+openpyxl>=3.1.5       # Excel (.xlsx)
+fpdf2>=2.8.0          # PDF (pure-python, tanpa dependency native berat)
+
 # Forecasting engines (Fase 4)
 statsmodels>=0.14.6
 lightgbm>=4.7.0

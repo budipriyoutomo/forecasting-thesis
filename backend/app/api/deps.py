@@ -17,6 +17,7 @@ from app.repositories.upload_session_repository import (
 from app.repositories.user_repository import SqlUserRepository
 from app.services.auth_service import AuthService
 from app.services.dashboard_service import DashboardService
+from app.services.export_service import ExportService
 from app.services.forecast_run_service import ForecastRunService
 from app.services.material_service import MaterialService
 from app.services.override_service import OverrideService
@@ -25,7 +26,12 @@ from app.services.storage_service import StorageService, build_r2_client
 from app.services.supabase_auth import SupabaseAuthenticator
 from app.services.upload_service import UploadService
 from app.utils.auth import decode_access_token
-from app.utils.exceptions import AuthTokenExpiredError, AuthTokenMissingOrInvalidError, ForbiddenRoleError
+from app.utils.exceptions import (
+    AuthTokenExpiredError,
+    AuthTokenMissingOrInvalidError,
+    ForbiddenRoleError,
+    StorageUploadFailedError,
+)
 
 
 class CurrentUser:
@@ -94,6 +100,20 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         forecast_repo=SqlForecastRepository(session),
         materials=SqlMaterialRepository(session),
         consumptions=SqlConsumptionHistoryRepository(session),
+    )
+
+
+def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService:
+    # Storage best-effort: kalau R2 belum dikonfigurasi, export tetap jalan
+    # (file diunduh langsung), arsip ke R2 di-skip.
+    try:
+        storage = StorageService(build_r2_client())
+    except StorageUploadFailedError:
+        storage = None
+    return ExportService(
+        forecast_repo=SqlForecastRepository(session),
+        reorder_repo=SqlReorderRepository(session),
+        storage=storage,
     )
 
 

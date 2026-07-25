@@ -20,6 +20,10 @@ out/
 # OS
 .DS_Store
 
+# File kerja lokal (bukan bagian repo)
+/Simulasi Thesis.xlsx
+.~lock.*#
+
 # IDE
 .vscode/
 .idea/

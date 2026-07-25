@@ -10,8 +10,15 @@ sebagai satu-satunya entry point engine — AGENTS.md §5). Endpoint TIDAK
 memanggil classification/registry/scoring langsung.
 """
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
-from app.api.deps import CurrentUser, get_current_user, get_forecast_run_service
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_export_service,
+    get_forecast_run_service,
+)
+from app.services.export_service import ExportService
 from app.schemas.forecast import (
     ForecastResultOut,
     ForecastRunRequest,
@@ -90,6 +97,20 @@ async def get_forecast_run(
         "success": True,
         "data": {"run": _summary(run, results), "results": [_result_out(r) for r in results]},
     }
+
+
+@router.get("/runs/{run_id}/export")
+async def export_forecast_run(
+    run_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ExportService = Depends(get_export_service),
+):
+    content, filename, mime = await service.export_forecast(current_user.user_id, run_id)
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/results")
