@@ -7,14 +7,17 @@ import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { Button } from "@/components/ui/button";
 import { useExport } from "@/hooks/useExport";
+import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
 import { useCreateForecastRun } from "@/hooks/useForecast";
-import { useMaterials } from "@/hooks/useMaterials";
+import { useProducts } from "@/hooks/useProducts";
 import { useGenerateReorder } from "@/hooks/useReorder";
+import { useWarehouseValidation } from "@/hooks/useWarehouse";
 
 export default function ForecastConfigPage() {
-  const { data: materials } = useMaterials();
+  const { data: products } = useProducts();
   const run = useCreateForecastRun();
   const reorder = useGenerateReorder();
+  const warehouse = useWarehouseValidation();
   const exporter = useExport();
   const runId = run.data?.run.run_id;
 
@@ -27,7 +30,7 @@ export default function ForecastConfigPage() {
 
   const onGenerate = () => {
     run.mutate({
-      material_ids: selected,
+      product_ids: selected,
       horizon,
       method: method === "" ? null : method,
     });
@@ -38,20 +41,20 @@ export default function ForecastConfigPage() {
       <h1 className="text-2xl font-semibold">Konfigurasi Forecast</h1>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Pilih material</h2>
+        <h2 className="text-sm font-medium">Pilih produk</h2>
         <div className="flex flex-col gap-1">
-          {(materials ?? []).map((m) => (
-            <label key={m.id} className="flex items-center gap-2 text-sm">
+          {(products ?? []).map((p) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={selected.includes(m.id)}
-                onChange={() => toggle(m.id)}
+                checked={selected.includes(p.id)}
+                onChange={() => toggle(p.id)}
               />
-              {m.code} — {m.name}
+              {p.code} — {p.name}
             </label>
           ))}
-          {(!materials || materials.length === 0) && (
-            <p className="text-sm text-muted-foreground">Belum ada material. Tambah dulu di menu Material.</p>
+          {(!products || products.length === 0) && (
+            <p className="text-sm text-muted-foreground">Belum ada produk. Tambah dulu di menu Produk.</p>
           )}
         </div>
       </section>
@@ -131,6 +134,24 @@ export default function ForecastConfigPage() {
             {exporter.isError && <p className="text-sm text-destructive">{exporter.error.message}</p>}
             {reorder.data && <ReorderTable recommendations={reorder.data} />}
           </section>
+
+          {reorder.data && (
+            <section className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-medium">Kapasitas Gudang</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={warehouse.isPending}
+                  onClick={() => warehouse.mutate(runId)}
+                >
+                  {warehouse.isPending ? "Memvalidasi…" : "Cek kapasitas"}
+                </Button>
+              </div>
+              {warehouse.isError && <p className="text-sm text-destructive">{warehouse.error.message}</p>}
+              {warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} />}
+            </section>
+          )}
         </>
       )}
     </main>

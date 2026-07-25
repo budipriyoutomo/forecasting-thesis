@@ -27,20 +27,20 @@ describe("UploadPanel", () => {
       data: {
         session_id: "s-1",
         n_rows: 12,
-        n_materials_detected: 3,
-        preview: [{ material_code: "MAT-001", date: "2026-01-01", quantity: 10 }],
-        warnings: ["1 kode material belum terdaftar di master data: MAT-999"],
+        n_products_detected: 3,
+        preview: [{ product_code: "SKU-001", period: "2026-01-01", actual: 100 }],
+        warnings: ["1 kode produk belum terdaftar di master data: SKU-999"],
         status: "validated",
       },
     });
     renderPanel();
 
-    const file = new File(["material_code,date,quantity"], "data.csv", { type: "text/csv" });
+    const file = new File(["product_code,period,actual"], "data.csv", { type: "text/csv" });
     await userEvent.upload(screen.getByLabelText(/pilih file csv/i), file);
 
-    expect(await screen.findByText(/material terdeteksi/i)).toBeDefined();
+    expect(await screen.findByText(/produk terdeteksi/i)).toBeDefined();
     expect(screen.getByText(/belum terdaftar/i)).toBeDefined();
-    expect(screen.getByText("MAT-001")).toBeDefined();
+    expect(screen.getByText("SKU-001")).toBeDefined();
   });
 
   it("menampilkan pesan error dari backend", async () => {

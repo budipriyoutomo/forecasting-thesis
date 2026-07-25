@@ -29,7 +29,7 @@ class UploadSession(Base):
     file_url: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_kb: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     n_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    n_materials_detected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_products_detected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     preview_data: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")

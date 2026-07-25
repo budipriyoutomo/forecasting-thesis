@@ -27,16 +27,15 @@ def build_forecast_xlsx(results) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Forecast"
-    ws.append(["material_id", "status", "method_used", "selection_mode", "demand_class", "mase", "explanation"])
+    ws.append(["product_id", "status", "method_used", "selection_mode", "mape", "mase", "explanation"])
     for r in results:
-        profile = r.data_profile or {}
         ws.append(
             [
-                str(r.material_id),
+                str(r.product_id),
                 r.status,
                 r.method_used,
                 r.selection_mode,
-                profile.get("demand_class"),
+                _num(r.mape),
                 _num(r.mase),
                 r.explanation,
             ]

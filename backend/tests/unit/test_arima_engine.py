@@ -1,7 +1,7 @@
 """Test forecast_arima — 1 fungsi, 1 metode (AGENTS.md §5)."""
 import math
 
-from app.services.forecasting.engines.arima_engine import forecast_arima
+from app.services.forecasting.engines.legacy.arima_engine import forecast_arima
 
 
 def test_forecast_arima_happy_path(smooth_df):

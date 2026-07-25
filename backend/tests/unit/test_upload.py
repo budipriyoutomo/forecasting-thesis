@@ -13,8 +13,8 @@ from app.api.deps import get_upload_service
 from app.main import app
 from app.services.upload_service import UploadService
 from tests.unit.test_upload_service import (
-    FakeConsumptionRepo,
-    FakeMaterialRepo,
+    FakeDemandRepo,
+    FakeProductRepo,
     FakeSessionRepo,
 )
 
@@ -26,8 +26,8 @@ def _make_service():
     return UploadService(
         storage=storage,
         sessions=FakeSessionRepo(),
-        consumptions=FakeConsumptionRepo(),
-        materials=FakeMaterialRepo(),
+        demand=FakeDemandRepo(),
+        products=FakeProductRepo(),
     )
 
 
@@ -48,7 +48,7 @@ async def test_upload_happy_path(client, auth_headers, valid_csv_bytes, upload_s
     body = response.json()
     assert body["success"] is True
     assert body["data"]["n_rows"] == 12
-    assert body["data"]["n_materials_detected"] == 3
+    assert body["data"]["n_products_detected"] == 3
     assert body["data"]["status"] == "validated"
     assert "session_id" in body["data"]
     assert isinstance(body["data"]["preview"], list)
@@ -88,7 +88,7 @@ async def test_upload_missing_required_column(client, auth_headers, missing_colu
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "UPLOAD_INVALID_FORMAT"
-    assert "quantity" in response.json()["error"]["message"]
+    assert "actual" in response.json()["error"]["message"]
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_upload_insufficient_data(client, auth_headers, too_few_rows_csv_b
 
 @pytest.mark.asyncio
 async def test_upload_file_too_large(client, auth_headers, upload_service):
-    big = b"material_code,date,quantity\n" + b"x" * (11 * 1024 * 1024)
+    big = b"product_code,period,actual\n" + b"x" * (11 * 1024 * 1024)
     files = {"file": ("consumption.csv", big, "text/csv")}
     response = await client.post("/api/v1/uploads", headers=auth_headers, files=files)
 

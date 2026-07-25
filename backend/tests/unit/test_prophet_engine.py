@@ -5,7 +5,7 @@ dan bahwa ia memang belum terdaftar di registry (AGENTS.md §5/#15, §6.6).
 """
 import pytest
 
-from app.services.forecasting.engines.prophet_engine import forecast_prophet
+from app.services.forecasting.engines.legacy.prophet_engine import forecast_prophet
 from app.services.forecasting.registry import MODEL_REGISTRY
 
 

@@ -1,13 +1,14 @@
 """
-UploadService — orkestrasi ingestion (Fase 3), docs/ARCHITECTURE.md §3/§7.
+UploadService — orkestrasi ingestion demand produk jadi (Fase 3 v3.0),
+docs/ARCHITECTURE.md §3/§7.
 
 Alur POST upload (single-step, langsung divalidasi):
   1. Cek ukuran file (UPLOAD_FILE_TOO_LARGE).
-  2. Parse + validasi CSV (UPLOAD_INVALID_FORMAT / INSUFFICIENT_DATA).
+  2. Parse + validasi CSV demand (UPLOAD_INVALID_FORMAT / INSUFFICIENT_DATA).
   3. Simpan file ke R2 temp, lalu move ke permanent (STORAGE_UPLOAD_FAILED).
-  4. Persist upload_session (status=validated) + consumption_history.
-     material_id di-resolve dari master data; kode yang belum terdaftar diberi
-     warning tanpa auto-create material (AGENTS.md §6, lihat RECONCILIATION #14).
+  4. Persist upload_session (status=validated) + demand_history (3 seri paralel).
+     product_id di-resolve dari master data produk; kode yang belum terdaftar
+     diberi warning tanpa auto-create produk (AGENTS.md §6, pola RECONCILIATION #14).
 
 Semua dependency injectable → mudah dites tanpa DB/R2 nyata.
 """
@@ -16,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from app.config import get_settings
-from app.models.consumption_history import ConsumptionHistory
+from app.models.demand_history import DemandHistory
 from app.models.upload_session import UploadSession
 from app.services import data_ingestion_service
 from app.utils.exceptions import (
@@ -36,11 +37,11 @@ class _Storage(Protocol):
 
 
 class UploadService:
-    def __init__(self, storage: _Storage, sessions, consumptions, materials):
+    def __init__(self, storage: _Storage, sessions, demand, products):
         self._storage = storage
         self._sessions = sessions
-        self._consumptions = consumptions
-        self._materials = materials
+        self._demand = demand
+        self._products = products
 
     async def create_from_upload(
         self, user_id: str, filename: str, content: bytes, now: datetime | None = None
@@ -61,15 +62,15 @@ class UploadService:
         self._storage.upload_temp(session_id, filename, content)
         permanent_url = self._storage.move_to_permanent(user_id, session_id, filename)
 
-        rows = data_ingestion_service.extract_consumption_rows(content)
-        codes = {r["material_code"] for r in rows}
-        code_to_id = await self._materials.map_codes_to_ids(codes)
+        rows = data_ingestion_service.extract_demand_rows(content)
+        codes = {r["product_code"] for r in rows}
+        code_to_id = await self._products.map_codes_to_ids(codes)
 
         warnings = list(summary.get("warnings") or [])
         unknown = sorted(codes - code_to_id.keys())
         if unknown:
             warnings.append(
-                f"{len(unknown)} kode material belum terdaftar di master data: "
+                f"{len(unknown)} kode produk belum terdaftar di master data: "
                 f"{', '.join(unknown[:5])}{'…' if len(unknown) > 5 else ''}"
             )
 
@@ -80,7 +81,7 @@ class UploadService:
             file_url=permanent_url,
             file_size_kb=max(1, len(content) // 1024),
             n_rows=summary["n_rows"],
-            n_materials_detected=summary["n_materials_detected"],
+            n_products_detected=summary["n_products_detected"],
             preview_data=summary["preview"],
             warnings=warnings,
             status="validated",
@@ -89,17 +90,19 @@ class UploadService:
         await self._sessions.add(session)
 
         history = [
-            ConsumptionHistory(
-                material_code=r["material_code"],
-                material_id=code_to_id.get(r["material_code"]),
-                date=r["date"],
-                quantity=r["quantity"],
+            DemandHistory(
+                product_code=r["product_code"],
+                product_id=code_to_id.get(r["product_code"]),
+                period=r["period"],
+                forecast_existing=r["forecast_existing"],
+                planning=r["planning"],
+                actual=r["actual"],
                 upload_session_id=session_id,
             )
             for r in rows
         ]
         if history:
-            await self._consumptions.bulk_add(history)
+            await self._demand.bulk_add(history)
 
         return session
 

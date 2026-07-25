@@ -48,10 +48,10 @@ class SqlForecastRepository:
         )
         return list(result.scalars().all())
 
-    async def list_results_for_material(self, material_id: str) -> list[ForecastResult]:
+    async def list_results_for_product(self, product_id: str) -> list[ForecastResult]:
         result = await self._session.execute(
             select(ForecastResult)
-            .where(ForecastResult.material_id == material_id)
+            .where(ForecastResult.product_id == product_id)
             .order_by(ForecastResult.created_at.desc())
         )
         return list(result.scalars().all())

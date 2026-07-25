@@ -1,5 +1,6 @@
 """
-Fase 5 — ReorderService orkestrasi (generate + list), repo/forecast/material di-mock.
+Swap v3.0 — ReorderService per MATERIAL dari breakdown BOM atas forecast produk.
+Repo/forecast/BOM/material di-mock.
 """
 from types import SimpleNamespace
 
@@ -24,20 +25,20 @@ class FakeForecastRepo:
         return self._results
 
 
+class FakeBomRepo:
+    def __init__(self, boms_by_product):
+        self._by_product = boms_by_product
+
+    async def list(self, product_id=None):
+        return self._by_product.get(product_id, [])
+
+
 class FakeMaterialRepo:
     def __init__(self, materials):
         self._by_id = {str(m.id): m for m in materials}
 
     async def get_by_id(self, mid):
         return self._by_id.get(str(mid))
-
-
-class FakeConsumptionRepo:
-    def __init__(self, rows_by_material):
-        self._rows = rows_by_material
-
-    async def list_for_material(self, material_id, material_code):
-        return self._rows.get(str(material_id), [])
 
 
 class FakeReorderRepo:
@@ -56,70 +57,86 @@ def _run(rid="r1", user=USER):
     return SimpleNamespace(id=rid, user_id=user)
 
 
-def _result(mid, status="COMPLETED"):
-    return SimpleNamespace(material_id=mid, status=status)
+def _result(pid, values, status="COMPLETED"):
+    fdata = [{"value": v} for v in values]
+    return SimpleNamespace(product_id=pid, status=status, forecast_data=fdata)
 
 
 def _material(mid, code, lead=4, moq=0, manual_ss=None):
     return SimpleNamespace(id=mid, code=code, lead_time_days=lead, moq=moq, manual_safety_stock=manual_ss)
 
 
-def _rows(quantities, start="2026-01-01"):
-    import pandas as pd
-
-    dates = pd.date_range(start, periods=len(quantities), freq="D")
-    return [SimpleNamespace(date=str(d.date()), quantity=q) for d, q in zip(dates, quantities)]
+def _bom(pid, mid, qty):
+    return SimpleNamespace(product_id=pid, material_id=mid, qty_per_unit=qty)
 
 
-def _service(run, results, materials, rows_by_material):
+def _service(run, results, boms_by_product, materials):
     return ReorderService(
         reorder_repo=FakeReorderRepo(),
         forecast_repo=FakeForecastRepo(run, results),
+        boms=FakeBomRepo(boms_by_product),
         materials=FakeMaterialRepo(materials),
-        consumptions=FakeConsumptionRepo(rows_by_material),
     )
 
 
 @pytest.mark.asyncio
-async def test_generate_membuat_rekomendasi_per_material_completed():
+async def test_generate_rekomendasi_per_material_dari_breakdown():
     svc = _service(
         _run(),
-        [_result("m1"), _result("m2")],
-        [_material("m1", "RM-001", lead=4), _material("m2", "RM-002", lead=7)],
-        {"m1": _rows([10, 12, 11, 9, 10, 11, 10, 12]), "m2": _rows([5, 6, 5, 4, 5, 6, 5])},
+        [_result("p1", [10, 12, 11, 9, 10, 11])],
+        {"p1": [_bom("p1", "M1", 2), _bom("p1", "M2", 1)]},
+        [_material("M1", "RM-001"), _material("M2", "RM-002")],
     )
 
-    recs = await svc.generate_for_run(USER, "r1", current_stock={"m1": 0, "m2": 0})
+    recs = await svc.generate_for_run(USER, "r1", current_stock={"M1": 0, "M2": 0})
 
-    assert len(recs) == 2
+    by_material = {str(r.material_id): r for r in recs}
+    assert set(by_material) == {"M1", "M2"}
+    # M1 (qty 2) demand 2× lebih besar → reorder point lebih besar dari M2 (qty 1)
+    assert float(by_material["M1"].reorder_point) > float(by_material["M2"].reorder_point)
     assert all(r.status in ("urgent", "safe", "overstock") for r in recs)
-    assert all(float(r.reorder_point) > 0 for r in recs)
 
 
 @pytest.mark.asyncio
-async def test_generate_lewati_material_forecast_gagal():
+async def test_generate_menyertakan_eoq_dan_biaya():
     svc = _service(
         _run(),
-        [_result("m1", status="INSUFFICIENT_DATA")],
-        [_material("m1", "RM-001")],
-        {"m1": _rows([10, 12, 11])},
+        [_result("p1", [10, 12, 11, 9])],
+        {"p1": [_bom("p1", "M1", 1)]},
+        [_material("M1", "RM-001", moq=500)],
+    )
+
+    recs = await svc.generate_for_run(USER, "r1", current_stock={"M1": 0})
+
+    r = recs[0]
+    assert r.eoq_qty is not None and float(r.eoq_qty) >= 500  # dibulatkan ke MOQ
+    assert r.total_inventory_cost is not None
+
+
+@pytest.mark.asyncio
+async def test_generate_lewati_produk_forecast_gagal():
+    svc = _service(
+        _run(),
+        [_result("p1", [], status="INSUFFICIENT_DATA")],
+        {"p1": [_bom("p1", "M1", 2)]},
+        [_material("M1", "RM-001")],
     )
 
     recs = await svc.generate_for_run(USER, "r1")
 
-    assert recs == []
+    assert recs == []  # produk gagal → tak ada deret → tak ada material
 
 
 @pytest.mark.asyncio
 async def test_generate_run_tidak_ada_404():
-    svc = _service(None, [], [], {})
+    svc = _service(None, [], {}, [])
     with pytest.raises(ForecastRunNotFoundError):
         await svc.generate_for_run(USER, "r1")
 
 
 @pytest.mark.asyncio
 async def test_generate_run_milik_user_lain_403():
-    svc = _service(_run(user=OTHER), [], [], {})
+    svc = _service(_run(user=OTHER), [], {}, [])
     with pytest.raises(ForbiddenRoleError):
         await svc.generate_for_run(USER, "r1")
 
@@ -128,12 +145,12 @@ async def test_generate_run_milik_user_lain_403():
 async def test_list_filter_status():
     svc = _service(
         _run(),
-        [_result("m1"), _result("m2")],
-        # m1 stok 0 → urgent ; m2 stok sangat besar → overstock
-        [_material("m1", "RM-001"), _material("m2", "RM-002")],
-        {"m1": _rows([10, 12, 11, 9, 10, 11]), "m2": _rows([10, 12, 11, 9, 10, 11])},
+        [_result("p1", [10, 12, 11, 9, 10, 11])],
+        {"p1": [_bom("p1", "M1", 1), _bom("p1", "M2", 1)]},
+        [_material("M1", "RM-001"), _material("M2", "RM-002")],
     )
-    await svc.generate_for_run(USER, "r1", current_stock={"m1": 0, "m2": 100000})
+    # M1 stok 0 → urgent ; M2 stok sangat besar → overstock
+    await svc.generate_for_run(USER, "r1", current_stock={"M1": 0, "M2": 100000})
 
     urgent = await svc.list_for_run(USER, "r1", status="urgent")
     overstock = await svc.list_for_run(USER, "r1", status="overstock")

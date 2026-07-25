@@ -17,14 +17,14 @@ export function ForecastResults({ data }: { data: ForecastRunResponse }) {
     <div className="flex flex-col gap-4">
       <p className="text-sm">
         Run <span className="font-medium">{run.status}</span> · {run.n_completed} berhasil ·{" "}
-        {run.n_failed} gagal dari {run.n_materials} material.
+        {run.n_failed} gagal dari {run.n_products} produk.
       </p>
 
       <div className="flex flex-col gap-3">
         {results.map((r) => (
-          <div key={r.material_id} className="rounded-lg border p-4">
+          <div key={r.product_id} className="rounded-lg border p-4">
             <div className="flex items-center justify-between">
-              <span className="font-medium">{r.material_id}</span>
+              <span className="font-medium">{r.product_id}</span>
               <span className="text-sm text-muted-foreground">
                 {STATUS_LABEL[r.status] ?? r.status}
               </span>
@@ -35,8 +35,7 @@ export function ForecastResults({ data }: { data: ForecastRunResponse }) {
                 <p>
                   Metode: <span className="font-medium">{r.method_used}</span> (
                   {r.selection_mode === "manual" ? "dipilih manual" : "dipilih otomatis"})
-                  {r.demand_class && <> · pola {r.demand_class}</>}
-                  {r.mase != null && <> · MASE {r.mase.toFixed(2)}</>}
+                  {r.mape != null && <> · MAPE {r.mape.toFixed(2)}%</>}
                 </p>
                 <ExplanationBox explanation={r.explanation} />
                 <ForecastChart forecast={r.forecast} />

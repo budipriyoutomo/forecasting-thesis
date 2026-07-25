@@ -5,7 +5,7 @@ Mode manual skip modul ini sepenuhnya (lihat forecast_service.py).
 import math
 
 from app.config import get_settings
-from app.services.forecasting.classification import DemandProfile
+from app.services.forecasting.legacy.classification import DemandProfile
 from app.services.forecasting.preprocessing import to_daily_series
 from app.services.forecasting.types import EngineResult
 

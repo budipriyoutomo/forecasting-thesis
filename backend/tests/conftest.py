@@ -54,21 +54,23 @@ def expired_auth_headers(expired_token) -> dict:
 
 @pytest.fixture
 def valid_csv_bytes() -> bytes:
-    rows = ["material_code,date,quantity"]
+    # CSV demand produk jadi (v3.0): product_code, period, forecast_existing, planning, actual
+    rows = ["product_code,period,forecast_existing,planning,actual"]
     for i in range(12):
-        rows.append(f"MAT-{i % 3:03d},2026-0{(i % 6) + 1}-01,{10 + i}")
+        rows.append(f"SKU-{i % 3:03d},2026-0{(i % 6) + 1}-01,{9 + i},{10 + i},{11 + i}")
     return ("\n".join(rows)).encode("utf-8")
 
 
 @pytest.fixture
 def too_few_rows_csv_bytes() -> bytes:
-    rows = ["material_code,date,quantity", "MAT-001,2026-01-01,10", "MAT-001,2026-02-01,12"]
+    rows = ["product_code,period,actual", "SKU-001,2026-01-01,10", "SKU-001,2026-02-01,12"]
     return ("\n".join(rows)).encode("utf-8")
 
 
 @pytest.fixture
 def missing_column_csv_bytes() -> bytes:
-    rows = ["material_code,date"] + [f"MAT-001,2026-01-{i:02d}" for i in range(1, 13)]
+    # 'actual' hilang → UPLOAD_INVALID_FORMAT
+    rows = ["product_code,period"] + [f"SKU-001,2026-01-{i:02d}" for i in range(1, 13)]
     return ("\n".join(rows)).encode("utf-8")
 
 

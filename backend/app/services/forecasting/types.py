@@ -22,6 +22,17 @@ class ForecastPoint:
 
 @dataclass
 class EngineResult:
+    """
+    Hasil satu metode forecasting (v3.0).
+
+    Metrik akurasi holdout backtest: MAD/MFE/MSE/MAPE (Bab III thesis).
+    `mase` opsional (COMPUTE_MASE) — metrik tambahan, BUKAN dipakai ranking default.
+    Engine legacy v2.0 hanya mengisi `mase` (mad/mfe/mse/mape tetap NaN default).
+    """
     forecast: list[ForecastPoint]
-    mase: float
     explanation: str
+    mad: float = float("nan")
+    mfe: float = float("nan")
+    mse: float = float("nan")
+    mape: float = float("nan")
+    mase: float | None = None

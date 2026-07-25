@@ -21,11 +21,11 @@ USER = "u1"
 OTHER = "u2"
 
 
-def _fresult(mid="m1"):
+def _fresult(pid="p1"):
     return SimpleNamespace(
-        material_id=mid, status="COMPLETED", method_used="ets", selection_mode="auto",
-        data_profile={"demand_class": "smooth"}, mase=Decimal("0.5"),
-        explanation="Metode ETS dipilih.", forecast_data=[], metrics=None,
+        product_id=pid, status="COMPLETED", method_used="moving_average", selection_mode="auto",
+        mape=Decimal("5.0"), mase=Decimal("0.5"),
+        explanation="Moving Average dipilih.", forecast_data=[], metrics=None,
     )
 
 
@@ -37,11 +37,11 @@ def _rec(mid="m1", status="urgent"):
 
 
 def test_build_forecast_xlsx_bisa_dibuka_kembali():
-    content = build_forecast_xlsx([_fresult("m1"), _fresult("m2")])
+    content = build_forecast_xlsx([_fresult("p1"), _fresult("p2")])
 
     wb = load_workbook(io.BytesIO(content))
     ws = wb.active
-    assert ws.cell(row=1, column=1).value == "material_id"
+    assert ws.cell(row=1, column=1).value == "product_id"
     assert ws.max_row == 3  # header + 2 baris
 
 

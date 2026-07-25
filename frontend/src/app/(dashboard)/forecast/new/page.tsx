@@ -7,10 +7,10 @@ export default function UploadPage() {
   return (
     <main className="container flex min-h-screen flex-col gap-8 py-16">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Upload Data Konsumsi</h1>
+        <h1 className="text-2xl font-semibold">Upload Data Demand Produk</h1>
         <p className="text-sm text-muted-foreground">
-          Unggah CSV histori konsumsi (kolom: material_code, date, quantity). Satu file boleh berisi
-          banyak material.
+          Unggah CSV histori demand produk jadi (kolom: product_code, period, forecast_existing,
+          planning, actual). Satu file boleh berisi banyak SKU.
         </p>
       </div>
 

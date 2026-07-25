@@ -2,8 +2,15 @@ import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { DashboardSummary } from "@/types/dashboard";
 import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
+import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { Override, OverrideInput } from "@/types/override";
+import type { Product, ProductInput } from "@/types/product";
+import type {
+  WarehouseConfig,
+  WarehouseConfigInput,
+  WarehouseValidation,
+} from "@/types/warehouse";
 import type { ReorderRecommendation } from "@/types/reorder";
 import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
 
@@ -38,6 +45,64 @@ export const api = {
       }),
   },
 
+  products: {
+    list: (token: string): Promise<ApiResponse<Product[]>> =>
+      request<Product[]>("/api/v1/products", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    create: (input: ProductInput, token: string): Promise<ApiResponse<Product>> =>
+      request<Product>("/api/v1/products", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    update: (id: string, input: Partial<ProductInput>, token: string): Promise<ApiResponse<Product>> =>
+      request<Product>(`/api/v1/products/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/products/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
+  boms: {
+    list: (productId: string | null, token: string): Promise<ApiResponse<Bom[]>> => {
+      const qs = productId ? `?product_id=${encodeURIComponent(productId)}` : "";
+      return request<Bom[]>(`/api/v1/boms${qs}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+    },
+
+    create: (input: BomInput, token: string): Promise<ApiResponse<Bom>> =>
+      request<Bom>("/api/v1/boms", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    update: (id: string, input: Partial<BomInput>, token: string): Promise<ApiResponse<Bom>> =>
+      request<Bom>(`/api/v1/boms/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/boms/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
   materials: {
     list: (token: string): Promise<ApiResponse<Material[]>> =>
       request<Material[]>("/api/v1/materials", {
@@ -63,6 +128,27 @@ export const api = {
       request<{ id: string; deleted: boolean }>(`/api/v1/materials/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
+  warehouse: {
+    getConfig: (token: string): Promise<ApiResponse<WarehouseConfig>> =>
+      request<WarehouseConfig>("/api/v1/warehouse/config", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    setConfig: (input: WarehouseConfigInput, token: string): Promise<ApiResponse<WarehouseConfig>> =>
+      request<WarehouseConfig>("/api/v1/warehouse/config", {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    validateRun: (runId: string, token: string): Promise<ApiResponse<WarehouseValidation>> =>
+      request<WarehouseValidation>(`/api/v1/forecast/runs/${runId}/warehouse-validation`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       }),
   },
 

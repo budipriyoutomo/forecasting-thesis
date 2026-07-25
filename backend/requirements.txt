@@ -30,13 +30,18 @@ boto3>=1.35.24        # kompatibel dengan Cloudflare R2 (S3 API)
 openpyxl>=3.1.5       # Excel (.xlsx)
 fpdf2>=2.8.0          # PDF (pure-python, tanpa dependency native berat)
 
-# Forecasting engines (Fase 4)
-statsmodels>=0.14.6
-lightgbm>=4.7.0
-scikit-learn>=1.5.2
+# Forecasting engines v3.0 (Fase 4) — Comparative Selection
+scikit-learn>=1.5.2   # RandomForestRegressor
+xgboost>=2.1.0        # XGBRegressor
 numpy>=1.26
+# tensorflow>=2.16    # LSTM — TIDAK ada wheel utk Python 3.14 (env dev). Aktifkan di
+#                       runtime yg didukung TF (≤3.13); lstm_engine.py import lazy →
+#                       tanpa TF, engine ini auto-excluded di mode otomatis (docs §6.4).
 
-# prophet>=1.1.6   # TODO: belum diaktifkan — butuh build cmdstan yang berat, lihat engines/prophet_engine.py
+# Engine legacy v2.0 (nonaktif default, docs §6.9) — dipertahankan utk reuse raw material
+statsmodels>=0.14.6   # ETS/ARIMA legacy
+lightgbm>=4.7.0       # LightGBM legacy
+# prophet>=1.1.6      # TODO legacy — butuh build cmdstan berat, lihat engines/legacy/prophet_engine.py
 
 # Testing
 pytest>=8.3.3

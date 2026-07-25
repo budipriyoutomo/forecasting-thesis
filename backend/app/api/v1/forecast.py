@@ -38,15 +38,22 @@ async def list_methods():
     return {"success": True, "data": {"methods": methods}}
 
 
+def _f(value) -> float | None:
+    return float(value) if value is not None else None
+
+
 def _result_out(result) -> dict:
-    profile = result.data_profile or {}
     return ForecastResultOut(
-        material_id=str(result.material_id),
+        product_id=str(result.product_id),
         status=result.status,
         method_used=result.method_used,
         selection_mode=result.selection_mode,
-        demand_class=profile.get("demand_class"),
-        mase=float(result.mase) if result.mase is not None else None,
+        mad=_f(result.mad),
+        mfe=_f(result.mfe),
+        mse=_f(result.mse),
+        mape=_f(result.mape),
+        mase=_f(result.mase),
+        candidates_evaluated=result.candidates_evaluated,
         explanation=result.explanation,
         forecast=list(result.forecast_data or []),
         metrics=result.metrics,
@@ -60,7 +67,7 @@ def _summary(run, results) -> dict:
         status=run.status,
         horizon=run.horizon,
         horizon_unit=run.horizon_unit,
-        n_materials=len(results),
+        n_products=len(results),
         n_completed=n_completed,
         n_failed=len(results) - n_completed,
     ).model_dump()
@@ -74,7 +81,7 @@ async def create_forecast_run(
 ):
     run, results = await service.create_run(
         current_user.user_id,
-        payload.material_ids,
+        payload.product_ids,
         payload.horizon,
         payload.horizon_unit,
         payload.method,
@@ -115,9 +122,9 @@ async def export_forecast_run(
 
 @router.get("/results")
 async def list_results(
-    material_id: str = Query(...),
+    product_id: str = Query(...),
     current_user: CurrentUser = Depends(get_current_user),
     service: ForecastRunService = Depends(get_forecast_run_service),
 ):
-    results = await service.get_results_for_material(material_id)
+    results = await service.get_results_for_product(product_id)
     return {"success": True, "data": [_result_out(r) for r in results]}

@@ -1,7 +1,7 @@
 """Test forecast_croston — 1 fungsi, 1 metode, wajib untuk intermittent/lumpy (AGENTS.md §5)."""
 import math
 
-from app.services.forecasting.engines.croston_engine import forecast_croston
+from app.services.forecasting.engines.legacy.croston_engine import forecast_croston
 
 
 def test_forecast_croston_on_intermittent_pattern(intermittent_df):
