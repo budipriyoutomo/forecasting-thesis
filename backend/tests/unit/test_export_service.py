@@ -21,11 +21,11 @@ USER = "u1"
 OTHER = "u2"
 
 
-def _fresult(mid="m1"):
+def _fresult(pid="p1"):
     return SimpleNamespace(
-        material_id=mid, status="COMPLETED", method_used="ets", selection_mode="auto",
-        data_profile={"demand_class": "smooth"}, mase=Decimal("0.5"),
-        explanation="Metode ETS dipilih.", forecast_data=[], metrics=None,
+        product_id=pid, status="COMPLETED", method_used="moving_average", selection_mode="auto",
+        mape=Decimal("5.0"), mase=Decimal("0.5"),
+        explanation="Moving Average dipilih.", forecast_data=[], metrics=None,
     )
 
 
@@ -37,11 +37,11 @@ def _rec(mid="m1", status="urgent"):
 
 
 def test_build_forecast_xlsx_bisa_dibuka_kembali():
-    content = build_forecast_xlsx([_fresult("m1"), _fresult("m2")])
+    content = build_forecast_xlsx([_fresult("p1"), _fresult("p2")])
 
     wb = load_workbook(io.BytesIO(content))
     ws = wb.active
-    assert ws.cell(row=1, column=1).value == "material_id"
+    assert ws.cell(row=1, column=1).value == "product_id"
     assert ws.max_row == 3  # header + 2 baris
 
 
@@ -51,6 +51,36 @@ def test_build_reorder_xlsx_isi_benar():
     ws = load_workbook(io.BytesIO(content)).active
     assert ws.cell(row=1, column=1).value == "material_id"
     assert ws.cell(row=2, column=5).value == "urgent"
+
+
+def test_build_reorder_xlsx_kolom_eoq_tic():
+    # Fase 9: kolom EOQ/biaya ditambah SETELAH status (status tetap kolom 5 — backward compat).
+    rec = SimpleNamespace(
+        material_id="m1", safety_stock=Decimal("6.6"), reorder_point=Decimal("46.6"),
+        recommended_order_qty=Decimal("87"), status="urgent",
+        buffer_stock=Decimal("10"), eoq_qty=Decimal("200"),
+        ordering_cost=Decimal("100"), holding_cost=Decimal("20"), total_inventory_cost=Decimal("120"),
+    )
+    ws = load_workbook(io.BytesIO(build_reorder_xlsx([rec]))).active
+    headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+
+    assert ws.cell(row=1, column=5).value == "status"  # tidak bergeser
+    for col in ("buffer_stock", "eoq_qty", "ordering_cost", "holding_cost", "total_inventory_cost"):
+        assert col in headers
+    tic_col = headers.index("total_inventory_cost") + 1
+    assert ws.cell(row=2, column=tic_col).value == 120.0
+
+
+def test_build_reorder_xlsx_backward_compat_tanpa_kolom_baru():
+    # rec lama (tanpa field EOQ) tetap ter-export, kolom baru kosong.
+    old = SimpleNamespace(
+        material_id="m1", safety_stock=Decimal("6.6"), reorder_point=Decimal("46.6"),
+        recommended_order_qty=Decimal("87"), status="safe",
+    )
+    ws = load_workbook(io.BytesIO(build_reorder_xlsx([old]))).active
+    headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+    tic_col = headers.index("total_inventory_cost") + 1
+    assert ws.cell(row=2, column=tic_col).value is None
 
 
 def test_build_reorder_pdf_menghasilkan_pdf():

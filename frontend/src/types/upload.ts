@@ -2,7 +2,7 @@
 export interface UploadResponseData {
   session_id: string;
   n_rows: number;
-  n_materials_detected: number;
+  n_products_detected: number;
   preview: Record<string, unknown>[];
   warnings: string[];
   status: "pending" | "validated";
@@ -14,7 +14,7 @@ export interface UploadSessionSummary {
   session_id: string;
   file_name: string;
   n_rows: number;
-  n_materials_detected: number;
+  n_products_detected: number;
   status: string;
   created_at: string | null;
 }

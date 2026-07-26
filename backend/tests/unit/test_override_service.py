@@ -37,6 +37,16 @@ def _reorder_target(rid="rec1"):
     )
 
 
+def _material_req_target(rid="mr1"):
+    return SimpleNamespace(
+        id=rid,
+        forecast_qty=Decimal("1200"),
+        standard_usage_qty=Decimal("1150"),
+        actual_usage_qty=Decimal("1180"),
+        buffer_stock_pct=Decimal("5"),
+    )
+
+
 def _service(targets_by_type):
     resolvers = {t: _make_resolver(store) for t, store in targets_by_type.items()}
     return OverrideService(FakeOverrideRepo(), resolvers)
@@ -113,6 +123,32 @@ async def test_create_override_forecast_result_snapshot():
 
     assert ov.previous_value["method_used"] == "ets"
     assert ov.previous_value["mase"] == "0.5"
+
+
+@pytest.mark.asyncio
+async def test_create_override_material_requirement_snapshot():
+    # Fase 8: target_type baru `material_requirement` (RECONCILIATION §Fase 8).
+    target = _material_req_target()
+    svc = _service({"material_requirement": {"mr1": target}})
+
+    ov = await svc.create(
+        USER, "material_requirement", "mr1",
+        new_value={"forecast_qty": 1300}, reason="Koreksi kebutuhan material dari revisi BOM",
+    )
+
+    assert ov.previous_value["forecast_qty"] == "1200"
+    assert ov.previous_value["standard_usage_qty"] == "1150"
+    assert ov.previous_value["buffer_stock_pct"] == "5"
+    # data asli TIDAK berubah
+    assert target.forecast_qty == Decimal("1200")
+
+
+@pytest.mark.asyncio
+async def test_create_override_material_requirement_target_tidak_ada_404():
+    svc = _service({"material_requirement": {}})
+
+    with pytest.raises(OverrideTargetNotFoundError):
+        await svc.create(USER, "material_requirement", "ghost", new_value={"x": 1}, reason="alasan valid")
 
 
 @pytest.mark.asyncio

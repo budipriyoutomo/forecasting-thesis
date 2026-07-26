@@ -22,6 +22,7 @@ import pandas as pd
 
 from app.config import get_settings
 from app.models.reorder_recommendation import ReorderRecommendation
+from app.services.bom_service import BomLine, breakdown_requirements_series
 from app.services.forecasting.preprocessing import to_daily_series
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
@@ -36,6 +37,75 @@ class ReorderComputation:
     reorder_point: Decimal
     recommended_order_qty: Decimal
     status: str
+
+
+@dataclass
+class EOQResult:
+    n: int  # jumlah pemesanan optimal pada horizon
+    eoq_qty: Decimal  # ukuran pesanan ekonomis (belum dibulatkan ke MOQ)
+    total_cost: Decimal  # TC = n·S + Σ(Iₜ·H)
+
+
+def _split_cycles(n_periods: int, n_orders: int) -> list[tuple[int, int]]:
+    """Bagi `n_periods` jadi `n_orders` siklus kontigu sebanyak-mungkin merata."""
+    base, extra = divmod(n_periods, n_orders)
+    cycles, start = [], 0
+    for i in range(n_orders):
+        length = base + (1 if i < extra else 0)
+        if length == 0:
+            continue
+        cycles.append((start, start + length))
+        start += length
+    return cycles
+
+
+def compute_eoq(demands: list[float], ordering_cost: float, holding_cost: float) -> EOQResult:
+    """
+    EOQ dinamis (Bab III thesis): TC = n·S + Σ(Iₜ·H), Iₜ = persediaan akhir periode t.
+    Simulasikan tiap kandidat jumlah pemesanan n (1..T): tiap order menutup demand
+    siklusnya, hitung total biaya, pilih n dengan TC minimum. Fungsi murni,
+    diverifikasi manual di test (AGENTS.md §3).
+    """
+    demands = [float(d) for d in demands]
+    horizon = len(demands)
+    total = sum(demands)
+    if horizon == 0 or total <= 0:
+        return EOQResult(n=1, eoq_qty=_dec(0), total_cost=_dec(ordering_cost))
+
+    best_n, best_cost = 1, None
+    for n in range(1, horizon + 1):
+        inventory, holding = 0.0, 0.0
+        for start, end in _split_cycles(horizon, n):
+            inventory += sum(demands[start:end])  # order menutup demand siklus ini
+            for t in range(start, end):
+                inventory -= demands[t]
+                holding += inventory * holding_cost  # biaya simpan persediaan akhir periode
+        total_cost = n * ordering_cost + holding
+        if best_cost is None or total_cost < best_cost:
+            best_n, best_cost = n, total_cost
+
+    return EOQResult(n=best_n, eoq_qty=_dec(total / best_n), total_cost=_dec(best_cost))
+
+
+def round_to_moq(qty: float, moq: float) -> Decimal:
+    """Bulatkan qty ke kelipatan MOQ ke atas (MOQ sebagai batas bawah)."""
+    qty, moq = float(qty), float(moq)
+    if moq <= 0:
+        return _dec(qty)
+    return _dec(math.ceil(round(qty / moq, 6)) * moq)
+
+
+def compute_tic(ordering_cost_total: float, holding_cost_total: float) -> Decimal:
+    """Total Inventory Cost = Ordering Cost + Holding Cost."""
+    return _dec(float(ordering_cost_total) + float(holding_cost_total))
+
+
+def compute_savings_pct(tic_actual: float, tic_proposed: float) -> Decimal:
+    """% penghematan = (TIC aktual − TIC usulan) / TIC aktual × 100."""
+    tic_actual = float(tic_actual)
+    if tic_actual == 0:
+        return _dec(0)
+    return _dec((tic_actual - float(tic_proposed)) / tic_actual * 100)
 
 
 def compute_reorder(
@@ -84,27 +154,49 @@ def demand_stats(rows) -> tuple[float, float]:
 
 
 class ReorderService:
-    def __init__(self, reorder_repo, forecast_repo, materials, consumptions):
+    """
+    v3.0: reorder dihitung PER MATERIAL dari hasil breakdown BOM atas forecast
+    produk jadi (bukan lagi dari consumption_history material). Deret kebutuhan
+    material per periode = Σ_produk (forecast_produk[t] × qty_per_unit) → μ/σ untuk
+    safety stock, dan sebagai demand EOQ.
+    """
+
+    def __init__(self, reorder_repo, forecast_repo, boms, materials):
         self._repo = reorder_repo
         self._forecast = forecast_repo
+        self._boms = boms
         self._materials = materials
-        self._consumptions = consumptions
 
     async def generate_for_run(self, user_id: str, run_id: str, current_stock: dict | None = None):
         run = await self._require_run(user_id, run_id)
         current_stock = current_stock or {}
-        z = get_settings().SERVICE_LEVEL_Z
+        settings = get_settings()
+        z = settings.SERVICE_LEVEL_Z
 
-        results = await self._forecast.list_results(run_id)
-        recommendations = []
-        for result in results:
+        # Deret forecast per produk (hanya yang COMPLETED & punya data).
+        product_series: dict[str, list[float]] = {}
+        for result in await self._forecast.list_results(run_id):
             if result.status != "COMPLETED":
-                continue  # material yang forecast-nya gagal tidak diberi rekomendasi
-            material = await self._materials.get_by_id(str(result.material_id))
+                continue
+            fdata = getattr(result, "forecast_data", None) or []
+            if fdata:
+                product_series[str(result.product_id)] = [float(p.get("value", 0)) for p in fdata]
+
+        # Breakdown BOM → deret kebutuhan per material.
+        bom_lines: list[BomLine] = []
+        for pid in product_series:
+            for bom in await self._boms.list(pid):
+                bom_lines.append(BomLine(str(bom.product_id), str(bom.material_id), float(bom.qty_per_unit)))
+        material_series = breakdown_requirements_series(product_series, bom_lines)
+
+        recommendations = []
+        for material_id, series in material_series.items():
+            material = await self._materials.get_by_id(material_id)
             if material is None:
                 continue
-            rows = await self._consumptions.list_for_material(str(material.id), material.code)
-            mu, sigma = demand_stats(rows)
+            arr = np.asarray(series, dtype=float)
+            mu = float(np.mean(arr)) if len(arr) else 0.0
+            sigma = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
             comp = compute_reorder(
                 mu=mu,
                 sigma=sigma,
@@ -114,8 +206,14 @@ class ReorderService:
                 manual_ss=float(material.manual_safety_stock)
                 if material.manual_safety_stock is not None
                 else None,
-                current_stock=float(current_stock.get(str(material.id), 0)),
+                current_stock=float(current_stock.get(material_id, 0)),
             )
+
+            eoq = compute_eoq(series, settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE)
+            eoq_qty = round_to_moq(float(eoq.eoq_qty), float(material.moq))
+            ordering_total = eoq.n * settings.DEFAULT_ORDERING_COST
+            holding_total = float(eoq.total_cost) - ordering_total
+
             recommendations.append(
                 ReorderRecommendation(
                     run_id=run.id,
@@ -124,6 +222,10 @@ class ReorderService:
                     reorder_point=comp.reorder_point,
                     recommended_order_qty=comp.recommended_order_qty,
                     status=comp.status,
+                    eoq_qty=eoq_qty,
+                    ordering_cost=_dec(ordering_total),
+                    holding_cost=_dec(holding_total),
+                    total_inventory_cost=compute_tic(ordering_total, holding_total),
                 )
             )
 

@@ -1,5 +1,5 @@
 """
-Fase 3 — UploadService: persist upload + consumption, move ke permanent,
+Fase 3 v3.0 — UploadService: persist upload + demand_history, move ke permanent,
 riwayat, guard SESSION_EXPIRED, cleanup. Semua dependency di-mock (tanpa DB/R2).
 """
 from datetime import datetime, timedelta, timezone
@@ -21,10 +21,10 @@ USER = "00000000-0000-0000-0000-000000000001"
 OTHER = "00000000-0000-0000-0000-000000000002"
 
 
-def _csv(n=12, materials=3) -> bytes:
-    rows = ["material_code,date,quantity"]
+def _csv(n=12, products=3) -> bytes:
+    rows = ["product_code,period,forecast_existing,planning,actual"]
     for i in range(n):
-        rows.append(f"MAT-{i % materials:03d},2026-0{(i % 6) + 1}-01,{10 + i}")
+        rows.append(f"SKU-{i % products:03d},2026-0{(i % 6) + 1}-01,{9 + i},{10 + i},{11 + i}")
     return "\n".join(rows).encode("utf-8")
 
 
@@ -51,7 +51,7 @@ class FakeSessionRepo:
         return upload
 
 
-class FakeConsumptionRepo:
+class FakeDemandRepo:
     def __init__(self):
         self.rows = []
 
@@ -60,7 +60,7 @@ class FakeConsumptionRepo:
         return len(rows)
 
 
-class FakeMaterialRepo:
+class FakeProductRepo:
     def __init__(self, mapping=None):
         self._map = mapping or {}
 
@@ -68,15 +68,15 @@ class FakeMaterialRepo:
         return {c: self._map[c] for c in codes if c in self._map}
 
 
-def _service(storage=None, materials_map=None):
+def _service(storage=None, products_map=None):
     storage = storage or MagicMock()
     storage.upload_temp.return_value = "temp/uploads/x/data.csv"
     storage.move_to_permanent.return_value = "permanent/datasets/u/x/raw.csv"
     return UploadService(
         storage=storage,
         sessions=FakeSessionRepo(),
-        consumptions=FakeConsumptionRepo(),
-        materials=FakeMaterialRepo(materials_map),
+        demand=FakeDemandRepo(),
+        products=FakeProductRepo(products_map),
     )
 
 
@@ -88,25 +88,26 @@ async def test_create_happy_path_persist_dan_move_ke_permanent():
 
     assert session.status == "validated"
     assert session.n_rows == 12
-    assert session.n_materials_detected == 3
+    assert session.n_products_detected == 3
     assert session.file_url.startswith("permanent/")
     svc._storage.upload_temp.assert_called_once()
     svc._storage.move_to_permanent.assert_called_once()
-    # consumption_history ikut tersimpan
-    assert len(svc._consumptions.rows) == 12
+    # demand_history ikut tersimpan (3 seri paralel)
+    assert len(svc._demand.rows) == 12
+    assert all(r.actual is not None for r in svc._demand.rows)
 
 
 @pytest.mark.asyncio
-async def test_create_resolve_material_id_bila_kode_terdaftar():
-    svc = _service(materials_map={"MAT-000": "id-000"})
+async def test_create_resolve_product_id_bila_kode_terdaftar():
+    svc = _service(products_map={"SKU-000": "id-000"})
 
-    await svc.create_from_upload(USER, "data.csv", _csv(n=12, materials=3))
+    await svc.create_from_upload(USER, "data.csv", _csv(n=12, products=3))
 
-    resolved = [r for r in svc._consumptions.rows if r.material_code == "MAT-000"]
-    assert resolved and all(r.material_id == "id-000" for r in resolved)
-    # kode yang tak terdaftar → material_id None
-    unresolved = [r for r in svc._consumptions.rows if r.material_code == "MAT-001"]
-    assert unresolved and all(r.material_id is None for r in unresolved)
+    resolved = [r for r in svc._demand.rows if r.product_code == "SKU-000"]
+    assert resolved and all(r.product_id == "id-000" for r in resolved)
+    # kode yang tak terdaftar → product_id None
+    unresolved = [r for r in svc._demand.rows if r.product_code == "SKU-001"]
+    assert unresolved and all(r.product_id is None for r in unresolved)
 
 
 @pytest.mark.asyncio
@@ -129,7 +130,7 @@ async def test_create_format_invalid_diteruskan():
 async def test_create_insufficient_data_diteruskan():
     svc = _service()
     with pytest.raises(InsufficientDataError):
-        await svc.create_from_upload(USER, "data.csv", b"material_code,date,quantity\nMAT-1,2026-01-01,5\n")
+        await svc.create_from_upload(USER, "data.csv", b"product_code,period,actual\nSKU-1,2026-01-01,5\n")
 
 
 @pytest.mark.asyncio
@@ -168,7 +169,7 @@ async def test_get_session_pending_kedaluwarsa_session_expired():
     past = datetime.now(timezone.utc) - timedelta(hours=2)
     s = UploadSession(
         id="expired-1", user_id=USER, file_name="x.csv", file_url="temp/...",
-        file_size_kb=1, n_rows=0, n_materials_detected=0, status="pending", expires_at=past,
+        file_size_kb=1, n_rows=0, n_products_detected=0, status="pending", expires_at=past,
     )
     await svc._sessions.add(s)
 
@@ -184,7 +185,7 @@ async def test_cleanup_expired_hapus_temp_dan_tandai_expired():
     past = datetime.now(timezone.utc) - timedelta(hours=2)
     s = UploadSession(
         id="expired-1", user_id=USER, file_name="x.csv", file_url="temp/uploads/expired-1/x.csv",
-        file_size_kb=1, n_rows=0, n_materials_detected=0, status="pending", expires_at=past,
+        file_size_kb=1, n_rows=0, n_products_detected=0, status="pending", expires_at=past,
     )
     await svc._sessions.add(s)
 

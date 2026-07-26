@@ -18,7 +18,10 @@ from app.utils.exceptions import (
 )
 
 REQUIRED_IMPORT_COLUMNS = {"code", "name", "unit"}
-OPTIONAL_IMPORT_COLUMNS = {"category", "lead_time_days", "moq", "manual_safety_stock"}
+OPTIONAL_IMPORT_COLUMNS = {
+    "category", "lead_time_days", "moq", "manual_safety_stock",
+    "qty_per_pallet", "length", "width", "height",  # v3.0 kapasitas gudang
+}
 
 
 class _MaterialRepository(Protocol):
@@ -117,6 +120,12 @@ class MaterialService:
         if not code or not name or not unit:
             raise UploadInvalidFormatError(f"Baris {line}: code/name/unit tidak boleh kosong.")
 
+        # Dimension opsional dari 3 kolom length/width/height (CSV tak simpan JSON).
+        dims = {k: num(k) for k in ("length", "width", "height")}
+        dimension = (
+            {k: float(v) for k, v in dims.items()} if all(v is not None for v in dims.values()) else None
+        )
+
         return MaterialCreate(
             code=code,
             name=name,
@@ -125,4 +134,6 @@ class MaterialService:
             lead_time_days=lead_days,
             moq=num("moq") or Decimal(0),
             manual_safety_stock=num("manual_safety_stock"),
+            qty_per_pallet=num("qty_per_pallet"),
+            dimension=dimension,
         )

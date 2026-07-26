@@ -1,7 +1,7 @@
 """Test forecast_ets — 1 fungsi, 1 metode (AGENTS.md §5)."""
 import math
 
-from app.services.forecasting.engines.ets_engine import forecast_ets
+from app.services.forecasting.engines.legacy.ets_engine import forecast_ets
 
 
 def test_forecast_ets_happy_path(smooth_df):

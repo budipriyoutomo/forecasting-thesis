@@ -118,38 +118,40 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 
 **Selesai jika:** validasi kapasitas gudang berbasis palet berjalan dan tampil sebagai flag non-blocking di UI existing.
 
-## 8. Fase Migrasi 7 — Optimasi Total Biaya & Evaluasi Kinerja Inventory (🆕 NET-NEW)
+## 8. Fase Migrasi 7 — Optimasi Total Biaya & Evaluasi Kinerja Inventory (🆕 NET-NEW) — ✅ SELESAI (26 Juli 2026)
 
-- [ ] `cost_service.py` — 🆕 net-new: TIC, `compute_savings_pct()`.
-- [ ] `inventory_metrics_service.py` — 🆕 net-new: Service Level, Fill Rate, Stock Out Rate, Inventory Turnover.
-- [ ] Model `inventory_metrics` — 🆕 net-new.
-- [ ] Endpoint `cost-summary`, `inventory-metrics` — 🆕.
-- [ ] **TDD**: verifikasi rumus tiap metrik dengan data contoh dari Bab III thesis.
+- [x] `cost_service.py` — 🆕 net-new: agregasi TIC usulan vs baseline + `compute_savings_pct()`. **Rumus TIC/EOQ/savings di-reuse dari `reorder_service.py`, tidak diduplikasi** (RECONCILIATION §Fase 7).
+- [x] `inventory_metrics_service.py` — 🆕 net-new: Service Level, Fill Rate, Stock Out Rate, Inventory Turnover (fungsi murni + orkestrasi 2 scope).
+- [x] Model `inventory_metrics` — 🆕 net-new (+ kolom `scope` `baseline`/`forecastiq`, additive; migration `a7b8c9d0e1f2`).
+- [x] Endpoint `GET /forecast/runs/{run_id}/cost-summary`, `GET /forecast/runs/{run_id}/inventory-metrics` — 🆕.
+- [x] **TDD**: rumus tiap metrik diverifikasi manual (`test_inventory_metrics_service.py`, `test_cost_service.py`, `test_metrics_api.py`, `test_inventory_metrics_repository.py`). Rumus 4 metrik tak ada di Bab III/`Simulasi Thesis.xlsx` → definisi standar disepakati user & dicatat di RECONCILIATION §Fase 7.
 
-**Selesai jika:** setiap forecast run menghasilkan TIC + % penghematan + 4 metrik kinerja yang bisa diverifikasi manual.
+**Selesai:** tiap forecast run menghasilkan TIC + % penghematan + 4 metrik kinerja (scope baseline & forecastiq) yang terverifikasi manual; 322 test PASSED, coverage service 98–100%, route 100%, repo 100%.
+> **Frontend belum**: widget cost-summary & inventory-metrics di dashboard/laporan masuk Fase 9 (dashboard diperluas). Backend Fase 7 lengkap.
 
-## 9. Fase Migrasi 8 — Planner Override & Audit Trail (🟡 DIPERLUAS)
+## 9. Fase Migrasi 8 — Planner Override & Audit Trail (🟡 DIPERLUAS) — ✅ SELESAI (26 Juli 2026)
 
-- [ ] Model `overrides`, `override_service.py` — 🟢 **dipertahankan** sepenuhnya (append-only, `reason` wajib, `OVERRIDE_REASON_REQUIRED` sudah ada di v2.0).
-- [ ] 🆕 tambahan: `target_type` sekarang bisa merujuk entitas baru (`material_requirement` selain `forecast_result`/`reorder_recommendation`) — pastikan validasi `target_id` mendukung tabel baru ini.
-- [ ] 🆕 tambahan: `OVERRIDE_TARGET_NOT_FOUND` (sudah ada di implementasi git v2.0 — pastikan tetap dipakai & tervalidasi untuk `target_type` baru).
-- [ ] **TDD**: regresi override lama; test baru untuk override `material_requirement` dan `OVERRIDE_TARGET_NOT_FOUND` pada `target_type` baru.
+- [x] Model `overrides`, `override_service.py` — 🟢 **dipertahankan** sepenuhnya (append-only, `reason` wajib, `OVERRIDE_REASON_REQUIRED` sudah ada di v2.0). Tanpa perubahan skema.
+- [x] 🆕 tambahan: `target_type` kini bisa merujuk `material_requirement` — resolver + snapshot builder + Literal schema diperluas satu entri (RECONCILIATION §Fase 8). Resolver pakai `SqlMaterialRequirementRepository.get_requirement` (sudah ada Fase 5).
+- [x] 🆕 tambahan: `OVERRIDE_TARGET_NOT_FOUND` tervalidasi juga untuk `material_requirement` (tak ada error code baru).
+- [x] **TDD**: regresi override lama tetap PASSED; test baru `test_create_override_material_requirement_snapshot`, `..._target_tidak_ada_404` (service) + `test_create_override_material_requirement_201` (API).
 
-**Selesai jika:** override berfungsi untuk seluruh entitas v3.0 (termasuk yang net-new), tidak ada regresi dari v2.0.
+**Selesai:** override berfungsi untuk seluruh entitas v3.0 (forecast_result, reorder_recommendation, material_requirement); tidak ada regresi; `override_service` coverage 100%.
 
-## 10. Fase Migrasi 9 — Dashboard, Export & Cutover Final
+## 10. Fase Migrasi 9 — Dashboard, Export & Cutover Final — 🟡 BACKEND SELESAI, frontend widget baru + cutover TERSISA
 
-- [ ] Dashboard (`dashboard/summary`) — 🟡 **diperluas**: scaffolding v2.0 dipertahankan, tambah widget baru (perbandingan Forecast ForecastIQ vs Forecast/Planning existing perusahaan, indikator kapasitas gudang, ringkasan TIC, metrik inventory).
-- [ ] `ExplanationBox` — 🟡 diperluas: format penjelasan bahasa natural v2.0 dipertahankan, isi/logic penjelasan disesuaikan ke Comparative Selection (bandingkan pemenang vs kandidat lain, bukan lagi "kenapa kuadran X dipilih").
-- [ ] Export service — 🟡 diperluas: tambah kolom BOM/EOQ/warehouse/TIC ke export Excel/PDF yang sudah ada.
-- [ ] **Cutover checklist** (lihat §0 poin 6):
-  - [ ] Seluruh fase migrasi 1–8 PASSED di staging/lingkungan mendekati production.
-  - [ ] Verifikasi image Docker backend dengan TensorFlow (untuk LSTM) build & run benar (ukuran image, cold start) — ini beban baru yang tidak ada di v2.0.
-  - [ ] Putuskan bersama user: kolom/tabel v2.0 mana yang benar-benar tidak terpakai lagi dan aman di-drop (mis. kolom klasifikasi kuadran jika ada di `forecast_results` lama) — lakukan lewat migration terpisah, terdokumentasi di `RECONCILIATION.md`.
-  - [ ] Merge `migration/v3-thesis` → `main`.
-  - [ ] Update `docs/TASK_BREAKDOWN.md` di git (checklist Fase 0-8 lama) untuk mencatat status migrasi selesai, bukan menghapus riwayatnya.
+- [x] Dashboard (`dashboard/summary`) — 🟡 **diperluas** (backend): scaffolding v2.0 dipertahankan, ditambah `total_inventory_cost` run terakhir, `avg_mape`, indikator kapasitas gudang (`warehouse`), ringkasan metrik inventory per scope (`inventory_metrics`). Repo warehouse/metrics opsional → additive, tanpa regresi (RECONCILIATION §Fase 9).
+- [x] Export service — 🟡 **diperluas**: kolom `buffer_stock`/`eoq_qty`/`ordering_cost`/`holding_cost`/`total_inventory_cost` ditambah ke reorder xlsx **setelah** kolom lama (status tetap kolom 5 → backward compat).
+- [x] Frontend: widget `cost-summary` & `inventory-metrics` — `CostSummaryCard.tsx`, `InventoryMetricsTable.tsx` + hook `useMetrics.ts` + `api.metrics` + types + vitest (4 test, hijau). Dirakit ke halaman hasil forecast (`forecast/new/config`), tampil setelah reorder dihitung. `ExplanationBox`/pages produk/BOM/warehouse sudah dari fase sebelumnya.
+- [ ] `ExplanationBox` — logic penjelasan Comparative Selection (isi sudah v3.0; review perbandingan pemenang vs kandidat bila perlu).
+- [x] **Cutover checklist** (lihat §0 poin 6) — disetujui user 27 Juli 2026:
+  - [x] Seluruh fase migrasi 1–8 PASSED (332 backend + 53 frontend hijau).
+  - [ ] Verifikasi image Docker backend dengan TensorFlow (LSTM) build & run — **belum** (deployment, di luar scope commit ini).
+  - [x] Drop kolom v2.0 yang aman: `forecast_results.data_profile` + `material_id` (migration `b8c9d0e1f2a3`, reversible). `consumption_history` **dipertahankan** (jalur raw-material v2.0 masih dipakai) — alasan di `RECONCILIATION.md` §Cutover.
+  - [x] Merge `migration/v3-thesis` → `main` (`--no-ff`).
+  - [x] Status migrasi dicatat di dokumen ini + `RECONCILIATION.md`.
 
-**Selesai jika:** aplikasi v3.0 berjalan penuh di atas basis kode v2.0 yang dimigrasi, dashboard & export mencerminkan seluruh fitur baru, cutover ke `main` selesai dengan jejak keputusan lengkap di `RECONCILIATION.md`.
+**Selesai:** aplikasi v3.0 berjalan penuh, dashboard & export mencerminkan seluruh fitur baru, cutover ke `main` selesai dengan jejak keputusan lengkap di `RECONCILIATION.md`. Sisa non-blocking: wiring UI lanjutan & verifikasi image Docker LSTM (deployment).
 
 ---
 

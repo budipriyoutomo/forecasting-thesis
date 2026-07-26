@@ -1,14 +1,14 @@
 """
-Data Ingestion Service — parsing & validasi CSV upload konsumsi raw material.
+Data Ingestion Service (v3.0) — parsing & validasi CSV demand produk jadi.
 
-Ini adalah implementasi GREEN minimum untuk lulus tests/unit/test_upload.py
-(lihat AGENTS.md §3 — TDD workflow). Persistensi ke database (upload_sessions,
-consumption_history) dan penyimpanan ke Cloudflare R2 (temp/permanent) adalah
-bagian dari Fase 3 penuh (docs/TASK_BREAKDOWN.md) — BELUM diimplementasikan
-di sini. Fungsi ini murni parsing + validasi in-memory, sengaja dibuat kecil
-agar siklus TDD contoh mudah diikuti dan direplikasi untuk service lain.
+Menggantikan jalur konsumsi raw material v2.0. Struktur 3 seri paralel mengikuti
+`Simulasi Thesis.xlsx` sheet "Bab I Plan vs Forecast":
 
-Kolom wajib CSV: material_code, date, quantity
+  Kolom wajib : product_code, period, actual
+  Kolom opsional: forecast_existing, planning
+
+`period` menerima juga alias `date` (fleksibilitas file lama). `actual` adalah
+realisasi produksi/penjualan — target/label untuk training model ML.
 """
 import io
 import uuid
@@ -20,54 +20,70 @@ import pandas as pd
 from app.config import get_settings
 from app.utils.exceptions import InsufficientDataError, UploadInvalidFormatError
 
-REQUIRED_COLUMNS = {"material_code", "date", "quantity"}
+REQUIRED_COLUMNS = {"product_code", "period", "actual"}
+_PERIOD_ALIASES = ("period", "date")
 
 
 def _normalized_df(content: bytes) -> pd.DataFrame:
-    """Baca CSV dan normalisasi nama kolom (strip + lowercase)."""
     try:
         df = pd.read_csv(io.BytesIO(content))
     except Exception as exc:
         raise UploadInvalidFormatError(f"Gagal membaca isi CSV: {exc}") from exc
     df.columns = [str(c).strip().lower() for c in df.columns]
+    # Normalisasi kolom waktu: terima `date` sebagai alias `period`.
+    if "period" not in df.columns and "date" in df.columns:
+        df = df.rename(columns={"date": "period"})
     return df
 
 
-def extract_consumption_rows(content: bytes) -> list[dict]:
-    """Ambil baris konsumsi ternormalisasi untuk disimpan ke consumption_history.
+def _num(value) -> Decimal | None:
+    raw = str(value).strip()
+    if raw == "" or raw.lower() == "nan":
+        return None
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
 
-    Baris dengan tanggal/quantity tidak valid di-skip (sudah divalidasi ringkas
-    di `parse_and_validate_csv`; di sini fokus ke baris yang benar-benar bisa
-    disimpan). Mengembalikan list of {material_code, date, quantity}.
+
+def extract_demand_rows(content: bytes) -> list[dict]:
+    """Ambil baris demand ternormalisasi untuk disimpan ke demand_history.
+
+    Baris tanpa product_code / period valid / actual valid di-skip.
+    Mengembalikan {product_code, period, forecast_existing, planning, actual}.
     """
     df = _normalized_df(content)
     rows: list[dict] = []
     for _, raw in df.iterrows():
-        code = str(raw.get("material_code", "")).strip()
+        code = str(raw.get("product_code", "")).strip()
         if not code or code.lower() == "nan":
             continue
         try:
-            parsed_date = pd.to_datetime(raw.get("date")).date()
+            period = pd.to_datetime(raw.get("period")).date()
         except (ValueError, TypeError):
             continue
-        try:
-            qty = Decimal(str(raw.get("quantity")))
-        except (InvalidOperation, ValueError, TypeError):
+        actual = _num(raw.get("actual"))
+        if not isinstance(period, date_type) or actual is None:
             continue
-        if not isinstance(parsed_date, date_type):
-            continue
-        rows.append({"material_code": code, "date": parsed_date, "quantity": qty})
+        rows.append(
+            {
+                "product_code": code,
+                "period": period,
+                "forecast_existing": _num(raw.get("forecast_existing")),
+                "planning": _num(raw.get("planning")),
+                "actual": actual,
+            }
+        )
     return rows
 
 
 def parse_and_validate_csv(filename: str, content: bytes) -> dict:
     """
-    Parse file CSV mentah, validasi struktur & isi minimal, dan kembalikan
-    ringkasan yang siap dipakai endpoint upload.
+    Parse CSV demand mentah, validasi struktur & isi minimal, kembalikan ringkasan
+    untuk endpoint upload.
 
     Raises:
-        UploadInvalidFormatError: bukan CSV, kolom wajib hilang, atau file
-            tidak bisa diparse sama sekali.
+        UploadInvalidFormatError: bukan CSV / kolom wajib hilang / gagal parse.
         InsufficientDataError: jumlah baris di bawah UPLOAD_MIN_ROWS.
     """
     settings = get_settings()
@@ -77,14 +93,15 @@ def parse_and_validate_csv(filename: str, content: bytes) -> dict:
 
     try:
         df = pd.read_csv(io.BytesIO(content))
-    except Exception as exc:  # pandas bisa lempar berbagai jenis error parsing
+    except Exception as exc:
         raise UploadInvalidFormatError(f"Gagal membaca isi CSV: {exc}") from exc
 
-    missing_columns = REQUIRED_COLUMNS - set(df.columns.str.strip().str.lower())
+    columns = set(df.columns.str.strip().str.lower())
+    if "period" not in columns and "date" in columns:
+        columns.add("period")
+    missing_columns = REQUIRED_COLUMNS - columns
     if missing_columns:
-        raise UploadInvalidFormatError(
-            f"Kolom wajib hilang: {', '.join(sorted(missing_columns))}"
-        )
+        raise UploadInvalidFormatError(f"Kolom wajib hilang: {', '.join(sorted(missing_columns))}")
 
     n_rows = len(df)
     if n_rows < settings.UPLOAD_MIN_ROWS:
@@ -93,15 +110,15 @@ def parse_and_validate_csv(filename: str, content: bytes) -> dict:
         )
 
     warnings: list[str] = []
-    if df["quantity"].isna().any():
-        warnings.append("Terdapat nilai quantity yang kosong pada beberapa baris")
+    if df["actual"].isna().any():
+        warnings.append("Terdapat nilai actual yang kosong pada beberapa baris")
 
-    n_materials_detected = df["material_code"].nunique(dropna=True)
+    n_products_detected = df["product_code"].nunique(dropna=True)
 
     return {
         "session_id": str(uuid.uuid4()),
         "n_rows": n_rows,
-        "n_materials_detected": int(n_materials_detected),
+        "n_products_detected": int(n_products_detected),
         "preview": df.head(5).fillna("").to_dict(orient="records"),
         "warnings": warnings,
         "status": "validated",

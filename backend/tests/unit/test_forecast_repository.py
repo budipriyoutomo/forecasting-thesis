@@ -92,11 +92,11 @@ async def test_list_results():
 
 
 @pytest.mark.asyncio
-async def test_list_results_for_material():
+async def test_list_results_for_product():
     session = _session()
     result = MagicMock()
     result.scalars.return_value.all.return_value = ["a", "b"]
     session.execute.return_value = result
     repo = SqlForecastRepository(session)
 
-    assert await repo.list_results_for_material("m1") == ["a", "b"]
+    assert await repo.list_results_for_product("p1") == ["a", "b"]

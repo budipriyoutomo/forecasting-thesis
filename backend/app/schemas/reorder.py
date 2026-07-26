@@ -19,3 +19,9 @@ class ReorderRecommendationOut(BaseModel):
     reorder_point: Decimal
     recommended_order_qty: Decimal
     status: str  # urgent / safe / overstock
+    # v3.0 — buffer stock, EOQ dinamis & total biaya (opsional; null bila belum dihitung)
+    buffer_stock: Decimal | None = None
+    eoq_qty: Decimal | None = None
+    ordering_cost: Decimal | None = None
+    holding_cost: Decimal | None = None
+    total_inventory_cost: Decimal | None = None

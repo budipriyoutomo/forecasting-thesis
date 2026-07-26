@@ -5,13 +5,13 @@ from pydantic import BaseModel, Field
 
 
 class ForecastRunRequest(BaseModel):
-    """POST /api/v1/forecast/runs — banyak material sekaligus (§6.8).
+    """POST /api/v1/forecast/runs — banyak PRODUK jadi sekaligus (§6.6).
 
-    `method` None/absen → mode otomatis (Auto Model Selection).
-    `method` diisi → mode manual (dipaksa ke seluruh material di run ini).
+    `method` None/absen → mode otomatis (Comparative Selection).
+    `method` diisi → mode manual (dipaksa ke seluruh produk di run ini).
     """
 
-    material_ids: list[str] = Field(min_length=1)
+    product_ids: list[str] = Field(min_length=1)
     horizon: int = Field(gt=0)
     horizon_unit: str = "days"
     method: str | None = None
@@ -29,18 +29,22 @@ class ForecastRunSummary(BaseModel):
     status: str  # PENDING / PROCESSING / COMPLETED / FAILED
     horizon: int
     horizon_unit: str
-    n_materials: int
+    n_products: int
     n_completed: int
     n_failed: int
 
 
 class ForecastResultOut(BaseModel):
-    material_id: str
+    product_id: str
     status: str  # COMPLETED / INSUFFICIENT_DATA / MODEL_SELECTION_FAILED
     method_used: str | None = None
     selection_mode: str | None = None
-    demand_class: str | None = None
+    mad: float | None = None
+    mfe: float | None = None
+    mse: float | None = None
+    mape: float | None = None
     mase: float | None = None
+    candidates_evaluated: list | None = None
     explanation: str | None = None
     forecast: list[ForecastPointOut] = []
     metrics: dict | None = None

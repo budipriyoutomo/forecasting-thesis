@@ -17,7 +17,7 @@ export function UploadHistory() {
           <tr className="border-b text-left text-muted-foreground">
             <th className="py-2 pr-4">File</th>
             <th className="py-2 pr-4">Baris</th>
-            <th className="py-2 pr-4">Material</th>
+            <th className="py-2 pr-4">Produk</th>
             <th className="py-2 pr-4">Status</th>
           </tr>
         </thead>
@@ -26,7 +26,7 @@ export function UploadHistory() {
             <tr key={s.session_id} className="border-b">
               <td className="py-2 pr-4 font-medium">{s.file_name}</td>
               <td className="py-2 pr-4">{s.n_rows}</td>
-              <td className="py-2 pr-4">{s.n_materials_detected}</td>
+              <td className="py-2 pr-4">{s.n_products_detected}</td>
               <td className="py-2 pr-4">{s.status}</td>
             </tr>
           ))}

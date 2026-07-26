@@ -316,10 +316,11 @@ forecastiq/
 | run_id | UUID FK → forecast_runs | |
 | target_type | VARCHAR(20) | `product` / `material` |
 | target_id | UUID | |
-| service_level | NUMERIC | |
-| fill_rate | NUMERIC | |
-| stock_out_rate | NUMERIC | |
-| inventory_turnover | NUMERIC | |
+| scope | VARCHAR(20) | `baseline` (actual vs planning existing) / `forecastiq` (actual vs forecast ForecastIQ) — memisahkan kinerja EXISTING dari ForecastIQ (RECONCILIATION §Fase 7) |
+| service_level | NUMERIC | 1 − stock_out_rate |
+| fill_rate | NUMERIC | 1 − Σ kekurangan / Σ demand |
+| stock_out_rate | NUMERIC | proporsi periode kekurangan |
+| inventory_turnover | NUMERIC | Σ demand ÷ persediaan rata-rata |
 
 ### `overrides`
 | Kolom | Tipe | Keterangan |

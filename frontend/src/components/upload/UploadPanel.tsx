@@ -43,7 +43,7 @@ export function UploadPanel() {
         <div className="flex flex-col gap-3 rounded-lg border p-4">
           <p className="text-sm">
             <span className="font-medium">{result.n_rows}</span> baris ·{" "}
-            <span className="font-medium">{result.n_materials_detected}</span> material terdeteksi ·
+            <span className="font-medium">{result.n_products_detected}</span> produk terdeteksi ·
             status <span className="font-medium">{result.status}</span>
           </p>
 

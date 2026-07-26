@@ -123,13 +123,13 @@ describe("api.forecast", () => {
   it("createRun POST /forecast/runs dengan body JSON", async () => {
     const spy = mockFetch({ success: true, data: { run: {}, results: [] } });
 
-    await api.forecast.createRun({ material_ids: ["m1"], horizon: 30, method: null }, "tok");
+    await api.forecast.createRun({ product_ids: ["m1"], horizon: 30, method: null }, "tok");
 
     const [url, init] = spy.mock.calls[0];
     expect(String(url)).toMatch(/\/api\/v1\/forecast\/runs$/);
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({
-      material_ids: ["m1"],
+      product_ids: ["m1"],
       horizon: 30,
       method: null,
     });

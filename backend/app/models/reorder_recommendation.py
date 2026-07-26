@@ -32,6 +32,12 @@ class ReorderRecommendation(Base):
     reorder_point: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     recommended_order_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
+    # v3.0 — buffer stock, EOQ dinamis & total biaya (Bab III thesis)
+    buffer_stock: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    eoq_qty: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    ordering_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    holding_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    total_inventory_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

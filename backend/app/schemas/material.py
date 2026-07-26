@@ -6,6 +6,13 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class Dimension(BaseModel):
+    # float (bukan Decimal) supaya aman diserialisasi ke kolom JSONB
+    length: float = Field(gt=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+
+
 class MaterialCreate(BaseModel):
     code: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=200)
@@ -14,6 +21,9 @@ class MaterialCreate(BaseModel):
     lead_time_days: int = Field(default=0, ge=0)
     moq: Decimal = Field(default=Decimal(0), ge=0)
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
+    # v3.0 — kapasitas gudang (docs §6.7)
+    dimension: Dimension | None = Field(default=None)
+    qty_per_pallet: Decimal | None = Field(default=None, gt=0)
 
 
 class MaterialUpdate(BaseModel):
@@ -25,6 +35,8 @@ class MaterialUpdate(BaseModel):
     lead_time_days: int | None = Field(default=None, ge=0)
     moq: Decimal | None = Field(default=None, ge=0)
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
+    dimension: Dimension | None = Field(default=None)
+    qty_per_pallet: Decimal | None = Field(default=None, gt=0)
 
 
 class MaterialResponse(BaseModel):
@@ -38,3 +50,5 @@ class MaterialResponse(BaseModel):
     lead_time_days: int
     moq: Decimal
     manual_safety_stock: Decimal | None
+    dimension: dict | None = None
+    qty_per_pallet: Decimal | None = None

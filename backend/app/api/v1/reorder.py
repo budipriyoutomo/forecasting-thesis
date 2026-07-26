@@ -31,6 +31,11 @@ def _out(rec) -> dict:
         reorder_point=rec.reorder_point,
         recommended_order_qty=rec.recommended_order_qty,
         status=rec.status,
+        buffer_stock=getattr(rec, "buffer_stock", None),
+        eoq_qty=getattr(rec, "eoq_qty", None),
+        ordering_cost=getattr(rec, "ordering_cost", None),
+        holding_cost=getattr(rec, "holding_cost", None),
+        total_inventory_cost=getattr(rec, "total_inventory_cost", None),
     ).model_dump(mode="json")
 
 

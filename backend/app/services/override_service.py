@@ -38,9 +38,19 @@ def _snapshot_reorder(obj) -> dict:
     }
 
 
+def _snapshot_material_requirement(obj) -> dict:
+    return {
+        "forecast_qty": _json_safe(obj.forecast_qty),
+        "standard_usage_qty": _json_safe(obj.standard_usage_qty),
+        "actual_usage_qty": _json_safe(obj.actual_usage_qty),
+        "buffer_stock_pct": _json_safe(obj.buffer_stock_pct),
+    }
+
+
 SNAPSHOT_BUILDERS = {
     "forecast_result": _snapshot_forecast_result,
     "reorder_recommendation": _snapshot_reorder,
+    "material_requirement": _snapshot_material_requirement,  # Fase 8 (RECONCILIATION §Fase 8)
 }
 
 

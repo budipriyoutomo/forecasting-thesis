@@ -28,14 +28,21 @@ class ForecastResult(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("forecast_runs.id"), nullable=False, index=True
     )
-    material_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("materials.id"), nullable=False, index=True
+    # v3.0 (cutover Fase 9): forecasting objeknya PRODUK jadi — hanya `product_id`.
+    # Kolom legacy v2.0 `material_id` & `data_profile` (kuadran ADI/CV²) sudah di-drop
+    # di migration b8c9d0e1f2a3 (tidak lagi ditulis/dibaca jalur aktif v3.0).
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="COMPLETED")
-    data_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    method_used: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    method_used: Mapped[str | None] = mapped_column(String(30), nullable=True)  # v3.0: moving_average/.../lstm
     selection_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    mase: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    candidates_evaluated: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # v3.0 comparative, semua kandidat
+    mad: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    mfe: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    mse: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    mape: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    mase: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)  # opsional (COMPUTE_MASE)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     forecast_data: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

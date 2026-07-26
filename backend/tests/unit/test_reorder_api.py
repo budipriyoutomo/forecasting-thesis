@@ -1,5 +1,6 @@
 """
-Fase 5 — endpoint /api/v1/reorder (AGENTS.md §3, §4). Service di-override (fake).
+Swap v3.0 — endpoint /api/v1/reorder. Service di-override (fake), reorder per
+material dari breakdown BOM atas forecast produk.
 """
 import pytest
 
@@ -7,25 +8,25 @@ from app.api.deps import get_reorder_service
 from app.main import app
 from app.services.reorder_service import ReorderService
 from tests.unit.test_reorder_service import (
-    FakeConsumptionRepo,
+    FakeBomRepo,
     FakeForecastRepo,
     FakeMaterialRepo,
     FakeReorderRepo,
+    _bom,
     _material,
     _result,
-    _rows,
     _run,
 )
 
 USER_SUB = "00000000-0000-0000-0000-000000000001"
 
 
-def _override(run, results, materials, rows_by_material):
+def _override(run, results, boms_by_product, materials):
     service = ReorderService(
         reorder_repo=FakeReorderRepo(),
         forecast_repo=FakeForecastRepo(run, results),
+        boms=FakeBomRepo(boms_by_product),
         materials=FakeMaterialRepo(materials),
-        consumptions=FakeConsumptionRepo(rows_by_material),
     )
     app.dependency_overrides[get_reorder_service] = lambda: service
     return service
@@ -41,9 +42,9 @@ def _clear():
 async def test_generate_recommendations_201(client, auth_headers):
     _override(
         _run(rid="r1", user=USER_SUB),
-        [_result("m1")],
+        [_result("p1", [10, 12, 11, 9, 10, 11])],
+        {"p1": [_bom("p1", "m1", 1)]},
         [_material("m1", "RM-001", lead=4)],
-        {"m1": _rows([10, 12, 11, 9, 10, 11])},
     )
 
     res = await client.post(
@@ -61,14 +62,14 @@ async def test_generate_recommendations_201(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_generate_tanpa_auth_401(client):
-    _override(_run(rid="r1", user=USER_SUB), [], [], {})
+    _override(_run(rid="r1", user=USER_SUB), [], {}, [])
     res = await client.post("/api/v1/reorder/recommendations", json={"run_id": "r1"})
     assert res.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_generate_run_tidak_ada_404(client, auth_headers):
-    _override(None, [], [], {})
+    _override(None, [], {}, [])
     res = await client.post(
         "/api/v1/reorder/recommendations", headers=auth_headers, json={"run_id": "ghost"}
     )
@@ -80,9 +81,9 @@ async def test_generate_run_tidak_ada_404(client, auth_headers):
 async def test_list_recommendations_filter_status(client, auth_headers):
     service = _override(
         _run(rid="r1", user=USER_SUB),
-        [_result("m1"), _result("m2")],
+        [_result("p1", [10, 12, 11, 9, 10, 11])],
+        {"p1": [_bom("p1", "m1", 1), _bom("p1", "m2", 1)]},
         [_material("m1", "RM-001"), _material("m2", "RM-002")],
-        {"m1": _rows([10, 12, 11, 9, 10, 11]), "m2": _rows([10, 12, 11, 9, 10, 11])},
     )
     await service.generate_for_run(USER_SUB, "r1", current_stock={"m1": 0, "m2": 100000})
 

@@ -27,16 +27,15 @@ def build_forecast_xlsx(results) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Forecast"
-    ws.append(["material_id", "status", "method_used", "selection_mode", "demand_class", "mase", "explanation"])
+    ws.append(["product_id", "status", "method_used", "selection_mode", "mape", "mase", "explanation"])
     for r in results:
-        profile = r.data_profile or {}
         ws.append(
             [
-                str(r.material_id),
+                str(r.product_id),
                 r.status,
                 r.method_used,
                 r.selection_mode,
-                profile.get("demand_class"),
+                _num(r.mape),
                 _num(r.mase),
                 r.explanation,
             ]
@@ -50,7 +49,14 @@ def build_reorder_xlsx(recommendations) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Reorder"
-    ws.append(["material_id", "safety_stock", "reorder_point", "recommended_order_qty", "status"])
+    # Kolom EOQ/biaya (Fase 9) ditambah SETELAH `status` → kolom lama tidak bergeser
+    # (backward compat, larangan regresi). rec lama tanpa field baru → sel kosong.
+    ws.append(
+        [
+            "material_id", "safety_stock", "reorder_point", "recommended_order_qty", "status",
+            "buffer_stock", "eoq_qty", "ordering_cost", "holding_cost", "total_inventory_cost",
+        ]
+    )
     for rec in recommendations:
         ws.append(
             [
@@ -59,6 +65,11 @@ def build_reorder_xlsx(recommendations) -> bytes:
                 _num(rec.reorder_point),
                 _num(rec.recommended_order_qty),
                 rec.status,
+                _num(getattr(rec, "buffer_stock", None)),
+                _num(getattr(rec, "eoq_qty", None)),
+                _num(getattr(rec, "ordering_cost", None)),
+                _num(getattr(rec, "holding_cost", None)),
+                _num(getattr(rec, "total_inventory_cost", None)),
             ]
         )
     buffer = io.BytesIO()

@@ -1,7 +1,7 @@
 """
 Test klasifikasi ADI/CV² → kuadran Syntetos-Boylan (docs/ARCHITECTURE.md §6.2).
 """
-from app.services.forecasting.classification import classify
+from app.services.forecasting.legacy.classification import classify
 
 
 def test_smooth_pattern_classified_correctly(smooth_df):

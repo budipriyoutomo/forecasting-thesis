@@ -76,6 +76,35 @@ class MaterialCodeExistsError(AppError):
     code = "MATERIAL_CODE_EXISTS"
 
 
+class ProductNotFoundError(AppError):
+    status_code = 404
+    code = "PRODUCT_NOT_FOUND"
+
+
+class ProductCodeExistsError(AppError):
+    """Kode produk sudah dipakai produk lain (unik) — konflik saat create/import."""
+
+    status_code = 409
+    code = "PRODUCT_CODE_EXISTS"
+
+
+class BomNotFoundError(AppError):
+    """Breakdown material diminta tapi produk belum punya BOM terdaftar (docs §8)."""
+
+    status_code = 404
+    code = "BOM_NOT_FOUND"
+
+
+class WarehouseConfigNotFoundError(AppError):
+    status_code = 404
+    code = "WAREHOUSE_CONFIG_NOT_FOUND"
+
+
+# Catatan: WAREHOUSE_CAPACITY_EXCEEDED BUKAN HTTP error — dipakai sebagai flag
+# `is_within_capacity=false` di response 200 (docs/ARCHITECTURE.md §5, larangan #17),
+# jadi tidak ada exception class untuk itu (keputusan tetap di tangan planner).
+
+
 class SessionNotFoundError(AppError):
     status_code = 404
     code = "SESSION_NOT_FOUND"

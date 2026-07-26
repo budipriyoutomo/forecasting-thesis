@@ -1,9 +1,9 @@
 """
-Endpoint upload konsumsi raw material — /api/v1/uploads (Fase 3).
+Endpoint upload demand produk jadi — /api/v1/uploads (Fase 3 v3.0).
 
-POST upload CSV → validasi → simpan permanen + riwayat. GET riwayat & detail.
-Semua orkestrasi lewat UploadService (tidak inline). Lihat AGENTS.md §4 (envelope)
-dan docs/ARCHITECTURE.md §7 (storage flow).
+POST upload CSV (product_code/period/forecast_existing/planning/actual) → validasi →
+simpan permanen + demand_history. GET riwayat & detail. Semua orkestrasi lewat
+UploadService (tidak inline). Lihat AGENTS.md §4 (envelope) dan docs/ARCHITECTURE.md §7.
 """
 from fastapi import APIRouter, Depends, UploadFile
 

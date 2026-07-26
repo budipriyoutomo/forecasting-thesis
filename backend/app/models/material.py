@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Integer, Numeric, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -28,6 +28,9 @@ class Material(Base):
     lead_time_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     moq: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     manual_safety_stock: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    # v3.0 — kapasitas gudang (docs/ARCHITECTURE.md §4/§6.7)
+    dimension: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {length, width, height}
+    qty_per_pallet: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
