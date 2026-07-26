@@ -186,7 +186,13 @@ Fase 9 = dashboard diperluas + export diperluas + cutover final. Bagian **backen
 ### Keputusan
 1. **Dashboard additive, bukan rewrite.** `DashboardService` mendapat 2 repo opsional (`warehouse_repo`, `inventory_metrics_repo`, default `None`) → widget `warehouse` & `inventory_metrics` bernilai `null` bila repo tak disuntik, sehingga test & pemakaian v2.0 (4 argumen posisional) tidak putus. Ditambah ke ringkasan run terakhir: `total_inventory_cost` (Σ TIC reorder recs), `avg_mape` (metrik v3.0 di samping `avg_mase` legacy). Metrik inventory dirata-rata per scope (`baseline`/`forecastiq`).
 2. **Export backward-compatible.** Kolom EOQ/biaya (`buffer_stock`, `eoq_qty`, `ordering_cost`, `holding_cost`, `total_inventory_cost`) ditambah **setelah** kolom lama di reorder xlsx — `status` tetap kolom 5, jadi konsumen/tes lama tidak bergeser. Rec lama tanpa field baru → sel kosong (`getattr(..., None)`).
-3. **Cutover ditunda & butuh persetujuan user** (destruktif): drop kolom/tabel v2.0 (mis. `forecast_results.data_profile`, `consumption_history`) dan merge `migration/v3-thesis` → `main` tidak dilakukan otomatis — dicatat di TASK_BREAKDOWN §10 sebagai checklist terbuka.
+3. **Cutover butuh persetujuan user** (destruktif) — disetujui user 27 Juli 2026 ("sesuaikan dengan v3.0 saja dan tolong merge"), lihat sub-bagian di bawah.
+
+### Cutover ke v3.0-only (27 Juli 2026)
+1. **Drop kolom legacy** `forecast_results.data_profile` (kuadran ADI/CV² v2.0) dan `forecast_results.material_id` (+ index `ix_forecast_results_material_id`) via migration `b8c9d0e1f2a3`. Diverifikasi lebih dulu: kedua kolom **tidak ditulis** (`ForecastResult(...)` hanya mengisi `product_id`) dan **tidak dibaca/difilter** kode aktif; tak ada test yang mengisinya. Migration reversible (downgrade re-add kolom nullable + index). Model `forecast_result.py` disinkronkan (kolom dihapus).
+2. **`consumption_history` TIDAK di-drop.** Masih terjalin di jalur upload/ingestion raw-material v2.0 (`uploads.py`, `deps.py`, `cleanup_temp_uploads.py`, `reorder_service`, `preprocessing`) yang sengaja dipertahankan untuk forecasting raw material di luar scope thesis (§Keputusan Terbuka v3.0 poin 1/2). Meng-drop-nya = rewrite jalur itu, di luar maksud "sesuaikan v3.0 saja". Ditinjau ulang bila jalur v2.0 benar-benar dipensiunkan.
+3. **Engine legacy** (`engines/legacy/`, `forecasting/legacy/`) tetap ada, tidak dihapus (AGENTS.md larangan #16).
+4. **Merge** `migration/v3-thesis` → `main` (`--no-ff`, riwayat per-fase dipertahankan). Backend 332 test + frontend 53 test hijau sebelum merge.
 
 ---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*

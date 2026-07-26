@@ -144,14 +144,14 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 - [x] Export service — 🟡 **diperluas**: kolom `buffer_stock`/`eoq_qty`/`ordering_cost`/`holding_cost`/`total_inventory_cost` ditambah ke reorder xlsx **setelah** kolom lama (status tetap kolom 5 → backward compat).
 - [x] Frontend: widget `cost-summary` & `inventory-metrics` — `CostSummaryCard.tsx`, `InventoryMetricsTable.tsx` + hook `useMetrics.ts` + `api.metrics` + types + vitest (4 test, hijau). Dirakit ke halaman hasil forecast (`forecast/new/config`), tampil setelah reorder dihitung. `ExplanationBox`/pages produk/BOM/warehouse sudah dari fase sebelumnya.
 - [ ] `ExplanationBox` — logic penjelasan Comparative Selection (isi sudah v3.0; review perbandingan pemenang vs kandidat bila perlu).
-- [ ] **Cutover checklist** (lihat §0 poin 6) — **belum, butuh keputusan user (destruktif)**:
-  - [ ] Seluruh fase migrasi 1–8 PASSED (✅ 332 test hijau) — di staging/lingkungan mendekati production belum diverifikasi.
-  - [ ] Verifikasi image Docker backend dengan TensorFlow (LSTM) build & run benar (ukuran image, cold start).
-  - [ ] Putuskan bersama user: kolom/tabel v2.0 mana yang aman di-drop (mis. `forecast_results.data_profile` kuadran legacy, tabel `consumption_history` bila tak dipakai) — migration terpisah, terdokumentasi di `RECONCILIATION.md`.
-  - [ ] Merge `migration/v3-thesis` → `main`.
-  - [ ] Update `docs/TASK_BREAKDOWN.md` mencatat status migrasi selesai.
+- [x] **Cutover checklist** (lihat §0 poin 6) — disetujui user 27 Juli 2026:
+  - [x] Seluruh fase migrasi 1–8 PASSED (332 backend + 53 frontend hijau).
+  - [ ] Verifikasi image Docker backend dengan TensorFlow (LSTM) build & run — **belum** (deployment, di luar scope commit ini).
+  - [x] Drop kolom v2.0 yang aman: `forecast_results.data_profile` + `material_id` (migration `b8c9d0e1f2a3`, reversible). `consumption_history` **dipertahankan** (jalur raw-material v2.0 masih dipakai) — alasan di `RECONCILIATION.md` §Cutover.
+  - [x] Merge `migration/v3-thesis` → `main` (`--no-ff`).
+  - [x] Status migrasi dicatat di dokumen ini + `RECONCILIATION.md`.
 
-**Selesai jika:** aplikasi v3.0 berjalan penuh, dashboard & export mencerminkan seluruh fitur baru (backend ✅), cutover ke `main` selesai dengan jejak keputusan lengkap di `RECONCILIATION.md`.
+**Selesai:** aplikasi v3.0 berjalan penuh, dashboard & export mencerminkan seluruh fitur baru, cutover ke `main` selesai dengan jejak keputusan lengkap di `RECONCILIATION.md`. Sisa non-blocking: wiring UI lanjutan & verifikasi image Docker LSTM (deployment).
 
 ---
 
