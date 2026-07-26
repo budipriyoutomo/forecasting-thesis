@@ -4,6 +4,7 @@ import type { DashboardSummary } from "@/types/dashboard";
 import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
+import type { CostSummary, InventoryMetric } from "@/types/metrics";
 import type { Override, OverrideInput } from "@/types/override";
 import type { Product, ProductInput } from "@/types/product";
 import type {
@@ -155,6 +156,21 @@ export const api = {
   dashboard: {
     summary: (token: string): Promise<ApiResponse<DashboardSummary>> =>
       request<DashboardSummary>("/api/v1/dashboard/summary", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+  },
+
+  metrics: {
+    // Fase 7 — biaya & evaluasi kinerja inventory per run (docs/ARCHITECTURE.md §5).
+    costSummary: (runId: string, token: string): Promise<ApiResponse<CostSummary>> =>
+      request<CostSummary>(`/api/v1/forecast/runs/${runId}/cost-summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    inventory: (runId: string, token: string): Promise<ApiResponse<InventoryMetric[]>> =>
+      request<InventoryMetric[]>(`/api/v1/forecast/runs/${runId}/inventory-metrics`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),

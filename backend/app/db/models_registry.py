@@ -11,6 +11,7 @@ from app.models.consumption_history import ConsumptionHistory  # noqa: F401
 from app.models.demand_history import DemandHistory  # noqa: F401
 from app.models.forecast_result import ForecastResult  # noqa: F401
 from app.models.forecast_run import ForecastRun  # noqa: F401
+from app.models.inventory_metrics import InventoryMetric  # noqa: F401
 from app.models.material import Material  # noqa: F401
 from app.models.material_requirement import MaterialRequirement  # noqa: F401
 from app.models.product import Product  # noqa: F401

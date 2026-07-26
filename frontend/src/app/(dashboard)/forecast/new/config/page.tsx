@@ -3,12 +3,15 @@
 import { useState } from "react";
 
 import { MethodSelector } from "@/components/config/MethodSelector";
+import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
+import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { Button } from "@/components/ui/button";
 import { useExport } from "@/hooks/useExport";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
 import { useCreateForecastRun } from "@/hooks/useForecast";
+import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
 import { useGenerateReorder } from "@/hooks/useReorder";
 import { useWarehouseValidation } from "@/hooks/useWarehouse";
@@ -20,6 +23,11 @@ export default function ForecastConfigPage() {
   const warehouse = useWarehouseValidation();
   const exporter = useExport();
   const runId = run.data?.run.run_id;
+
+  // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
+  const metricsRunId = reorder.data && runId ? runId : null;
+  const cost = useCostSummary(metricsRunId);
+  const inventoryMetrics = useInventoryMetrics(metricsRunId);
 
   const [selected, setSelected] = useState<string[]>([]);
   const [horizon, setHorizon] = useState(30);
@@ -150,6 +158,14 @@ export default function ForecastConfigPage() {
               </div>
               {warehouse.isError && <p className="text-sm text-destructive">{warehouse.error.message}</p>}
               {warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} />}
+            </section>
+          )}
+
+          {reorder.data && (cost.data || inventoryMetrics.data) && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-lg font-medium">Biaya & Kinerja Inventory</h2>
+              {cost.data && <CostSummaryCard summary={cost.data} />}
+              {inventoryMetrics.data && <InventoryMetricsTable metrics={inventoryMetrics.data} />}
             </section>
           )}
         </>

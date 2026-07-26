@@ -1,5 +1,6 @@
 """Fase 2 v3.0 — endpoint /api/v1/boms. RBAC: tulis hanya admin."""
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import jwt
 import pytest
@@ -76,3 +77,42 @@ async def test_list_bom_filter_product(client):
     assert res.status_code == 200
     data = res.json()["data"]
     assert {b["id"] for b in data} == {"b1"}
+
+
+@pytest.mark.asyncio
+async def test_get_bom_by_id(client):
+    _override([FakeBom(id="b1", product_id="p1", material_id="m1", qty_per_unit=Decimal("2"))])
+    res = await client.get("/api/v1/boms/b1", headers=_headers("viewer"))
+    assert res.status_code == 200
+    assert res.json()["data"]["id"] == "b1"
+
+
+@pytest.mark.asyncio
+async def test_update_bom_admin(client):
+    _override([FakeBom(id="b1", product_id="p1", material_id="m1", qty_per_unit=Decimal("2"))])
+    res = await client.put(
+        "/api/v1/boms/b1", headers=_headers("admin"), json={"qty_per_unit": 5}
+    )
+    assert res.status_code == 200
+    assert float(res.json()["data"]["qty_per_unit"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_delete_bom_admin(client):
+    _override([FakeBom(id="b1", product_id="p1", material_id="m1")])
+    res = await client.delete("/api/v1/boms/b1", headers=_headers("admin"))
+    assert res.status_code == 200
+    assert res.json()["data"]["deleted"] is True
+
+
+@pytest.mark.asyncio
+async def test_import_boms_admin(client):
+    _override([])
+    csv = b"product_code,material_code,qty_per_unit\nP1,M1,3\n"
+    res = await client.post(
+        "/api/v1/boms/import",
+        headers=_headers("admin"),
+        files={"file": ("boms.csv", csv, "text/csv")},
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["imported"] == 1

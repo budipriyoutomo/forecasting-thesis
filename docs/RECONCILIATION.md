@@ -141,4 +141,52 @@ Daftar error code final v3.1 (union dari v3.0 + 6 keputusan git + 1 tambahan bar
 Sesi ini **tidak punya GitHub connector tersambung** (dicek via `ListConnectors` — kosong; dicari di marketplace via `SearchMcpRegistry` — tidak ditemukan konektor GitHub yang bisa langsung dipasang). Artinya saya belum bisa membuka PR langsung ke `budipriyoutomo/forecasting-thesis`. User diminta untuk memeriksa **Settings → Connectors** di claude.ai untuk opsi GitHub (kalau tersedia di organisasi/plan-nya) dan mengaktifkannya untuk chat ini; sementara itu dokumen final tetap disimpan di project ini dan dikirim sebagai file agar bisa di-commit manual.
 
 ---
+
+## Fase Migrasi 7 — Total Biaya & Evaluasi Kinerja Inventory (26 Juli 2026)
+
+### Konteks
+Fase Migrasi 7 (net-new) mengimplementasikan `cost_service.py`, `inventory_metrics_service.py`, model `inventory_metrics`, dan endpoint `GET /forecast/runs/{run_id}/cost-summary` + `GET /forecast/runs/{run_id}/inventory-metrics`. Rumus TIC & % penghematan sudah baku di `ARCHITECTURE.md` §6.8; rumus 4 metrik kinerja inventory (service level, fill rate, stock out rate, inventory turnover) **tidak** dispesifikasikan di doc maupun ditemukan di `Simulasi Thesis.xlsx` (hanya disebut nama di sheet "Bab II Penelitian Terdahulu"). Keputusan di bawah diambil bersama user (26 Juli 2026) agar bisa dipertanggungjawabkan di thesis.
+
+### Keputusan
+1. **`cost_service.py` tidak menduplikasi rumus.** `compute_tic`, `compute_savings_pct`, `compute_eoq` sudah ada di `reorder_service.py` (sisa Fase 5) — `cost_service.py` meng-*import* & mengorkestrasi, bukan menyalin (hindari dua sumber kebenaran rumus). `CostService.get_cost_summary` mengagregasi TIC usulan dari `reorder_recommendations` tersimpan (ForecastIQ) dan menghitung TIC baseline dari seri **planning** perusahaan (planning → BOM breakdown → EOQ per material, simetris dengan jalur forecast), lalu `savings_pct = (TIC_baseline − TIC_usulan) / TIC_baseline × 100`.
+2. **Rumus 4 metrik kinerja inventory** (fungsi murni, diverifikasi manual, AGENTS.md §3), atas dua deret selaras `demand`/`supply` per periode:
+   - `shortage_t = max(0, demand_t − supply_t)`
+   - `fill_rate = 1 − Σshortage_t / Σdemand_t` (β, berbasis unit)
+   - `stock_out_rate = jumlah periode(shortage_t > 0) / T`
+   - `service_level = 1 − stock_out_rate` (α, berbasis siklus/periode)
+   - `inventory_turnover = Σdemand_t / rata-rata(supply_t)` (throughput ÷ persediaan rata-rata sebagai proksi)
+   - Kasus batas: `Σdemand = 0` → fill_rate & service_level = 1, stock_out_rate = 0; `rata-rata(supply) = 0` → turnover = 0. Nilai fraksi 0..1, dibulatkan 4 desimal.
+3. **Dua scope per run** (user memilih "keduanya", supaya dashboard bisa membuktikan perbaikan kinerja thesis) — tabel `inventory_metrics` mendapat kolom tambahan **`scope`** (`baseline` / `forecastiq`), additive di luar skema §4 doc:
+   - `scope='baseline'` (per **produk**): `demand=actual`, `supply=planning` dari `demand_history` — kinerja inventory kondisi EXISTING perusahaan.
+   - `scope='forecastiq'` (per **produk**): `demand=actual`, `supply=forecast ForecastIQ` dari `forecast_results.forecast_data`, diselaraskan per periode (`date`). Hanya periode yang beririsan yang dihitung; bila horizon forecast run tidak beririsan dengan periode historis `demand_history`, baris `forecastiq` tidak dihasilkan (bukan error). Pada data simulasi thesis (forecast/planning/actual di periode yang sama) irisan tersedia → angka riil.
+   - Fungsi metrik murni identik untuk kedua scope; hanya sumber `supply` yang berbeda. `scope` membuat penambahan sumber supply lain di masa depan cukup ubah orkestrasi, tanpa ubah engine.
+4. **Endpoint `GET` (bukan `POST`)** sesuai kontrak §5 — metrik & cost-summary dihitung dari data run tersimpan tanpa input request-time (beda dari reorder yang butuh `current_stock`), jadi larangan #18 tidak berlaku; dihitung lazily saat `GET`, hasil `inventory_metrics` dipersist (replace-per-run) untuk dashboard.
+
+---
+
+## Fase Migrasi 8 — Planner Override untuk Entitas Baru (26 Juli 2026)
+
+### Konteks
+`overrides` + `override_service.py` (append-only, `reason` wajib, `OVERRIDE_REASON_REQUIRED`, `OVERRIDE_TARGET_NOT_FOUND`) **dipertahankan penuh** dari v2.0 — tidak ada perubahan skema/logic inti. Tambahan v3.0: `target_type` kini bisa merujuk **`material_requirement`** (selain `forecast_result`/`reorder_recommendation`), sesuai AGENTS.md §5 "setiap forecast_result, material_requirement, dan reorder_recommendation harus bisa di-override".
+
+### Keputusan
+1. **Tanpa tabel/kolom baru.** Mekanisme polimorfik yang sudah ada (dict `resolvers` target_type→fetcher + `SNAPSHOT_BUILDERS` target_type→snapshot) cukup diperluas satu entri, bukan ditulis ulang.
+2. **Resolver** `material_requirement` → `SqlMaterialRequirementRepository.get_requirement` (sudah ada sejak Fase 5), didaftarkan di `deps.py` (TODO Fase 8 di komentar deps dihapus).
+3. **Snapshot builder** `_snapshot_material_requirement` menyimpan `forecast_qty`, `standard_usage_qty`, `actual_usage_qty`, `buffer_stock_pct` sebagai `previous_value` (audit trail). Data asli `material_requirements` tidak diubah (append-only).
+4. **Schema** `OverrideCreateRequest.target_type` (Literal) diperluas dengan `material_requirement` — nilai di luar tiga itu tetap otomatis 422.
+5. `OVERRIDE_TARGET_NOT_FOUND` tervalidasi juga untuk `target_type` baru (test regresi + test baru). Tidak ada error code baru.
+
+---
+
+## Fase Migrasi 9 — Dashboard & Export (backend) (27 Juli 2026)
+
+### Konteks
+Fase 9 = dashboard diperluas + export diperluas + cutover final. Bagian **backend** (dashboard summary + export kolom) dikerjakan lebih dulu (TDD); frontend widget baru & cutover destruktif menyusul (butuh keputusan user).
+
+### Keputusan
+1. **Dashboard additive, bukan rewrite.** `DashboardService` mendapat 2 repo opsional (`warehouse_repo`, `inventory_metrics_repo`, default `None`) → widget `warehouse` & `inventory_metrics` bernilai `null` bila repo tak disuntik, sehingga test & pemakaian v2.0 (4 argumen posisional) tidak putus. Ditambah ke ringkasan run terakhir: `total_inventory_cost` (Σ TIC reorder recs), `avg_mape` (metrik v3.0 di samping `avg_mase` legacy). Metrik inventory dirata-rata per scope (`baseline`/`forecastiq`).
+2. **Export backward-compatible.** Kolom EOQ/biaya (`buffer_stock`, `eoq_qty`, `ordering_cost`, `holding_cost`, `total_inventory_cost`) ditambah **setelah** kolom lama di reorder xlsx — `status` tetap kolom 5, jadi konsumen/tes lama tidak bergeser. Rec lama tanpa field baru → sel kosong (`getattr(..., None)`).
+3. **Cutover ditunda & butuh persetujuan user** (destruktif): drop kolom/tabel v2.0 (mis. `forecast_results.data_profile`, `consumption_history`) dan merge `migration/v3-thesis` → `main` tidak dilakukan otomatis — dicatat di TASK_BREAKDOWN §10 sebagai checklist terbuka.
+
+---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*

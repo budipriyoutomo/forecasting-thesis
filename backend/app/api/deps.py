@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.repositories.bom_repository import SqlBomRepository
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
 from app.repositories.forecast_repository import SqlForecastRepository
+from app.repositories.inventory_metrics_repository import SqlInventoryMetricsRepository
 from app.repositories.material_repository import SqlMaterialRepository
 from app.repositories.material_requirement_repository import SqlMaterialRequirementRepository
 from app.repositories.override_repository import SqlOverrideRepository
@@ -25,7 +26,9 @@ from app.repositories.warehouse_repository import (
 )
 from app.services.auth_service import AuthService
 from app.services.bom_service import BomService
+from app.services.cost_service import CostService
 from app.services.dashboard_service import DashboardService
+from app.services.inventory_metrics_service import InventoryMetricsService
 from app.services.export_service import ExportService
 from app.services.forecast_run_service import ForecastRunService
 from app.services.material_service import MaterialService
@@ -152,22 +155,45 @@ def get_warehouse_service(session: AsyncSession = Depends(get_db)) -> WarehouseS
     )
 
 
+def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
+    return CostService(
+        forecast_repo=SqlForecastRepository(session),
+        reorder_repo=SqlReorderRepository(session),
+        demand_repo=SqlDemandHistoryRepository(session),
+        boms=SqlBomRepository(session),
+        products=SqlProductRepository(session),
+    )
+
+
+def get_inventory_metrics_service(session: AsyncSession = Depends(get_db)) -> InventoryMetricsService:
+    return InventoryMetricsService(
+        forecast_repo=SqlForecastRepository(session),
+        demand_repo=SqlDemandHistoryRepository(session),
+        products=SqlProductRepository(session),
+        metrics_repo=SqlInventoryMetricsRepository(session),
+    )
+
+
 def get_dashboard_service(session: AsyncSession = Depends(get_db)) -> DashboardService:
     return DashboardService(
         materials=SqlMaterialRepository(session),
         forecast_repo=SqlForecastRepository(session),
         reorder_repo=SqlReorderRepository(session),
         override_repo=SqlOverrideRepository(session),
+        warehouse_repo=SqlWarehouseValidationRepository(session),
+        inventory_metrics_repo=SqlInventoryMetricsRepository(session),
     )
 
 
 def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideService:
     forecast_repo = SqlForecastRepository(session)
     reorder_repo = SqlReorderRepository(session)
+    requirement_repo = SqlMaterialRequirementRepository(session)
     # Resolver polimorfik: target_type → cara mengambil objek target dari DB.
-    # (material_requirement menyusul di Fase 8 — perlu Literal schema + snapshot builder.)
+    # material_requirement ditambah di Fase 8 (RECONCILIATION §Fase 8).
     resolvers = {
         "forecast_result": forecast_repo.get_result,
         "reorder_recommendation": reorder_repo.get_recommendation,
+        "material_requirement": requirement_repo.get_requirement,
     }
     return OverrideService(SqlOverrideRepository(session), resolvers)

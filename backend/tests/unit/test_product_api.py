@@ -84,3 +84,34 @@ async def test_get_product_tidak_ada_404(client):
     res = await client.get("/api/v1/products/nope", headers=_headers("viewer"))
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_update_product_admin(client):
+    _override([FakeProduct(id="p1", code="KBYPL 200", name="Lama", unit="PCS")])
+    res = await client.put(
+        "/api/v1/products/p1", headers=_headers("admin"), json={"name": "Baru"}
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["name"] == "Baru"
+
+
+@pytest.mark.asyncio
+async def test_delete_product_admin(client):
+    _override([FakeProduct(id="p1", code="KBYPL 200", name="X", unit="PCS")])
+    res = await client.delete("/api/v1/products/p1", headers=_headers("admin"))
+    assert res.status_code == 200
+    assert res.json()["data"]["deleted"] is True
+
+
+@pytest.mark.asyncio
+async def test_import_products_admin(client):
+    _override([])
+    csv = b"code,name,unit\nKBYPL 200,KIN Yogurt 200ml,PCS\nKBYPL 700,KIN Yogurt 700ml,PCS\n"
+    res = await client.post(
+        "/api/v1/products/import",
+        headers=_headers("admin"),
+        files={"file": ("products.csv", csv, "text/csv")},
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["imported"] == 2
