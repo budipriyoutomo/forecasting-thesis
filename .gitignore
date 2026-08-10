@@ -30,3 +30,6 @@ out/
 
 # Claude Code (setting lokal per-mesin; commands/ tetap ikut repo)
 .claude/settings.local.json
+
+# Baseline visual & harness screenshot untuk redesign frontend (lokal, tidak di-commit)
+.redesign/

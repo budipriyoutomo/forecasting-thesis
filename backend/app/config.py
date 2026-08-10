@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
 
+    # Login lokal tanpa Supabase Auth — DEVELOPMENT SAJA (app/services/dev_auth.py).
+    # Diabaikan kalau ENVIRONMENT != development, jadi aman ikut ter-commit di .env.example.
+    DEV_AUTH_ENABLED: bool = False
+    DEV_AUTH_PASSWORD: str = "demo1234"  # password bersama user demo hasil seed
+
     # Upload
     MAX_UPLOAD_SIZE_MB: int = 10
     UPLOAD_MIN_ROWS: int = 10  # minimum baris di file agar tidak INSUFFICIENT_DATA saat upload

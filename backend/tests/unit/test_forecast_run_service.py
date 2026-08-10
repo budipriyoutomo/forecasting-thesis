@@ -6,6 +6,7 @@ tiap produk menghasilkan forecast, mode manual (sukses & UNSUPPORTED),
 INSUFFICIENT_DATA per-produk, 1 produk gagal tak menggagalkan run, 404 produk,
 dan breakdown BOM → material_requirements.
 """
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -56,8 +57,16 @@ class FakeRequirementRepo:
         self.by_run = {}
 
     async def replace_for_run(self, run_id, rows):
+        # `id` di DB diisi server_default gen_random_uuid(); tanpa DB kita isi
+        # sendiri supaya `target_id` untuk override tetap ada di test.
+        for row in rows:
+            if getattr(row, "id", None) is None:
+                row.id = uuid.uuid4()
         self.by_run[str(run_id)] = list(rows)
         return len(rows)
+
+    async def list_by_run(self, run_id):
+        return self.by_run.get(str(run_id), [])
 
 
 class FakeForecastRepo:
@@ -193,6 +202,48 @@ async def test_breakdown_bom_menghasilkan_material_requirements(smooth_df):
     assert set(by_material) == {"M1", "M2"}
     # M1 = 2 × total forecast, M2 = 1 × total forecast → M1 = 2 × M2
     assert by_material["M1"] == pytest.approx(2 * by_material["M2"])
+
+
+@pytest.mark.asyncio
+async def test_list_requirements_mengembalikan_hasil_breakdown(smooth_df):
+    reqs = FakeRequirementRepo()
+    svc = _service(
+        [_product("p1", "SKU-001")],
+        {"p1": _rows(smooth_df)},
+        boms_by_product={"p1": [_bom("p1", "M1", 2), _bom("p1", "M2", 1)]},
+        requirements=reqs,
+    )
+    run, _ = await svc.create_run(USER, ["p1"], horizon=7, horizon_unit="days", method=None)
+
+    rows = await svc.list_requirements(USER, str(run.id))
+
+    assert {r.material_id for r in rows} == {"M1", "M2"}
+
+
+@pytest.mark.asyncio
+async def test_list_requirements_run_tidak_ada_404(smooth_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)}, requirements=FakeRequirementRepo())
+
+    with pytest.raises(ForecastRunNotFoundError):
+        await svc.list_requirements(USER, "ghost")
+
+
+@pytest.mark.asyncio
+async def test_list_requirements_run_milik_user_lain_403(smooth_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)}, requirements=FakeRequirementRepo())
+    run, _ = await svc.create_run(USER, ["p1"], horizon=7, horizon_unit="days", method=None)
+
+    with pytest.raises(ForbiddenRoleError):
+        await svc.list_requirements(OTHER, str(run.id))
+
+
+@pytest.mark.asyncio
+async def test_list_requirements_tanpa_repo_mengembalikan_kosong(smooth_df):
+    # Repo requirements opsional (pola sama dgn _build_requirements) — jangan meledak.
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+    run, _ = await svc.create_run(USER, ["p1"], horizon=7, horizon_unit="days", method=None)
+
+    assert await svc.list_requirements(USER, str(run.id)) == []
 
 
 @pytest.mark.asyncio

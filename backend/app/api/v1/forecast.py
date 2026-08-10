@@ -23,6 +23,7 @@ from app.schemas.forecast import (
     ForecastResultOut,
     ForecastRunRequest,
     ForecastRunSummary,
+    MaterialRequirementOut,
 )
 from app.services.forecast_run_service import ForecastRunService
 from app.services.forecasting import registry
@@ -103,6 +104,32 @@ async def get_forecast_run(
     return {
         "success": True,
         "data": {"run": _summary(run, results), "results": [_result_out(r) for r in results]},
+    }
+
+
+@router.get("/runs/{run_id}/material-requirements")
+async def list_material_requirements(
+    run_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ForecastRunService = Depends(get_forecast_run_service),
+):
+    """Kebutuhan material hasil breakdown BOM per run — dibaca planner sebelum
+    override (`target_type="material_requirement"`)."""
+    rows = await service.list_requirements(current_user.user_id, run_id)
+    return {
+        "success": True,
+        "data": [
+            MaterialRequirementOut(
+                id=str(r.id),
+                run_id=str(r.run_id),
+                material_id=str(r.material_id),
+                forecast_qty=r.forecast_qty,
+                standard_usage_qty=r.standard_usage_qty,
+                actual_usage_qty=r.actual_usage_qty,
+                buffer_stock_pct=r.buffer_stock_pct,
+            ).model_dump(mode="json")
+            for r in rows
+        ],
     }
 
 

@@ -55,6 +55,46 @@ def _candidate_row(method: str, r: EngineResult) -> dict:
     return {"method": method, "mad": r.mad, "mfe": r.mfe, "mse": r.mse, "mape": r.mape, "mase": r.mase}
 
 
+def _fmt_metric(value: float | None, metric: str) -> str:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "tak terdefinisi"
+    return f"{value:.2f}%" if metric == "mape" else f"{value:.2f}"
+
+
+def _comparison_note(winner: str, metric: str, candidates: list[dict]) -> str:
+    """Narasi kenapa pemenang menang — dasar perbandingan yang tersimpan di
+    `candidates_evaluated`, ditulis untuk planner non-teknis (PRD FR-3.4/3.5).
+
+    Hanya untuk mode otomatis: mode manual tidak membandingkan apa pun.
+    """
+    key = "mfe" if metric == "mfe_abs" else metric
+    label = "MFE (nilai mutlak)" if metric == "mfe_abs" else metric.upper()
+    ranked = sorted(candidates, key=lambda c: _ranking_key(c, metric))
+
+    winner_row = next((c for c in ranked if c["method"] == winner), None)
+    winner_value = _fmt_metric(winner_row.get(key) if winner_row else None, key)
+    note = (
+        f"Dipilih otomatis: {winner} menang atas {len(candidates)} metode yang "
+        f"dibandingkan, dengan {label} terendah ({winner_value})."
+    )
+
+    runner_up = next((c for c in ranked if c["method"] != winner), None)
+    if runner_up is not None:
+        note += (
+            f" Terbaik berikutnya {runner_up['method']} "
+            f"({_fmt_metric(runner_up.get(key), key)})."
+        )
+    return note
+
+
+def _ranking_key(candidate: dict, metric: str) -> float:
+    key = "mfe" if metric == "mfe_abs" else (metric if metric in _VALID_RANKING else "mape")
+    value = candidate.get(key)
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return float("inf")
+    return abs(float(value)) if metric == "mfe_abs" else float(value)
+
+
 def _completed(method: str, mode: str, r: EngineResult, candidates: list[dict]) -> ForecastResultRecord:
     return ForecastResultRecord(
         status="COMPLETED",
@@ -115,4 +155,9 @@ def run_forecast_for_product(
     metric = settings.FORECAST_RANKING_METRIC
     method_name, result = min(evaluated, key=lambda item: _ranking_value(item[1], metric))
     candidates = [_candidate_row(name, r) for name, r in evaluated]
-    return _completed(method_name, "auto", result, candidates)
+    record = _completed(method_name, "auto", result, candidates)
+    # Narasi perbandingan di depan penjelasan engine — planner perlu tahu dasar
+    # pemilihannya lebih dulu, baru karakteristik metodenya.
+    note = _comparison_note(method_name, metric, candidates)
+    record.explanation = f"{note} {record.explanation}".strip() if record.explanation else note
+    return record

@@ -1,5 +1,5 @@
 """
-Fase 3 — repositories upload/consumption dengan AsyncSession di-mock.
+Fase 3 — repository upload session dengan AsyncSession di-mock.
 """
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.repositories.upload_session_repository import (
-    SqlConsumptionHistoryRepository,
     SqlUploadSessionRepository,
 )
 
@@ -79,15 +78,3 @@ async def test_save_flush():
     assert await repo.save(upload) is upload
     session.flush.assert_awaited_once()
 
-
-@pytest.mark.asyncio
-async def test_consumption_bulk_add():
-    session = _session()
-    repo = SqlConsumptionHistoryRepository(session)
-    rows = [object(), object()]
-
-    count = await repo.bulk_add(rows)
-
-    assert count == 2
-    session.add_all.assert_called_once_with(rows)
-    session.flush.assert_awaited_once()

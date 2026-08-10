@@ -8,7 +8,7 @@ PIP  := $(abspath $(VENV))/pip
 
 .PHONY: dev backend frontend install venv install-backend install-frontend \
         test test-backend test-frontend cov lint typecheck \
-        migrate revision up down logs clean help
+        migrate revision seed-users up down logs clean help
 
 # Default: jalanin frontend + backend bareng
 dev:
@@ -81,6 +81,11 @@ migrate:
 	@echo "🧬 Alembic upgrade head..."
 	cd backend && $(abspath $(VENV))/alembic upgrade head
 
+# User demo per role untuk development (butuh migrate dulu). Idempoten.
+seed-users:
+	@echo "👤 Seed user demo (development)..."
+	cd backend && $(PY) -m app.scripts.seed_dev_users
+
 # Bikin revisi baru: make revision m="tambah tabel forecast_results"
 revision:
 	@test -n "$(m)" || (echo "❌ Pakai: make revision m=\"pesan migrasi\"" && exit 1)
@@ -115,5 +120,6 @@ help:
 	@echo "make typecheck  → tsc --noEmit frontend"
 	@echo "make migrate    → alembic upgrade head"
 	@echo "make revision   → alembic revision --autogenerate m=\"pesan\""
+	@echo "make seed-users → user demo per role untuk development"
 	@echo "make up/down    → docker compose up -d / down"
 	@echo "make clean      → hapus cache pytest/next/__pycache__"

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 
 @router.post("", status_code=201)
-async def upload_consumption_history(
+async def upload_demand_history(
     file: UploadFile,
     current_user: CurrentUser = Depends(get_current_user),
     service: UploadService = Depends(get_upload_service),

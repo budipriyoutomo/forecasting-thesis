@@ -585,6 +585,12 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRE_HOURS=24
 MAX_UPLOAD_SIZE_MB=10
 
+# Dev login lokal (tanpa Supabase Auth) — hanya berlaku saat ENVIRONMENT=development.
+# Di environment lain flag ini diabaikan; verifikasi kredensial tetap ke Supabase Auth.
+# Akun demo per role dibuat oleh `python -m app.scripts.seed_dev_users`.
+DEV_AUTH_ENABLED=false
+DEV_AUTH_PASSWORD=demo1234
+
 # EOQ & Cost
 DEFAULT_ORDERING_COST=...
 DEFAULT_HOLDING_COST_RATE=...

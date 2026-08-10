@@ -1,5 +1,5 @@
 """
-Helper bersama untuk menyiapkan time series dari `consumption_history` mentah.
+Helper bersama untuk menyiapkan time series harian dari data mentah.
 Dipakai oleh classification.py dan semua fungsi engine (bukan "metode
 forecasting" itu sendiri — jadi tidak melanggar aturan 1-fungsi-1-metode di
 AGENTS.md §5, ini murni utilitas pra-pemrosesan yang dipakai bersama).
@@ -10,8 +10,7 @@ import pandas as pd
 def to_daily_series(df: pd.DataFrame) -> pd.Series:
     """
     Ubah df (kolom `date`, `quantity`) jadi Series harian penuh — tanggal
-    tanpa transaksi diisi 0. Dipakai engine legacy v2.0 (ADI/CV², intermittent)
-    dan reorder demand_stats.
+    tanpa transaksi diisi 0. Dipakai engine legacy v2.0 (ADI/CV², intermittent).
     """
     working = df.copy()
     working["date"] = pd.to_datetime(working["date"])

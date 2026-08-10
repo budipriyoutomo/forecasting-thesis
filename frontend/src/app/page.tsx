@@ -1,13 +1,7 @@
-import { BackendStatus } from "@/components/dashboard/BackendStatus";
+import { redirect } from "next/navigation";
 
+// Root bukan halaman sendiri: langsung ke dashboard. Middleware yang memutuskan
+// apakah user perlu dilempar ke /login (lihat src/middleware.ts).
 export default function HomePage() {
-  return (
-    <main className="container flex min-h-screen flex-col justify-center gap-3 py-16">
-      <h1 className="text-2xl font-semibold">ForecastIQ</h1>
-      <p className="text-muted-foreground">
-        Forecasting raw material &amp; inventory untuk tim PPIC — scaffold Fase 0.
-      </p>
-      <BackendStatus />
-    </main>
-  );
+  redirect("/dashboard");
 }

@@ -23,7 +23,7 @@ class SqlMaterialRepository:
         return result.scalar_one_or_none()
 
     async def map_codes_to_ids(self, codes: set[str]) -> dict[str, str]:
-        """Peta code → id untuk kode yang terdaftar (untuk resolusi consumption_history)."""
+        """Peta code → id untuk kode yang terdaftar (dipakai saat import master data)."""
         if not codes:
             return {}
         result = await self._session.execute(

@@ -1,37 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 import { StatTile } from "@/components/dashboard/StatTile";
-import { Button } from "@/components/ui/button";
-import { useMe, logout } from "@/hooks/useAuth";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { data: user } = useMe();
   const { data: summary, isPending, isError } = useDashboardSummary();
 
-  const onLogout = () => {
-    logout();
-    router.push("/login");
-  };
-
   return (
-    <main className="container flex min-h-screen flex-col gap-6 py-16">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          {user && (
-            <p className="text-sm text-muted-foreground">
-              {user.name} — {user.role}
-            </p>
-          )}
-        </div>
-        <Button variant="outline" size="sm" onClick={onLogout}>
-          Keluar
-        </Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-semibold">Dashboard</h1>
 
       {isPending && <p className="text-sm text-muted-foreground">Memuat ringkasan…</p>}
       {isError && <p className="text-sm text-destructive">Gagal memuat ringkasan dashboard.</p>}
@@ -70,6 +47,6 @@ export default function DashboardPage() {
           </div>
         </>
       )}
-    </main>
+    </div>
   );
 }

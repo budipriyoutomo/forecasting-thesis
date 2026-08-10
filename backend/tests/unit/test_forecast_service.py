@@ -63,3 +63,27 @@ def test_manual_gagal_tidak_fallback(smooth_df):
 def test_insufficient_data_status(too_short_df):
     record = run_forecast_for_product(too_short_df, horizon=7, requested_method=None)
     assert record.status == "INSUFFICIENT_DATA"
+
+
+def test_auto_mode_explanation_menyebut_dasar_perbandingan(smooth_df):
+    """Mode otomatis harus menjelaskan MENGAPA pemenang menang, bukan cuma
+    menyalin penjelasan engine — `candidates_evaluated` disimpan justru untuk
+    transparansi ini (docs/ARCHITECTURE.md §4 kolom candidates_evaluated)."""
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
+
+    assert record.explanation
+    exp = record.explanation.lower()
+    assert record.method_used in exp  # pemenang disebut
+    assert "mape" in exp  # metrik ranking yang dipakai
+    assert str(len(record.candidates_evaluated)) in exp  # berapa metode dibandingkan
+    # runner-up disebut agar planner tahu selisihnya tipis atau jauh
+    runner_up = sorted(record.candidates_evaluated, key=lambda c: c["mape"])[1]
+    assert runner_up["method"] in exp
+
+
+def test_manual_mode_explanation_tidak_mengaku_membandingkan(smooth_df):
+    """Mode manual tidak membandingkan apa pun — jangan tempel narasi perbandingan."""
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method="moving_average")
+
+    assert record.explanation
+    assert "dibandingkan" not in record.explanation.lower()

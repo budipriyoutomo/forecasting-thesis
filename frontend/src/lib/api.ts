@@ -1,7 +1,7 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { DashboardSummary } from "@/types/dashboard";
-import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
+import type { ForecastRunInput, ForecastRunResponse, MaterialRequirement } from "@/types/forecast";
 import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { CostSummary, InventoryMetric } from "@/types/metrics";
@@ -192,6 +192,16 @@ export const api = {
 
     getRun: (runId: string, token: string): Promise<ApiResponse<ForecastRunResponse>> =>
       request<ForecastRunResponse>(`/api/v1/forecast/runs/${runId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    // Kebutuhan material hasil breakdown BOM — sumber `target_id` untuk override.
+    materialRequirements: (
+      runId: string,
+      token: string,
+    ): Promise<ApiResponse<MaterialRequirement[]>> =>
+      request<MaterialRequirement[]>(`/api/v1/forecast/runs/${runId}/material-requirements`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),

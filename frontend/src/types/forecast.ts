@@ -6,6 +6,17 @@ export interface ForecastPoint {
   upper: number;
 }
 
+// Satu metode yang ikut dibandingkan di mode otomatis (Comparative Selection).
+// Mode manual mengisi satu entri saja: metode yang dipaksa user.
+export interface ForecastCandidate {
+  method: string;
+  mad: number | null;
+  mfe: number | null;
+  mse: number | null;
+  mape: number | null;
+  mase: number | null;
+}
+
 export interface ForecastResult {
   product_id: string;
   status: "COMPLETED" | "INSUFFICIENT_DATA" | "MODEL_SELECTION_FAILED";
@@ -16,7 +27,7 @@ export interface ForecastResult {
   mse: number | null;
   mape: number | null;
   mase: number | null;
-  candidates_evaluated: Record<string, unknown>[] | null;
+  candidates_evaluated: ForecastCandidate[] | null;
   explanation: string | null;
   forecast: ForecastPoint[];
   metrics: Record<string, unknown> | null;
@@ -42,4 +53,16 @@ export interface ForecastRunInput {
   horizon: number;
   horizon_unit?: string;
   method?: string | null;
+}
+
+// Hasil breakdown BOM per run. Nilai Decimal diserialisasi backend sebagai string.
+// `id` = target_id saat override dengan target_type "material_requirement".
+export interface MaterialRequirement {
+  id: string;
+  run_id: string;
+  material_id: string;
+  forecast_qty: string;
+  standard_usage_qty: string | null;
+  actual_usage_qty: string | null;
+  buffer_stock_pct: string | null;
 }

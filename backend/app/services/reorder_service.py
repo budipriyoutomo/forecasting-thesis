@@ -10,20 +10,19 @@ ReorderService — safety stock & reorder point (Fase 5), docs/ARCHITECTURE.md �
   ROP < current ≤ S  → safe     (qty = 0)
   current > S        → overstock (qty = 0)
 
-Orkestrasi (`ReorderService`) menghitung μ/σ dari consumption_history dan
-mengambil lead_time/MOQ/manual SS dari master data material.
+Orkestrasi (`ReorderService`) menghitung μ/σ dari deret kebutuhan material
+hasil breakdown BOM atas forecast produk, dan mengambil lead_time/MOQ/manual SS
+dari master data material.
 """
 import math
 from dataclasses import dataclass
 from decimal import Decimal
 
 import numpy as np
-import pandas as pd
 
 from app.config import get_settings
 from app.models.reorder_recommendation import ReorderRecommendation
 from app.services.bom_service import BomLine, breakdown_requirements_series
-from app.services.forecasting.preprocessing import to_daily_series
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
 
@@ -137,20 +136,6 @@ def compute_reorder(
 
     return ReorderComputation(_dec(ss), _dec(rop), _dec(qty), status)
 
-
-def demand_stats(rows) -> tuple[float, float]:
-    """μ dan σ konsumsi harian dari consumption_history (series harian, hari kosong = 0)."""
-    if not rows:
-        return 0.0, 0.0
-    df = pd.DataFrame(
-        [{"date": str(r.date), "quantity": float(r.quantity)} for r in rows],
-        columns=["date", "quantity"],
-    )
-    series = to_daily_series(df)
-    values = series.to_numpy(dtype=float)
-    mu = float(np.mean(values))
-    sigma = float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
-    return mu, sigma
 
 
 class ReorderService:

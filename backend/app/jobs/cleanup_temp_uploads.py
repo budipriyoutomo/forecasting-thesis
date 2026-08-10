@@ -10,11 +10,9 @@ OS / scheduler platform (mis. Railway cron) memanggil:
 """
 import asyncio
 
-from app.repositories.upload_session_repository import (
-    SqlConsumptionHistoryRepository,
-    SqlUploadSessionRepository,
-)
-from app.repositories.material_repository import SqlMaterialRepository
+from app.repositories.demand_history_repository import SqlDemandHistoryRepository
+from app.repositories.product_repository import SqlProductRepository
+from app.repositories.upload_session_repository import SqlUploadSessionRepository
 from app.services.storage_service import StorageService, build_r2_client
 from app.services.upload_service import UploadService
 from app.db.session import get_sessionmaker
@@ -22,11 +20,13 @@ from app.db.session import get_sessionmaker
 
 async def run() -> int:
     async with get_sessionmaker()() as session:
+        # `demand`/`products` tak dipakai cleanup_expired (hanya storage+sessions),
+        # tapi tetap wajib diisi — konstruktor UploadService tidak punya default.
         service = UploadService(
             storage=StorageService(build_r2_client()),
             sessions=SqlUploadSessionRepository(session),
-            consumptions=SqlConsumptionHistoryRepository(session),
-            materials=SqlMaterialRepository(session),
+            demand=SqlDemandHistoryRepository(session),
+            products=SqlProductRepository(session),
         )
         count = await service.cleanup_expired()
         await session.commit()

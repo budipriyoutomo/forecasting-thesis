@@ -4,7 +4,15 @@ import { TOKEN_COOKIE } from "@/lib/auth";
 
 // Proteksi route grup (dashboard): tanpa token cookie → redirect ke /login.
 // Middleware jalan di edge/server, jadi token disimpan di cookie (bukan localStorage).
-const PROTECTED_PREFIXES = ["/dashboard", "/materials", "/forecast", "/settings"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/products",
+  "/materials",
+  "/boms",
+  "/forecast",
+  "/warehouse",
+  "/settings",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -23,5 +31,13 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/materials/:path*", "/forecast/:path*", "/settings/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/products/:path*",
+    "/materials/:path*",
+    "/boms/:path*",
+    "/forecast/:path*",
+    "/warehouse/:path*",
+    "/settings/:path*",
+  ],
 };

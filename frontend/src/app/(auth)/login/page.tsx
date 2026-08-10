@@ -1,4 +1,5 @@
 import { LoginForm } from "@/components/auth/LoginForm";
+import { BackendStatus } from "@/components/dashboard/BackendStatus";
 
 export default function LoginPage() {
   return (
@@ -8,6 +9,7 @@ export default function LoginPage() {
         <p className="text-sm text-muted-foreground">Masuk untuk melanjutkan</p>
       </div>
       <LoginForm />
+      <BackendStatus />
     </main>
   );
 }

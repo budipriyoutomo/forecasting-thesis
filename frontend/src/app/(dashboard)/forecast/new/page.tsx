@@ -5,7 +5,7 @@ import { UploadPanel } from "@/components/upload/UploadPanel";
 
 export default function UploadPage() {
   return (
-    <main className="container flex min-h-screen flex-col gap-8 py-16">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">Upload Data Demand Produk</h1>
         <p className="text-sm text-muted-foreground">
@@ -20,6 +20,6 @@ export default function UploadPage() {
         <h2 className="text-lg font-medium">Riwayat Upload</h2>
         <UploadHistory />
       </section>
-    </main>
+    </div>
   );
 }

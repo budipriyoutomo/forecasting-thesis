@@ -140,13 +140,28 @@ class ForecastRunService:
         await self._requirements.replace_for_run(str(run.id), rows)
 
     async def get_run(self, user_id: str, run_id: str):
-        run = await self._repo.get_run(run_id)
-        if run is None:
-            raise ForecastRunNotFoundError("Forecast run tidak ditemukan.")
-        if str(run.user_id) != str(user_id):
-            raise ForbiddenRoleError("Anda tidak berhak mengakses run ini.")
+        run = await self._require_run(user_id, run_id)
         results = await self._repo.list_results(run_id)
         return run, results
 
     async def get_results_for_product(self, product_id: str):
         return await self._repo.list_results_for_product(product_id)
+
+    async def list_requirements(self, user_id: str, run_id: str):
+        """Kebutuhan material hasil breakdown BOM untuk satu run (Fase 5, dibaca Fase 9).
+
+        Repo opsional — pola sama dengan `_build_requirements`: tanpa repo, run
+        tetap valid, hanya tak punya requirement untuk ditampilkan.
+        """
+        await self._require_run(user_id, run_id)
+        if self._requirements is None:
+            return []
+        return await self._requirements.list_by_run(run_id)
+
+    async def _require_run(self, user_id: str, run_id: str):
+        run = await self._repo.get_run(run_id)
+        if run is None:
+            raise ForecastRunNotFoundError("Forecast run tidak ditemukan.")
+        if str(run.user_id) != str(user_id):
+            raise ForbiddenRoleError("Anda tidak berhak mengakses run ini.")
+        return run

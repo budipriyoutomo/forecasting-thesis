@@ -16,7 +16,6 @@ from app.repositories.override_repository import SqlOverrideRepository
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.reorder_repository import SqlReorderRepository
 from app.repositories.upload_session_repository import (
-    SqlConsumptionHistoryRepository,
     SqlUploadSessionRepository,
 )
 from app.repositories.user_repository import SqlUserRepository
@@ -36,7 +35,7 @@ from app.services.override_service import OverrideService
 from app.services.product_service import ProductService
 from app.services.reorder_service import ReorderService
 from app.services.storage_service import StorageService, build_r2_client
-from app.services.supabase_auth import SupabaseAuthenticator
+from app.services.dev_auth import build_authenticator
 from app.services.upload_service import UploadService
 from app.services.warehouse_service import WarehouseService
 from app.utils.auth import decode_access_token
@@ -84,7 +83,9 @@ def require_role(*roles: str):
 
 
 def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
-    return AuthService(SqlUserRepository(session), SupabaseAuthenticator())
+    # Authenticator dipilih per-environment: Supabase Auth, atau dev login lokal
+    # kalau ENVIRONMENT=development + DEV_AUTH_ENABLED (app/services/dev_auth.py).
+    return AuthService(SqlUserRepository(session), build_authenticator())
 
 
 def get_material_service(session: AsyncSession = Depends(get_db)) -> MaterialService:

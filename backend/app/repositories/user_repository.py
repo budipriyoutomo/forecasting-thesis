@@ -20,3 +20,13 @@ class SqlUserRepository:
 
     async def get_by_id(self, user_id: str) -> User | None:
         return await self._session.get(User, user_id)
+
+    async def create(self, *, email: str, name: str, role: str, is_verified: bool) -> User:
+        """Dipakai seeding user dev (app/scripts/seed_dev_users.py).
+
+        Registrasi user produksi lewat Supabase Auth, bukan lewat sini.
+        """
+        user = User(email=email, name=name, role=role, is_verified=is_verified)
+        self._session.add(user)
+        await self._session.flush()
+        return user

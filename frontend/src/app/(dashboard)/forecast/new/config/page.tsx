@@ -7,10 +7,11 @@ import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
+import { MaterialRequirementsTable } from "@/components/forecast/MaterialRequirementsTable";
 import { Button } from "@/components/ui/button";
 import { useExport } from "@/hooks/useExport";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
-import { useCreateForecastRun } from "@/hooks/useForecast";
+import { useCreateForecastRun, useMaterialRequirements } from "@/hooks/useForecast";
 import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
 import { useGenerateReorder } from "@/hooks/useReorder";
@@ -23,6 +24,8 @@ export default function ForecastConfigPage() {
   const warehouse = useWarehouseValidation();
   const exporter = useExport();
   const runId = run.data?.run.run_id;
+  // Kebutuhan material tersedia langsung setelah run (breakdown BOM jalan di create_run).
+  const requirements = useMaterialRequirements(runId ?? null);
 
   // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
   const metricsRunId = reorder.data && runId ? runId : null;
@@ -45,7 +48,7 @@ export default function ForecastConfigPage() {
   };
 
   return (
-    <main className="container flex min-h-screen flex-col gap-6 py-16">
+    <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Konfigurasi Forecast</h1>
 
       <section className="flex flex-col gap-2">
@@ -104,6 +107,15 @@ export default function ForecastConfigPage() {
             </Button>
           </div>
           <ForecastResults data={run.data} />
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-lg font-medium">Kebutuhan Material (BOM)</h2>
+            {requirements.isError && (
+              <p className="text-sm text-destructive">{requirements.error.message}</p>
+            )}
+            {requirements.data && <MaterialRequirementsTable requirements={requirements.data} />}
+          </section>
+
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
@@ -170,6 +182,6 @@ export default function ForecastConfigPage() {
           )}
         </>
       )}
-    </main>
+    </div>
   );
 }

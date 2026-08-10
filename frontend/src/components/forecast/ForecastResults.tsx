@@ -1,6 +1,7 @@
 "use client";
 
 import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
+import { CandidatesTable } from "@/components/forecast/CandidatesTable";
 import { ForecastChart } from "@/components/forecast/ForecastChart";
 import type { ForecastRunResponse } from "@/types/forecast";
 
@@ -38,6 +39,10 @@ export function ForecastResults({ data }: { data: ForecastRunResponse }) {
                   {r.mape != null && <> · MAPE {r.mape.toFixed(2)}%</>}
                 </p>
                 <ExplanationBox explanation={r.explanation} />
+                <CandidatesTable
+                  candidates={r.candidates_evaluated ?? []}
+                  winner={r.method_used}
+                />
                 <ForecastChart forecast={r.forecast} />
               </div>
             )}

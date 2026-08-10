@@ -20,8 +20,33 @@ make cov         # coverage backend (gate: AGENTS.md §3)
 Salin dulu file env-nya: `cp backend/.env.example backend/.env` dan
 `cp frontend/.env.local.example frontend/.env.local`.
 
-Cek koneksi: buka http://localhost:3000 — halaman depan menampilkan status
-"Backend terhubung" hasil pemanggilan `GET /health` (kriteria selesai Fase 0).
+Buka http://localhost:3000 — root diarahkan ke `/dashboard`, dan tanpa token
+dilempar ke `/login`. Status "Backend terhubung" (hasil `GET /health`) tampil di
+halaman login.
+
+### User demo (development)
+
+Login normal memverifikasi password ke Supabase Auth. Kalau `SUPABASE_URL`/
+`SUPABASE_KEY` belum diisi, pakai login lokal khusus dev:
+
+```bash
+make seed-users   # atau: cd backend && python -m app.scripts.seed_dev_users
+```
+
+Membuat satu akun per role, semuanya dengan password `DEV_AUTH_PASSWORD`
+(default `demo1234`):
+
+| Email | Role |
+|---|---|
+| `admin@forecastiq.dev` | admin |
+| `ppic@forecastiq.dev` | ppic |
+| `purchasing@forecastiq.dev` | purchasing |
+| `viewer@forecastiq.dev` | viewer |
+
+Skrip idempoten (email yang sudah ada dilewati). Jalur ini diaktifkan
+`DEV_AUTH_ENABLED=true` dan **hanya berlaku saat `ENVIRONMENT=development`** —
+di staging/production flag itu diabaikan dan verifikasi tetap ke Supabase Auth
+(lihat `backend/app/services/dev_auth.py`).
 
 ### Manual (tanpa make)
 

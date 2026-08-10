@@ -190,9 +190,38 @@ Fase 9 = dashboard diperluas + export diperluas + cutover final. Bagian **backen
 
 ### Cutover ke v3.0-only (27 Juli 2026)
 1. **Drop kolom legacy** `forecast_results.data_profile` (kuadran ADI/CV² v2.0) dan `forecast_results.material_id` (+ index `ix_forecast_results_material_id`) via migration `b8c9d0e1f2a3`. Diverifikasi lebih dulu: kedua kolom **tidak ditulis** (`ForecastResult(...)` hanya mengisi `product_id`) dan **tidak dibaca/difilter** kode aktif; tak ada test yang mengisinya. Migration reversible (downgrade re-add kolom nullable + index). Model `forecast_result.py` disinkronkan (kolom dihapus).
-2. **`consumption_history` TIDAK di-drop.** Masih terjalin di jalur upload/ingestion raw-material v2.0 (`uploads.py`, `deps.py`, `cleanup_temp_uploads.py`, `reorder_service`, `preprocessing`) yang sengaja dipertahankan untuk forecasting raw material di luar scope thesis (§Keputusan Terbuka v3.0 poin 1/2). Meng-drop-nya = rewrite jalur itu, di luar maksud "sesuaikan v3.0 saja". Ditinjau ulang bila jalur v2.0 benar-benar dipensiunkan.
+2. **`consumption_history` TIDAK di-drop** (27 Juli 2026). Dinilai masih terjalin di jalur upload/ingestion raw-material v2.0 (`uploads.py`, `deps.py`, `cleanup_temp_uploads.py`, `reorder_service`, `preprocessing`) yang sengaja dipertahankan untuk forecasting raw material di luar scope thesis (§Keputusan Terbuka v3.0 poin 1/2). Meng-drop-nya dinilai = rewrite jalur itu, di luar maksud "sesuaikan v3.0 saja". → **Dibalik 4 Agustus 2026, lihat §Pensiun Jalur Raw-Material v2.0 di bawah.**
 3. **Engine legacy** (`engines/legacy/`, `forecasting/legacy/`) tetap ada, tidak dihapus (AGENTS.md larangan #16).
 4. **Merge** `migration/v3-thesis` → `main` (`--no-ff`, riwayat per-fase dipertahankan). Backend 332 test + frontend 53 test hijau sebelum merge.
+
+---
+
+## Pensiun Jalur Raw-Material v2.0 (4 Agustus 2026)
+
+### Konteks & Trigger
+
+Audit pasca-cutover mencari dead code dengan pola yang sama seperti yang menyingkap endpoint `material-requirements` hilang. Ditemukan `SqlConsumptionHistoryRepository.list_for_material` nol pemanggil. Penelusuran lanjutan menunjukkan asumsi di §Cutover poin 2 (**"masih terjalin di jalur upload/ingestion raw-material v2.0"**) **sudah tidak benar sejak Fase Migrasi 3**:
+
+| Klaim 27 Juli | Kenyataan 4 Agustus |
+|---|---|
+| `uploads.py` menulis consumption | `UploadService` menulis `demand_history`; nama fungsi endpoint saja yang masih `upload_consumption_history` (kini di-rename) |
+| ingestion menerima raw material | `REQUIRED_COLUMNS` = `{product_code, period, actual}` — upload `material_code` **ditolak**, tabel mustahil terisi |
+| `reorder_service` membaca consumption | μ/σ diambil dari breakdown BOM atas forecast produk; `demand_stats` nol pemanggil |
+| `cleanup_temp_uploads` memakainya | merakit `UploadService` dengan keyword usang → `TypeError`, job memang tidak pernah jalan (lihat bugfix terpisah) |
+
+Jadi tabelnya bukan "jarang dipakai" melainkan **mati total**: tidak bisa diisi, tidak pernah dibaca.
+
+### Keputusan
+
+User memilih **drop & bersihkan** (4 Agustus 2026), sekaligus **melepas §Keputusan Terbuka v3.0 poin 1** (mempertahankan forecasting raw material langsung) dari scope v3.0.
+
+1. **Migration `c9d0e1f2a3b4`** — drop tabel `consumption_history` + 3 indeksnya. Reversible: `downgrade()` membuat ulang struktur persis definisi `9a85016d7be7`. **Isi baris tidak kembali** — backup dulu bila instance produksi masih menyimpan histori v2.0 yang bernilai.
+2. **Dihapus dari kode**: `models/consumption_history.py`, `SqlConsumptionHistoryRepository`, `reorder_service.demand_stats` (dead), import terkait di `deps.py` & `models_registry.py`, test `test_consumption_bulk_add`.
+3. **Endpoint di-rename** `upload_consumption_history` → `upload_demand_history` (nama fungsi internal; path `POST /api/v1/uploads` tidak berubah, **bukan breaking change**).
+4. **Engine legacy TETAP** di `engines/legacy/` & `forecasting/legacy/` — keputusan terpisah (§Keputusan Terbuka poin 2, AGENTS.md larangan #16) dan masih berlaku.
+5. **Konsekuensi yang dicatat di PRD**: menghidupkan lagi jalur raw material bukan sekadar mengubah `FORECAST_ENGINES_ENABLED` — butuh tabel histori baru, mode ingestion `material_code`, dan jalur forecast/reorder level material.
+
+Backend 339 test hijau (turun 1 karena test repo yang dihapus), coverage 92.42%.
 
 ---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*

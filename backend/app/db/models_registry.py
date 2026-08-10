@@ -7,7 +7,6 @@ terjadi circular import — model meng-import `Base` dari `app.db.base`, jadi
 """
 from app.db.base import Base
 from app.models.bom import Bom  # noqa: F401
-from app.models.consumption_history import ConsumptionHistory  # noqa: F401
 from app.models.demand_history import DemandHistory  # noqa: F401
 from app.models.forecast_result import ForecastResult  # noqa: F401
 from app.models.forecast_run import ForecastRun  # noqa: F401

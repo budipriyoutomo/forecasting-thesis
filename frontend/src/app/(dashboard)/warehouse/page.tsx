@@ -11,7 +11,7 @@ export default function WarehousePage() {
   const onSubmit = (input: WarehouseConfigInput) => save.mutate(input);
 
   return (
-    <main className="container flex min-h-screen flex-col gap-6 py-16">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">Kapasitas Gudang</h1>
         <p className="text-sm text-muted-foreground">
@@ -41,6 +41,6 @@ export default function WarehousePage() {
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }

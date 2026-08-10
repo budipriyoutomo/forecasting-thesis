@@ -1,6 +1,8 @@
 """
 Pydantic schemas untuk endpoint forecast — docs/ARCHITECTURE.md §5/§6.8.
 """
+from decimal import Decimal
+
 from pydantic import BaseModel, Field
 
 
@@ -48,3 +50,19 @@ class ForecastResultOut(BaseModel):
     explanation: str | None = None
     forecast: list[ForecastPointOut] = []
     metrics: dict | None = None
+
+
+class MaterialRequirementOut(BaseModel):
+    """GET /forecast/runs/{run_id}/material-requirements — hasil breakdown BOM.
+
+    `id` sengaja diekspos: itu `target_id` yang dipakai planner saat override
+    dengan `target_type="material_requirement"` (AGENTS.md §5).
+    """
+
+    id: str
+    run_id: str
+    material_id: str
+    forecast_qty: Decimal
+    standard_usage_qty: Decimal | None = None
+    actual_usage_qty: Decimal | None = None
+    buffer_stock_pct: Decimal | None = None

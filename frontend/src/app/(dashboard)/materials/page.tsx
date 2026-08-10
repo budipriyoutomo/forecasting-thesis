@@ -37,7 +37,7 @@ export default function MaterialsPage() {
   };
 
   return (
-    <main className="container flex min-h-screen flex-col gap-6 py-16">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Master Data Material</h1>
         <Button
@@ -73,6 +73,6 @@ export default function MaterialsPage() {
           onDelete={(m) => remove.mutate(m.id)}
         />
       )}
-    </main>
+    </div>
   );
 }
