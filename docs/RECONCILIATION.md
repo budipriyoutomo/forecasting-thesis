@@ -224,4 +224,76 @@ User memilih **drop & bersihkan** (4 Agustus 2026), sekaligus **melepas §Keputu
 Backend 339 test hijau (turun 1 karena test repo yang dihapus), coverage 92.42%.
 
 ---
+
+## Redesign Frontend ke shadcn/ui (11 Agustus 2026)
+
+### Konteks & Trigger
+
+`components.json` sudah ada sejak awal tapi hanya satu komponen yang pernah digenerate
+(`button.tsx`); sisanya `<table>`/`<input>` bergaya manual. Navigasi bernama `SidebarNav`
+padahal merender bar horizontal di header. Redesign menyeluruh dikerjakan di branch
+`feat/frontend-redesign` (backend tidak disentuh sama sekali).
+
+### Keputusan
+
+1. **Tetap Tailwind v3.4, tidak naik ke v4.** Diverifikasi langsung ke registry shadcn:
+   `/r/styles/new-york/*.json` masih menyajikan `cssVars` format HSL + field
+   `tailwind.config` untuk di-patch, jadi jalur v3 hidup penuh di CLI 4.16.2. Migrasi v4
+   menuntut ganti plugin postcss, memindahkan konfigurasi ke `@theme` di CSS, dan menaikkan
+   batas browser (Safari 16.4+) — pekerjaan yang layak diverifikasi sendiri, bukan
+   ditumpangkan ke redesign.
+2. **TanStack Table dipatok `8.21.3` (exact), bukan v9.** `npm install` memasang v9 sebagai
+   mayor terbaru dengan API yang berbeda total (`useTable`, `createCoreRowModel`, sistem
+   *feature*). Dokumentasi data table shadcn — rujukan yang akan dicari orang saat menyentuh
+   tabel ini — seluruhnya v8, dan `data-table` **bukan** item registry (dicek: 404) sehingga
+   tidak ada jalur CLI yang menambalnya otomatis. Pilihan versi dikurung di
+   `components/common/DataTable.tsx`; pindah ke v9 = menyunting satu berkas.
+3. **CLI shadcn tidak menambal semuanya — tiga celah ditutup manual.** `bg-popover`/
+   `text-popover` dipakai `dialog`/`dropdown-menu`/`select`/`popover`/`command` tapi
+   `--popover` tidak ikut ditulis ke `globals.css` maupun `tailwind.config.ts` (latar
+   dropdown jadi transparan); `tailwindcss-animate` tidak ikut terpasang padahal 12 utility
+   animasinya dipakai; keyframes accordion belum ada. Ketiganya bug diam — build tetap lolos.
+4. **Token `--chart-1..5` dan `--success` dihitung, bukan dipilih dengan mata.** Palet chart
+   divalidasi terhadap surface tiap mode (terang `#ffffff`, gelap `#020817`): lolos lightness
+   band, chroma floor, CVD ΔE 9,1/8,4, normal-vision ΔE 19,6/19,3. Urutan slot adalah
+   mekanisme keamanan buta warna — **jangan diacak dan jangan diputar untuk seri ke-6**.
+   `--chart-3/4/5` di mode terang berada di bawah kontras 3:1, jadi chart terang yang memakai
+   slot 3 ke atas wajib membawa label langsung atau tampilan tabel (chart yang ada sekarang
+   hanya memakai slot 1–2, jadi belum terikat). `--success` diverifikasi 5,07:1 di terang dan
+   11,45:1 di gelap.
+5. **`src/lib/navigation.ts` jadi sumber tunggal struktur navigasi.** Sidebar dan breadcrumb
+   membaca daftar yang sama supaya tidak bisa saling tidak sinkron.
+6. **`src/lib/format.ts` memusatkan format angka.** Sebelumnya `MaterialRequirementsTable`
+   dan `CostSummaryCard` punya helper identik masing-masing sementara `ReorderTable` mencetak
+   Decimal mentah (`22400.0000`). Semua fungsi menerima `string | number | null | undefined`
+   karena backend menyerialisasi Decimal sebagai string (AGENTS.md §4); nilai kosong → `—`,
+   tapi **nol tetap `0`**.
+7. **Radix Select tidak menerima `value=""`,** padahal `""` adalah kontrak "mode otomatis" di
+   `MethodSelector` dan "semua produk" di filter BOM. Dipakai sentinel internal yang
+   diterjemahkan di batas komponen; test memastikan yang keluar ke pemanggil tetap `""`.
+8. **`vitest.setup.ts` men-stub `matchMedia`, `ResizeObserver`, dan pointer capture.** Bukan
+   kosmetik: tanpanya komponen sidebar dan Radix Select melempar di jsdom.
+
+### Dua perubahan perilaku menyusul (11 Agustus 2026)
+
+Awalnya keduanya ditinggalkan karena mengubah perilaku, bukan tampilan; atas permintaan user
+diselesaikan sekalian di branch yang sama.
+
+9. **Konfirmasi hapus.** `components/common/ConfirmDialog.tsx` (di atas `AlertDialog`) dipasang
+   di tabel produk, material, dan BOM. `description` wajib dan berisi konsekuensi konkret —
+   pertanyaan "Hapus produk?" saja tidak memberi tahu bahwa baris BOM yang menunjuk produk itu
+   ikut terdampak. Label pemicu dan label konfirmasi sengaja **dibedakan** ("Hapus" vs
+   "Ya, hapus produk"): Radix tidak melepas pemicu dari DOM saat dialog terbuka, jadi label
+   kembar menyulitkan pengguna screen reader.
+10. **`AuditTrail` akhirnya dirender** — di dalam dialog override `MaterialRequirementsTable`,
+    sepanel di bawah formnya. Alasannya bukan sekadar "harus dipakai": planner perlu melihat
+    apakah baris itu sudah pernah di-override dan dengan alasan apa **sebelum** menimpanya.
+
+### Hasil
+
+Frontend 129 test hijau (dari 66), typecheck & eslint bersih, build sukses. Komponen `ui/`
+1 → 29. Halaman ber-`DataTable` naik ~50–65 kB First Load JS — kalau nanti terasa berat,
+sasaran pertama adalah memuat `DataTable` secara dinamis.
+
+---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*

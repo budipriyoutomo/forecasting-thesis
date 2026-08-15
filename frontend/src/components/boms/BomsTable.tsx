@@ -1,8 +1,22 @@
 "use client";
 
+import type { ColumnDef } from "@tanstack/react-table";
+import { useMemo } from "react";
+
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { DataTable } from "@/components/common/DataTable";
+import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/lib/format";
 import type { Bom } from "@/types/bom";
 import type { Material } from "@/types/material";
 import type { Product } from "@/types/product";
+
+/** Baris BOM yang sudah dilengkapi label, supaya sorting & pencarian bekerja atas teks
+ *  yang benar-benar dilihat user — bukan atas UUID. */
+interface BomRow extends Bom {
+  productLabel: string;
+  materialLabel: string;
+}
 
 export function BomsTable({
   boms,
@@ -17,52 +31,79 @@ export function BomsTable({
   onEdit?: (b: Bom) => void;
   onDelete?: (b: Bom) => void;
 }) {
-  if (boms.length === 0) {
-    return <p className="text-sm text-muted-foreground">Belum ada baris BOM.</p>;
-  }
+  const rows = useMemo<BomRow[]>(() => {
+    const productById = new Map(products.map((p) => [p.id, p]));
+    const materialById = new Map(materials.map((m) => [m.id, m]));
 
-  const productLabel = (id: string) => {
-    const p = products.find((x) => x.id === id);
-    return p ? p.code : id;
-  };
-  const materialLabel = (id: string) => {
-    const m = materials.find((x) => x.id === id);
-    return m ? m.code : id;
-  };
+    return boms.map((b) => {
+      const p = productById.get(b.product_id);
+      const m = materialById.get(b.material_id);
+      return {
+        ...b,
+        productLabel: p ? `${p.code} — ${p.name}` : b.product_id,
+        materialLabel: m ? `${m.code} — ${m.name}` : b.material_id,
+      };
+    });
+  }, [boms, products, materials]);
+
+  const columns = useMemo<ColumnDef<BomRow>[]>(
+    () => [
+      {
+        accessorKey: "productLabel",
+        header: "Produk",
+        cell: ({ row }) => <span className="font-medium">{row.original.productLabel}</span>,
+      },
+      { accessorKey: "materialLabel", header: "Material" },
+      {
+        accessorKey: "qty_per_unit",
+        header: "Qty / unit",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.qty_per_unit, 4)}</span>
+        ),
+      },
+      {
+        id: "actions",
+        enableHiding: false,
+        enableSorting: false,
+        header: () => <span className="sr-only">Aksi</span>,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            {onEdit && (
+              <Button variant="ghost" size="sm" onClick={() => onEdit(row.original)}>
+                Ubah
+              </Button>
+            )}
+            {onDelete && (
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                  >
+                    Hapus
+                  </Button>
+                }
+                title="Hapus baris BOM ini?"
+                description={`Takaran ${row.original.materialLabel} untuk ${row.original.productLabel} dihapus, sehingga material itu tidak lagi ikut diturunkan saat forecast produk tersebut. Tindakan ini tidak bisa dibatalkan.`}
+                confirmLabel="Ya, hapus baris"
+                onConfirm={() => onDelete(row.original)}
+              />
+            )}
+          </div>
+        ),
+      },
+    ],
+    [onEdit, onDelete],
+  );
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-2 pr-4">Produk</th>
-            <th className="py-2 pr-4">Material</th>
-            <th className="py-2 pr-4">Qty / unit</th>
-            <th className="py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {boms.map((b) => (
-            <tr key={b.id} className="border-b">
-              <td className="py-2 pr-4 font-medium">{productLabel(b.product_id)}</td>
-              <td className="py-2 pr-4">{materialLabel(b.material_id)}</td>
-              <td className="py-2 pr-4">{b.qty_per_unit}</td>
-              <td className="py-2 text-right">
-                {onEdit && (
-                  <button className="mr-3 text-primary hover:underline" onClick={() => onEdit(b)}>
-                    Ubah
-                  </button>
-                )}
-                {onDelete && (
-                  <button className="text-destructive hover:underline" onClick={() => onDelete(b)}>
-                    Hapus
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={rows}
+      searchColumn="materialLabel"
+      searchPlaceholder="Cari material…"
+      emptyMessage="Belum ada baris BOM."
+    />
   );
 }

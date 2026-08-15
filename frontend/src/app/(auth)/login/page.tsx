@@ -1,15 +1,29 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { BackendStatus } from "@/components/dashboard/BackendStatus";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-4">
-      <div className="flex flex-col items-center gap-1">
-        <h1 className="text-2xl font-semibold">ForecastIQ</h1>
-        <p className="text-sm text-muted-foreground">Masuk untuk melanjutkan</p>
-      </div>
-      <LoginForm />
-      <BackendStatus />
+    <main className="flex min-h-svh flex-col items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">ForecastIQ</CardTitle>
+          <CardDescription>Masuk untuk melanjutkan</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LoginForm />
+        </CardContent>
+        <CardFooter className="justify-center border-t pt-4">
+          <BackendStatus />
+        </CardFooter>
+      </Card>
     </main>
   );
 }

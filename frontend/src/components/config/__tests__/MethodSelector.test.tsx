@@ -24,6 +24,12 @@ function renderSelector(onChange = vi.fn()) {
   return onChange;
 }
 
+// Radix Select hanya merender opsi setelah dropdown dibuka — beda dengan <select>
+// native yang selalu punya <option> di DOM.
+async function bukaDropdown() {
+  await userEvent.click(screen.getByRole("combobox", { name: /metode forecasting/i }));
+}
+
 describe("MethodSelector", () => {
   it("menampilkan opsi Otomatis + metode aktif dari backend", async () => {
     vi.spyOn(api.forecast, "methods").mockResolvedValue({
@@ -32,8 +38,16 @@ describe("MethodSelector", () => {
     });
     renderSelector();
 
-    expect(screen.getByRole("option", { name: /Otomatis \(Direkomendasikan\)/i })).toBeDefined();
-    await waitFor(() => expect(screen.getByRole("option", { name: /Croston/i })).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /metode forecasting/i })).not.toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+    await bukaDropdown();
+
+    expect(await screen.findByRole("option", { name: /Otomatis \(Direkomendasikan\)/i })).toBeDefined();
+    expect(screen.getByRole("option", { name: /Croston/i })).toBeDefined();
     expect(screen.getByRole("option", { name: /ETS/i })).toBeDefined();
   });
 
@@ -44,9 +58,40 @@ describe("MethodSelector", () => {
     });
     const onChange = renderSelector();
 
-    await waitFor(() => screen.getByRole("option", { name: /ETS/i }));
-    await userEvent.selectOptions(screen.getByLabelText(/metode forecasting/i), "ets");
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /metode forecasting/i })).not.toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+    await bukaDropdown();
+    await userEvent.click(await screen.findByRole("option", { name: /ETS/i }));
 
-    expect(onChange).toHaveBeenCalledWith("ets");
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("ets"));
+  });
+
+  it("mode otomatis dikirim sebagai string kosong, bukan sentinel internal", async () => {
+    vi.spyOn(api.forecast, "methods").mockResolvedValue({
+      success: true,
+      data: { methods: ["ets"] },
+    });
+    const onChange = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MethodSelector value="ets" onChange={onChange} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /metode forecasting/i })).not.toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+    await bukaDropdown();
+    await userEvent.click(await screen.findByRole("option", { name: /Otomatis/i }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(""));
   });
 });

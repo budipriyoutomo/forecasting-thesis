@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -35,19 +35,28 @@ describe("BomForm", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // Produk & material sekarang memakai Radix Select, bukan <select> native — jadi
+  // pemilihannya lewat klik trigger lalu klik option, bukan userEvent.selectOptions.
+  async function pilih(namaField: RegExp, namaOpsi: RegExp) {
+    await userEvent.click(screen.getByRole("combobox", { name: namaField }));
+    await userEvent.click(await screen.findByRole("option", { name: namaOpsi }));
+  }
+
   it("submit mengirim product_id, material_id, qty", async () => {
     const onSubmit = vi.fn();
     render(<BomForm products={PRODUCTS} materials={MATERIALS} onSubmit={onSubmit} />);
 
-    await userEvent.selectOptions(screen.getByLabelText(/^produk$/i), "p1");
-    await userEvent.selectOptions(screen.getByLabelText(/^material$/i), "m1");
+    await pilih(/^produk$/i, /KBYPL 200/);
+    await pilih(/^material$/i, /BTL-200/);
     await userEvent.type(screen.getByLabelText(/qty per unit/i), "2.5");
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      product_id: "p1",
-      material_id: "m1",
-      qty_per_unit: 2.5,
-    });
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        product_id: "p1",
+        material_id: "m1",
+        qty_per_unit: 2.5,
+      }),
+    );
   });
 });

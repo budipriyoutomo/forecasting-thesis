@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { CandidatesTable } from "@/components/forecast/CandidatesTable";
@@ -10,9 +11,23 @@ const candidates: ForecastCandidate[] = [
   { method: "random_forest", mad: 9.9, mfe: 1.2, mse: 160.2, mape: 9.75, mase: null },
 ];
 
+// Perbandingan sekarang dibungkus Collapsible: isinya baru dipasang ke DOM setelah
+// dibuka, tidak seperti <details> yang selalu merender isinya.
+async function bukaPerbandingan() {
+  await userEvent.click(screen.getByRole("button", { name: /dasar perbandingan/i }));
+}
+
 describe("CandidatesTable", () => {
-  it("menampilkan seluruh metode yang dibandingkan beserta metriknya", () => {
+  it("menyembunyikan detail sampai dibuka", () => {
     render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
+
+    expect(screen.getByRole("button", { name: /dasar perbandingan \(3 metode diuji\)/i })).toBeDefined();
+    expect(screen.queryByText("moving_average")).toBeNull();
+  });
+
+  it("menampilkan seluruh metode yang dibandingkan beserta metriknya", async () => {
+    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
+    await bukaPerbandingan();
 
     expect(screen.getByText("moving_average")).toBeDefined();
     expect(screen.getByText("xgboost")).toBeDefined();
@@ -20,8 +35,9 @@ describe("CandidatesTable", () => {
     expect(screen.getByText("8.20%")).toBeDefined(); // MAPE pemenang
   });
 
-  it("mengurutkan dari metrik ranking terbaik dan menandai pemenang", () => {
+  it("mengurutkan dari metrik ranking terbaik dan menandai pemenang", async () => {
     render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
+    await bukaPerbandingan();
 
     const rows = screen.getAllByRole("row").slice(1); // buang header
     expect(rows[0].textContent).toContain("xgboost"); // MAPE terendah di atas
@@ -29,8 +45,9 @@ describe("CandidatesTable", () => {
     expect(rows[1].textContent).toContain("random_forest");
   });
 
-  it("menampilkan strip untuk metrik yang tak terdefinisi", () => {
+  it("menampilkan strip untuk metrik yang tak terdefinisi", async () => {
     render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
+    await bukaPerbandingan();
 
     expect(screen.queryByText(/null|NaN/)).toBeNull();
   });

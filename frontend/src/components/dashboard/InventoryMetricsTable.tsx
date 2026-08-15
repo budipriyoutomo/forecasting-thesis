@@ -1,5 +1,14 @@
 "use client";
 
+import { EmptyState } from "@/components/common/EmptyState";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { InventoryMetric } from "@/types/metrics";
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -7,6 +16,8 @@ const SCOPE_LABEL: Record<string, string> = {
   forecastiq: "ForecastIQ",
 };
 
+// Format khusus tabel ini, bukan formatter umum: nilainya rasio 0..1 yang harus
+// tampil 1 desimal, dan turnover dalam "kali" dengan 2 desimal.
 function pct(value: string): string {
   return `${(Number(value) * 100).toFixed(1)}%`;
 }
@@ -17,35 +28,37 @@ function turns(value: string): string {
 
 // Evaluasi kinerja inventory per scope (Fase 7): baseline (actual vs planning)
 // vs forecastiq (actual vs forecast ForecastIQ) — membuktikan perbaikan thesis.
+// Tetap memakai tabel polos, bukan DataTable: isinya perbandingan dua baris,
+// jadi pencarian dan penomoran halaman hanya menambah derau.
 export function InventoryMetricsTable({ metrics }: { metrics: InventoryMetric[] }) {
   if (metrics.length === 0) {
-    return <p className="text-sm text-muted-foreground">Belum ada metrik inventory untuk run ini.</p>;
+    return <EmptyState message="Belum ada metrik inventory untuk run ini." />;
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-2 pr-4 font-medium">Scope</th>
-            <th className="py-2 pr-4 font-medium">Service Level</th>
-            <th className="py-2 pr-4 font-medium">Fill Rate</th>
-            <th className="py-2 pr-4 font-medium">Stock Out</th>
-            <th className="py-2 font-medium">Turnover</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="overflow-x-auto rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Scope</TableHead>
+            <TableHead>Service Level</TableHead>
+            <TableHead>Fill Rate</TableHead>
+            <TableHead>Stock Out</TableHead>
+            <TableHead>Turnover</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {metrics.map((m) => (
-            <tr key={`${m.scope}-${m.target_id}`} className="border-b last:border-0">
-              <td className="py-2 pr-4 font-medium">{SCOPE_LABEL[m.scope] ?? m.scope}</td>
-              <td className="py-2 pr-4">{pct(m.service_level)}</td>
-              <td className="py-2 pr-4">{pct(m.fill_rate)}</td>
-              <td className="py-2 pr-4">{pct(m.stock_out_rate)}</td>
-              <td className="py-2">{turns(m.inventory_turnover)}</td>
-            </tr>
+            <TableRow key={`${m.scope}-${m.target_id}`}>
+              <TableCell className="font-medium">{SCOPE_LABEL[m.scope] ?? m.scope}</TableCell>
+              <TableCell className="tabular-nums">{pct(m.service_level)}</TableCell>
+              <TableCell className="tabular-nums">{pct(m.fill_rate)}</TableCell>
+              <TableCell className="tabular-nums">{pct(m.stock_out_rate)}</TableCell>
+              <TableCell className="tabular-nums">{turns(m.inventory_turnover)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

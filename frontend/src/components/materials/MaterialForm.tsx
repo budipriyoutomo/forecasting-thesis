@@ -4,7 +4,18 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { FormError } from "@/components/common/FormError";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import type { Material, MaterialInput } from "@/types/material";
 
 const schema = z.object({
@@ -18,9 +29,6 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const FIELD = "flex flex-col gap-1";
-const INPUT = "h-10 rounded-md border border-input bg-background px-3 text-sm";
-
 export function MaterialForm({
   initial,
   onSubmit,
@@ -32,73 +40,105 @@ export function MaterialForm({
   submitting?: boolean;
   error?: string | null;
 }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: initial
-      ? {
-          code: initial.code,
-          name: initial.name,
-          category: initial.category ?? "",
-          unit: initial.unit,
-          lead_time_days: initial.lead_time_days,
-          moq: Number(initial.moq),
-        }
-      : { lead_time_days: 0, moq: 0 },
+    defaultValues: {
+      code: initial?.code ?? "",
+      name: initial?.name ?? "",
+      category: initial?.category ?? "",
+      unit: initial?.unit ?? "",
+      lead_time_days: initial?.lead_time_days ?? 0,
+      moq: initial ? Number(initial.moq) : 0,
+    },
   });
 
-  const submit = handleSubmit((v) =>
+  const submit = form.handleSubmit((v) =>
     onSubmit({ ...v, category: v.category?.trim() ? v.category : null }),
   );
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-      <div className={FIELD}>
-        <label htmlFor="code" className="text-sm font-medium">
-          Kode
-        </label>
-        <input id="code" className={INPUT} {...register("code")} />
-        {errors.code && <p className="text-sm text-destructive">{errors.code.message}</p>}
-      </div>
+    <Form {...form}>
+      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Kode</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <div className={FIELD}>
-        <label htmlFor="name" className="text-sm font-medium">
-          Nama
-        </label>
-        <input id="name" className={INPUT} {...register("name")} />
-        {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-      </div>
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nama</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <div className={FIELD}>
-        <label htmlFor="unit" className="text-sm font-medium">
-          Satuan
-        </label>
-        <input id="unit" className={INPUT} {...register("unit")} />
-        {errors.unit && <p className="text-sm text-destructive">{errors.unit.message}</p>}
-      </div>
+        <FormField
+          control={form.control}
+          name="unit"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Satuan</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <div className={FIELD}>
-        <label htmlFor="lead_time_days" className="text-sm font-medium">
-          Lead time (hari)
-        </label>
-        <input id="lead_time_days" type="number" className={INPUT} {...register("lead_time_days")} />
-      </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="lead_time_days"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Lead time (hari)</FormLabel>
+                <FormControl>
+                  <Input type="number" {...field} />
+                </FormControl>
+                <FormDescription>Dipakai menghitung reorder point.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-      <div className={FIELD}>
-        <label htmlFor="moq" className="text-sm font-medium">
-          MOQ
-        </label>
-        <input id="moq" type="number" step="any" className={INPUT} {...register("moq")} />
-      </div>
+          <FormField
+            control={form.control}
+            name="moq"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>MOQ</FormLabel>
+                <FormControl>
+                  <Input type="number" step="any" {...field} />
+                </FormControl>
+                <FormDescription>Batas bawah kuantitas pesanan.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+        <FormError message={error} />
 
-      <Button type="submit" disabled={submitting}>
-        {submitting ? "Menyimpan…" : "Simpan"}
-      </Button>
-    </form>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Menyimpan…" : "Simpan"}
+        </Button>
+      </form>
+    </Form>
   );
 }

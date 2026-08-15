@@ -1,6 +1,10 @@
 "use client";
 
+import { PageHeader } from "@/components/common/PageHeader";
 import { WarehouseConfigForm } from "@/components/warehouse/WarehouseConfigForm";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSetWarehouseConfig, useWarehouseConfig } from "@/hooks/useWarehouse";
 import type { WarehouseConfigInput } from "@/types/warehouse";
 
@@ -12,35 +16,53 @@ export default function WarehousePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Kapasitas Gudang</h1>
-        <p className="text-sm text-muted-foreground">
-          Atur luas gudang dan dimensi palet. Dipakai untuk memvalidasi apakah rekomendasi
-          inventory muat secara fisik (berbasis palet, tanpa racking).
-        </p>
-      </div>
+      <PageHeader
+        title="Kapasitas Gudang"
+        description="Atur luas gudang dan dimensi palet. Dipakai untuk memvalidasi apakah rekomendasi inventory muat secara fisik (berbasis palet, tanpa racking)."
+      />
 
-      {isPending && <p className="text-sm text-muted-foreground">Memuat konfigurasi…</p>}
-      {isError && <p className="text-sm text-destructive">Gagal memuat konfigurasi gudang.</p>}
-
-      {!isPending && (
-        <div className="max-w-md rounded-lg border p-4">
-          {config === null && (
-            <p className="mb-3 text-sm text-muted-foreground">
-              Belum ada konfigurasi. Isi form di bawah untuk mengaturnya.
-            </p>
-          )}
-          <WarehouseConfigForm
-            initial={config}
-            onSubmit={onSubmit}
-            submitting={save.isPending}
-            error={save.error?.message ?? null}
-          />
-          {save.isSuccess && (
-            <p className="mt-2 text-sm text-green-600 dark:text-green-400">Konfigurasi tersimpan.</p>
-          )}
-        </div>
+      {isError && (
+        <Alert variant="destructive">
+          <AlertDescription>Gagal memuat konfigurasi gudang.</AlertDescription>
+        </Alert>
       )}
+
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>Konfigurasi</CardTitle>
+          <CardDescription>
+            {config === null
+              ? "Belum ada konfigurasi. Isi form di bawah untuk mengaturnya."
+              : "Perubahan berlaku saat validasi kapasitas dijalankan berikutnya."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {isPending ? (
+            <div className="flex flex-col gap-3" role="status">
+              <span className="sr-only">Memuat konfigurasi…</span>
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-2/3" />
+            </div>
+          ) : (
+            <>
+              <WarehouseConfigForm
+                initial={config}
+                onSubmit={onSubmit}
+                submitting={save.isPending}
+                error={save.error?.message ?? null}
+              />
+              {/* role=status supaya konfirmasi simpan diumumkan screen reader —
+                  perubahannya tidak terlihat kalau fokus masih di tombol. */}
+              {save.isSuccess && (
+                <p role="status" className="text-sm text-success">
+                  Konfigurasi tersimpan.
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,13 @@
 "use client";
 
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEnabledMethods } from "@/hooks/useForecast";
 
 // Label ramah untuk kode metode engine.
@@ -11,8 +19,11 @@ const LABELS: Record<string, string> = {
   prophet: "Prophet",
 };
 
+// Radix Select tidak menerima value "" untuk item, sementara kontrak komponen ini
+// tetap memakai "" sebagai penanda mode otomatis (method: null ke backend).
+const OTOMATIS = "__otomatis__";
+
 // Dropdown "Otomatis (Direkomendasikan)" + daftar metode aktif (§6.8).
-// `value === ""` berarti mode otomatis (method: null ke backend).
 export function MethodSelector({
   value,
   onChange,
@@ -23,24 +34,25 @@ export function MethodSelector({
   const { data: methods, isPending } = useEnabledMethods();
 
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor="method" className="text-sm font-medium">
-        Metode forecasting
-      </label>
-      <select
-        id="method"
-        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="method">Metode forecasting</Label>
+      <Select
+        value={value === "" ? OTOMATIS : value}
+        onValueChange={(v) => onChange(v === OTOMATIS ? "" : v)}
         disabled={isPending}
       >
-        <option value="">Otomatis (Direkomendasikan)</option>
-        {(methods ?? []).map((m) => (
-          <option key={m} value={m}>
-            {LABELS[m] ?? m}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger id="method">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={OTOMATIS}>Otomatis (Direkomendasikan)</SelectItem>
+          {(methods ?? []).map((m) => (
+            <SelectItem key={m} value={m}>
+              {LABELS[m] ?? m}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

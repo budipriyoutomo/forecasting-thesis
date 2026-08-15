@@ -1,17 +1,27 @@
 "use client";
 
+import { Download, Sparkles } from "lucide-react";
 import { useState } from "react";
 
+import { PageHeader } from "@/components/common/PageHeader";
 import { MethodSelector } from "@/components/config/MethodSelector";
 import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { MaterialRequirementsTable } from "@/components/forecast/MaterialRequirementsTable";
+import { FormError } from "@/components/common/FormError";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
-import { useExport } from "@/hooks/useExport";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
+import { useExport } from "@/hooks/useExport";
 import { useCreateForecastRun, useMaterialRequirements } from "@/hooks/useForecast";
+import { useMaterials } from "@/hooks/useMaterials";
 import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
 import { useGenerateReorder } from "@/hooks/useReorder";
@@ -19,6 +29,7 @@ import { useWarehouseValidation } from "@/hooks/useWarehouse";
 
 export default function ForecastConfigPage() {
   const { data: products } = useProducts();
+  const { data: materials } = useMaterials();
   const run = useCreateForecastRun();
   const reorder = useGenerateReorder();
   const warehouse = useWarehouseValidation();
@@ -49,77 +60,110 @@ export default function ForecastConfigPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Konfigurasi Forecast</h1>
+      <PageHeader
+        title="Konfigurasi Forecast"
+        description="Pilih produk, horizon, dan metode. Mode otomatis membandingkan seluruh metode aktif lalu memilih yang paling akurat."
+      />
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Pilih produk</h2>
-        <div className="flex flex-col gap-1">
-          {(products ?? []).map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={selected.includes(p.id)}
-                onChange={() => toggle(p.id)}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pilih produk</CardTitle>
+            <CardDescription>
+              {selected.length > 0
+                ? `${selected.length} produk dipilih.`
+                : "Belum ada produk dipilih."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {products && products.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {products.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3">
+                    <Checkbox
+                      id={`produk-${p.id}`}
+                      checked={selected.includes(p.id)}
+                      onCheckedChange={() => toggle(p.id)}
+                    />
+                    <Label htmlFor={`produk-${p.id}`} className="font-normal">
+                      <span className="font-medium">{p.code}</span> — {p.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                message="Belum ada produk."
+                hint="Tambah dulu di menu Produk sebelum menjalankan forecast."
               />
-              {p.code} — {p.name}
-            </label>
-          ))}
-          {(!products || products.length === 0) && (
-            <p className="text-sm text-muted-foreground">Belum ada produk. Tambah dulu di menu Produk.</p>
-          )}
-        </div>
-      </section>
+            )}
+          </CardContent>
+        </Card>
 
-      <div className="flex max-w-md flex-col gap-3">
-        <MethodSelector value={method} onChange={setMethod} />
-        <div className="flex flex-col gap-1">
-          <label htmlFor="horizon" className="text-sm font-medium">
-            Horizon (hari)
-          </label>
-          <input
-            id="horizon"
-            type="number"
-            min={1}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={horizon}
-            onChange={(e) => setHorizon(Number(e.target.value))}
-          />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Parameter</CardTitle>
+            <CardDescription>Berlaku untuk seluruh produk yang dipilih.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <MethodSelector value={method} onChange={setMethod} />
 
-        {run.isError && <p className="text-sm text-destructive">{run.error.message}</p>}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="horizon">Horizon (hari)</Label>
+              <Input
+                id="horizon"
+                type="number"
+                min={1}
+                value={horizon}
+                onChange={(e) => setHorizon(Number(e.target.value))}
+              />
+            </div>
 
-        <Button onClick={onGenerate} disabled={selected.length === 0 || run.isPending}>
-          {run.isPending ? "Memproses…" : "Generate forecast"}
-        </Button>
+            <FormError message={run.isError ? run.error.message : null} />
+
+            <Button onClick={onGenerate} disabled={selected.length === 0 || run.isPending}>
+              <Sparkles />
+              {run.isPending ? "Memproses…" : "Generate forecast"}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {run.data && runId && (
         <>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium">Hasil</h2>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={exporter.isPending}
-              onClick={() => exporter.mutate({ kind: "forecast", runId })}
-            >
-              Export forecast (Excel)
-            </Button>
-          </div>
-          <ForecastResults data={run.data} />
+          <Separator />
 
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Kebutuhan Material (BOM)</h2>
-            {requirements.isError && (
-              <p className="text-sm text-destructive">{requirements.error.message}</p>
-            )}
-            {requirements.data && <MaterialRequirementsTable requirements={requirements.data} />}
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-medium">Hasil</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exporter.isPending}
+                onClick={() => exporter.mutate({ kind: "forecast", runId })}
+              >
+                <Download />
+                Export forecast (Excel)
+              </Button>
+            </div>
+            <ForecastResults data={run.data} />
           </section>
 
           <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">Kebutuhan Material (BOM)</h2>
+            <FormError message={requirements.isError ? requirements.error.message : null} />
+            {requirements.data && (
+              <MaterialRequirementsTable
+                requirements={requirements.data}
+                materials={materials ?? []}
+              />
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -136,6 +180,7 @@ export default function ForecastConfigPage() {
                       disabled={exporter.isPending}
                       onClick={() => exporter.mutate({ kind: "reorder", runId, format: "xlsx" })}
                     >
+                      <Download />
                       Excel
                     </Button>
                     <Button
@@ -144,20 +189,23 @@ export default function ForecastConfigPage() {
                       disabled={exporter.isPending}
                       onClick={() => exporter.mutate({ kind: "reorder", runId, format: "pdf" })}
                     >
+                      <Download />
                       PDF
                     </Button>
                   </>
                 )}
               </div>
             </div>
-            {reorder.isError && <p className="text-sm text-destructive">{reorder.error.message}</p>}
-            {exporter.isError && <p className="text-sm text-destructive">{exporter.error.message}</p>}
-            {reorder.data && <ReorderTable recommendations={reorder.data} />}
+            <FormError message={reorder.isError ? reorder.error.message : null} />
+            <FormError message={exporter.isError ? exporter.error.message : null} />
+            {reorder.data && (
+              <ReorderTable recommendations={reorder.data} materials={materials ?? []} />
+            )}
           </section>
 
           {reorder.data && (
-            <section className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-medium">Kapasitas Gudang</h2>
                 <Button
                   variant="outline"
@@ -168,14 +216,14 @@ export default function ForecastConfigPage() {
                   {warehouse.isPending ? "Memvalidasi…" : "Cek kapasitas"}
                 </Button>
               </div>
-              {warehouse.isError && <p className="text-sm text-destructive">{warehouse.error.message}</p>}
+              <FormError message={warehouse.isError ? warehouse.error.message : null} />
               {warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} />}
             </section>
           )}
 
           {reorder.data && (cost.data || inventoryMetrics.data) && (
             <section className="flex flex-col gap-4">
-              <h2 className="text-lg font-medium">Biaya & Kinerja Inventory</h2>
+              <h2 className="text-lg font-medium">Biaya &amp; Kinerja Inventory</h2>
               {cost.data && <CostSummaryCard summary={cost.data} />}
               {inventoryMetrics.data && <InventoryMetricsTable metrics={inventoryMetrics.data} />}
             </section>

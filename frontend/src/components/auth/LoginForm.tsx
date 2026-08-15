@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { FormError } from "@/components/common/FormError";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { useLogin } from "@/hooks/useAuth";
 
 const schema = z.object({
@@ -18,53 +28,52 @@ type FormValues = z.infer<typeof schema>;
 export function LoginForm() {
   const router = useRouter();
   const login = useLogin();
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: "", password: "" },
+  });
 
-  const onSubmit = handleSubmit((values) => {
-    login.mutate(values, {
-      onSuccess: () => router.push("/dashboard"),
-    });
+  const onSubmit = form.handleSubmit((values) => {
+    login.mutate(values, { onSuccess: () => router.push("/dashboard") });
   });
 
   return (
-    <form onSubmit={onSubmit} className="flex w-full max-w-sm flex-col gap-4" noValidate>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-          {...register("email")}
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" autoComplete="email" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-      </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-sm font-medium">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-          {...register("password")}
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Password</FormLabel>
+              <FormControl>
+                <Input type="password" autoComplete="current-password" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
-      </div>
 
-      {login.isError && <p className="text-sm text-destructive">{login.error.message}</p>}
+        <FormError message={login.isError ? login.error.message : null} />
 
-      <Button type="submit" disabled={login.isPending}>
-        {login.isPending ? "Masuk…" : "Masuk"}
-      </Button>
-    </form>
+        <Button type="submit" disabled={login.isPending}>
+          {login.isPending ? "Masuk…" : "Masuk"}
+        </Button>
+      </form>
+    </Form>
   );
 }

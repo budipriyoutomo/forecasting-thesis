@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 
+import { FormError } from "@/components/common/FormError";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useCreateOverride } from "@/hooks/useOverrides";
 import type { OverrideTargetType } from "@/types/override";
 
@@ -34,41 +38,47 @@ export function OverrideForm({
     }
     setReasonError(null);
     create.mutate(
-      { target_type: targetType, target_id: targetId, new_value: { [field]: Number(value) }, reason },
+      {
+        target_type: targetType,
+        target_id: targetId,
+        new_value: { [field]: Number(value) },
+        reason,
+      },
       { onSuccess: () => onDone?.() },
     );
   };
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="ov-value" className="text-sm font-medium">
-          {label}
-        </label>
-        <input
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="ov-value">{label}</Label>
+        <Input
           id="ov-value"
           type="number"
           step="any"
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="ov-reason" className="text-sm font-medium">
-          Alasan override
-        </label>
-        <textarea
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="ov-reason">Alasan override</Label>
+        <Textarea
           id="ov-reason"
-          className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="min-h-20"
+          aria-invalid={reasonError ? true : undefined}
+          aria-describedby={reasonError ? "ov-reason-error" : undefined}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
-        {reasonError && <p className="text-sm text-destructive">{reasonError}</p>}
+        {reasonError && (
+          <p id="ov-reason-error" className="text-sm font-medium text-destructive">
+            {reasonError}
+          </p>
+        )}
       </div>
 
-      {create.isError && <p className="text-sm text-destructive">{create.error.message}</p>}
+      <FormError message={create.isError ? create.error.message : null} />
 
       <Button type="submit" disabled={create.isPending}>
         {create.isPending ? "Menyimpan…" : "Simpan override"}

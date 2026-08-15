@@ -1,15 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { DataTable } from "@/components/common/DataTable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/lib/format";
+import type { Material } from "@/types/material";
 import type { ReorderRecommendation, ReorderStatus } from "@/types/reorder";
-
-const STATUS_STYLE: Record<ReorderStatus, string> = {
-  urgent: "text-destructive font-medium",
-  safe: "text-foreground",
-  overstock: "text-amber-600",
-};
 
 const STATUS_LABEL: Record<ReorderStatus, string> = {
   urgent: "Segera reorder",
@@ -17,58 +16,98 @@ const STATUS_LABEL: Record<ReorderStatus, string> = {
   overstock: "Kelebihan stok",
 };
 
+const STATUS_VARIANT: Record<ReorderStatus, "destructive" | "secondary" | "outline"> = {
+  urgent: "destructive",
+  safe: "secondary",
+  overstock: "outline",
+};
+
 const FILTERS: (ReorderStatus | "all")[] = ["all", "urgent", "safe", "overstock"];
 
+interface ReorderRow extends ReorderRecommendation {
+  materialLabel: string;
+}
+
 // Tabel rekomendasi reorder dengan filter status (Fase 5).
-export function ReorderTable({ recommendations }: { recommendations: ReorderRecommendation[] }) {
+// `materials` opsional: bila diberikan, kolom Material menampilkan kode + nama
+// alih-alih UUID mentah.
+export function ReorderTable({
+  recommendations,
+  materials = [],
+}: {
+  recommendations: ReorderRecommendation[];
+  materials?: Material[];
+}) {
   const [filter, setFilter] = useState<ReorderStatus | "all">("all");
-  const rows = filter === "all" ? recommendations : recommendations.filter((r) => r.status === filter);
+
+  const rows = useMemo<ReorderRow[]>(() => {
+    const byId = new Map(materials.map((m) => [m.id, m]));
+    const filtered =
+      filter === "all" ? recommendations : recommendations.filter((r) => r.status === filter);
+
+    return filtered.map((r) => {
+      const m = byId.get(r.material_id);
+      return { ...r, materialLabel: m ? `${m.code} — ${m.name}` : r.material_id };
+    });
+  }, [recommendations, materials, filter]);
+
+  const columns = useMemo<ColumnDef<ReorderRow>[]>(
+    () => [
+      {
+        accessorKey: "materialLabel",
+        header: "Material",
+        cell: ({ row }) => <span className="font-medium">{row.original.materialLabel}</span>,
+      },
+      {
+        accessorKey: "safety_stock",
+        header: "Safety stock",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.safety_stock)}</span>
+        ),
+      },
+      {
+        accessorKey: "reorder_point",
+        header: "Reorder point",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.reorder_point)}</span>
+        ),
+      },
+      {
+        accessorKey: "recommended_order_qty",
+        header: "Order qty",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.recommended_order_qty)}</span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant={STATUS_VARIANT[row.original.status]}>
+            {STATUS_LABEL[row.original.status]}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
-          <button
+          <Button
             key={f}
+            size="sm"
+            variant={filter === f ? "default" : "outline"}
             onClick={() => setFilter(f)}
-            className={cn(
-              "rounded-md border px-3 py-1 text-sm",
-              filter === f ? "bg-primary text-primary-foreground" : "hover:bg-accent",
-            )}
           >
             {f === "all" ? "Semua" : STATUS_LABEL[f]}
-          </button>
+          </Button>
         ))}
       </div>
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Tidak ada rekomendasi.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="py-2 pr-4">Material</th>
-                <th className="py-2 pr-4">Safety stock</th>
-                <th className="py-2 pr-4">Reorder point</th>
-                <th className="py-2 pr-4">Order qty</th>
-                <th className="py-2 pr-4">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.material_id} className="border-b">
-                  <td className="py-2 pr-4 font-medium">{r.material_id}</td>
-                  <td className="py-2 pr-4">{r.safety_stock}</td>
-                  <td className="py-2 pr-4">{r.reorder_point}</td>
-                  <td className="py-2 pr-4">{r.recommended_order_qty}</td>
-                  <td className={cn("py-2 pr-4", STATUS_STYLE[r.status])}>{STATUS_LABEL[r.status]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable columns={columns} data={rows} emptyMessage="Tidak ada rekomendasi." />
     </div>
   );
 }

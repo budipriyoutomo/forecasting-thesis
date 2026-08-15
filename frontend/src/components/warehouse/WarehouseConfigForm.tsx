@@ -4,7 +4,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { FormError } from "@/components/common/FormError";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import type { WarehouseConfig, WarehouseConfigInput } from "@/types/warehouse";
 
 const schema = z.object({
@@ -15,9 +25,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-const FIELD = "flex flex-col gap-1";
-const INPUT = "h-10 rounded-md border border-input bg-background px-3 text-sm";
 
 export function WarehouseConfigForm({
   initial,
@@ -30,11 +37,12 @@ export function WarehouseConfigForm({
   submitting?: boolean;
   error?: string | null;
 }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FormValues>({
+  // Nilai awal harus selalu terdefinisi. Dibiarkan undefined, `field.value` ikut
+  // undefined dan `z.coerce.number()` menghasilkan NaN — zod lalu memunculkan pesan
+  // tipe bawaannya, bukan "Harus lebih dari 0" yang dimaksud. String kosong
+  // di-coerce jadi 0 sehingga aturan `.gt(0)` yang berbicara.
+  const kosong = "" as unknown as number;
+  const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: initial
       ? {
@@ -43,10 +51,10 @@ export function WarehouseConfigForm({
           width: initial.pallet_dimension.width,
           height: initial.pallet_dimension.height,
         }
-      : undefined,
+      : { warehouse_area_m2: kosong, length: kosong, width: kosong, height: kosong },
   });
 
-  const submit = handleSubmit((v) =>
+  const submit = form.handleSubmit((v) =>
     onSubmit({
       warehouse_area_m2: v.warehouse_area_m2,
       pallet_dimension: { length: v.length, width: v.width, height: v.height },
@@ -54,38 +62,56 @@ export function WarehouseConfigForm({
   );
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-      <div className={FIELD}>
-        <label htmlFor="warehouse_area_m2" className="text-sm font-medium">
-          Luas gudang (m²)
-        </label>
-        <input id="warehouse_area_m2" type="number" step="any" className={INPUT} {...register("warehouse_area_m2")} />
-        {errors.warehouse_area_m2 && (
-          <p className="text-sm text-destructive">{errors.warehouse_area_m2.message}</p>
-        )}
-      </div>
+    <Form {...form}>
+      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+        <FormField
+          control={form.control}
+          name="warehouse_area_m2"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Luas gudang (m²)</FormLabel>
+              <FormControl>
+                <Input type="number" step="any" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <fieldset className="grid grid-cols-3 gap-2">
-        <legend className="mb-1 text-sm font-medium">Dimensi palet (m)</legend>
-        <div className={FIELD}>
-          <label htmlFor="length" className="text-xs text-muted-foreground">Panjang</label>
-          <input id="length" type="number" step="any" className={INPUT} {...register("length")} />
-        </div>
-        <div className={FIELD}>
-          <label htmlFor="width" className="text-xs text-muted-foreground">Lebar</label>
-          <input id="width" type="number" step="any" className={INPUT} {...register("width")} />
-        </div>
-        <div className={FIELD}>
-          <label htmlFor="height" className="text-xs text-muted-foreground">Tinggi</label>
-          <input id="height" type="number" step="any" className={INPUT} {...register("height")} />
-        </div>
-      </fieldset>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-sm font-medium">Dimensi palet (m)</legend>
+          <div className="grid grid-cols-3 gap-3">
+            {(
+              [
+                ["length", "Panjang"],
+                ["width", "Lebar"],
+                ["height", "Tinggi"],
+              ] as const
+            ).map(([name, label]) => (
+              <FormField
+                key={name}
+                control={form.control}
+                name={name}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">{label}</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="any" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ))}
+          </div>
+        </fieldset>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+        <FormError message={error} />
 
-      <Button type="submit" disabled={submitting}>
-        {submitting ? "Menyimpan…" : "Simpan konfigurasi"}
-      </Button>
-    </form>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Menyimpan…" : "Simpan konfigurasi"}
+        </Button>
+      </form>
+    </Form>
   );
 }

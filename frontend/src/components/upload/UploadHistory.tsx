@@ -1,37 +1,73 @@
 "use client";
 
+import type { ColumnDef } from "@tanstack/react-table";
+import { useMemo } from "react";
+
+import { DataTable } from "@/components/common/DataTable";
+import { TableSkeleton } from "@/components/common/TableSkeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { formatDate, formatNumber } from "@/lib/format";
 import { useUploadHistory } from "@/hooks/useUploads";
+import type { UploadSessionSummary } from "@/types/upload";
 
 export function UploadHistory() {
   const { data, isPending, isError } = useUploadHistory();
 
-  if (isPending) return <p className="text-sm text-muted-foreground">Memuat riwayat…</p>;
-  if (isError) return <p className="text-sm text-destructive">Gagal memuat riwayat upload.</p>;
-  if (!data || data.length === 0)
-    return <p className="text-sm text-muted-foreground">Belum ada upload.</p>;
+  const columns = useMemo<ColumnDef<UploadSessionSummary>[]>(
+    () => [
+      {
+        accessorKey: "file_name",
+        header: "File",
+        cell: ({ row }) => <span className="font-medium">{row.original.file_name}</span>,
+      },
+      {
+        accessorKey: "created_at",
+        header: "Diunggah",
+        cell: ({ row }) => formatDate(row.original.created_at),
+      },
+      {
+        accessorKey: "n_rows",
+        header: "Baris",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.n_rows)}</span>
+        ),
+      },
+      {
+        accessorKey: "n_products_detected",
+        header: "Produk",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.n_products_detected)}</span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant={row.original.status === "validated" ? "secondary" : "outline"}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
+
+  if (isPending) return <TableSkeleton columns={5} rows={3} />;
+  if (isError) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>Gagal memuat riwayat upload.</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-2 pr-4">File</th>
-            <th className="py-2 pr-4">Baris</th>
-            <th className="py-2 pr-4">Produk</th>
-            <th className="py-2 pr-4">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((s) => (
-            <tr key={s.session_id} className="border-b">
-              <td className="py-2 pr-4 font-medium">{s.file_name}</td>
-              <td className="py-2 pr-4">{s.n_rows}</td>
-              <td className="py-2 pr-4">{s.n_products_detected}</td>
-              <td className="py-2 pr-4">{s.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={data ?? []}
+      pageSize={5}
+      emptyMessage="Belum ada upload."
+    />
   );
 }

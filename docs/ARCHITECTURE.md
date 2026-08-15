@@ -44,7 +44,7 @@
 
 | Layer | Teknologi | Hosting |
 |---|---|---|
-| Frontend | Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + TanStack Query | Vercel |
+| Frontend | Next.js (App Router) + TypeScript + Tailwind v3 + shadcn/ui (Radix) + TanStack Query + TanStack Table v8 + Recharts + next-themes | Vercel |
 | Backend | FastAPI (Python 3.11+) + Pydantic v2 + SQLAlchemy 2.0 async | Railway |
 | Database | PostgreSQL | Supabase |
 | Object Storage | Cloudflare R2 (CSV upload & export) | Cloudflare |
@@ -83,18 +83,32 @@ forecastiq/
 │   │   │   │   └── settings/
 │   │   │   └── layout.tsx
 │   │   ├── components/
-│   │   │   ├── ui/
+│   │   │   ├── ui/                     ← primitif shadcn/ui (hasil generate CLI, jangan tulis tangan)
+│   │   │   ├── common/                 ← primitif lintas fitur: DataTable, PageHeader, EmptyState,
+│   │   │   │                              TableSkeleton, FormError, ConfirmDialog
+│   │   │   ├── layout/                 ← AppSidebar, AppHeader, Breadcrumbs, ThemeToggle, SkipLink
+│   │   │   ├── providers/              ← QueryProvider, ThemeProvider
+│   │   │   ├── auth/
 │   │   │   ├── upload/
 │   │   │   ├── config/
 │   │   │   ├── forecast/
+│   │   │   ├── products/
 │   │   │   ├── materials/
 │   │   │   ├── boms/                   ← visual breakdown produk → material
 │   │   │   ├── warehouse/              ← indikator validasi kapasitas
 │   │   │   ├── override/
 │   │   │   └── dashboard/
-│   │   ├── lib/{api.ts, utils.ts}
-│   │   ├── hooks/{useUpload.ts, useForecastRun.ts, useOverride.ts, useAuth.ts, useWarehouseCheck.ts}
+│   │   ├── lib/{api.ts, auth.ts, download.ts, format.ts, navigation.ts, utils.ts}
+│   │   │      ← navigation.ts = sumber tunggal struktur nav (dipakai sidebar + breadcrumb)
+│   │   │        format.ts = formatter angka/persen/uang/tanggal terpusat (Decimal backend = string)
+│   │   ├── hooks/{useAuth, useProducts, useMaterials, useBoms, useUploads, useForecast,
+│   │   │          useReorder, useWarehouse, useOverrides, useMetrics, useDashboard,
+│   │   │          useExport, use-mobile}
 │   │   └── types/
+│   ├── components.json                 ← konfigurasi shadcn/ui (style new-york, baseColor slate)
+│   ├── tailwind.config.ts
+│   ├── vitest.config.ts + vitest.setup.ts   ← setup men-stub matchMedia/ResizeObserver/pointer
+│   │                                          capture yang tidak ada di jsdom tapi dipakai Radix
 │   └── package.json
 │
 ├── backend/                          ← FastAPI

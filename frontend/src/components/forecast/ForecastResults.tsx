@@ -3,6 +3,9 @@
 import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
 import { CandidatesTable } from "@/components/forecast/CandidatesTable";
 import { ForecastChart } from "@/components/forecast/ForecastChart";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatNumber } from "@/lib/format";
 import type { ForecastRunResponse } from "@/types/forecast";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -16,37 +19,45 @@ export function ForecastResults({ data }: { data: ForecastRunResponse }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm">
-        Run <span className="font-medium">{run.status}</span> · {run.n_completed} berhasil ·{" "}
-        {run.n_failed} gagal dari {run.n_products} produk.
-      </p>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Badge variant={run.status === "COMPLETED" ? "secondary" : "outline"}>{run.status}</Badge>
+        <span>
+          {run.n_completed} berhasil · {run.n_failed} gagal dari {run.n_products} produk.
+        </span>
+      </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {results.map((r) => (
-          <div key={r.product_id} className="rounded-lg border p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{r.product_id}</span>
-              <span className="text-sm text-muted-foreground">
-                {STATUS_LABEL[r.status] ?? r.status}
-              </span>
-            </div>
+          <Card key={r.product_id}>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-base">{r.product_id}</CardTitle>
+                  {r.status === "COMPLETED" && (
+                    <CardDescription>
+                      Metode <span className="font-medium">{r.method_used}</span> (
+                      {r.selection_mode === "manual" ? "dipilih manual" : "dipilih otomatis"})
+                      {r.mape != null && <> · MAPE {formatNumber(r.mape)}%</>}
+                    </CardDescription>
+                  )}
+                </div>
+                <Badge variant={r.status === "COMPLETED" ? "secondary" : "destructive"}>
+                  {STATUS_LABEL[r.status] ?? r.status}
+                </Badge>
+              </div>
+            </CardHeader>
 
             {r.status === "COMPLETED" && (
-              <div className="mt-2 flex flex-col gap-1 text-sm">
-                <p>
-                  Metode: <span className="font-medium">{r.method_used}</span> (
-                  {r.selection_mode === "manual" ? "dipilih manual" : "dipilih otomatis"})
-                  {r.mape != null && <> · MAPE {r.mape.toFixed(2)}%</>}
-                </p>
+              <CardContent className="flex flex-col gap-4">
                 <ExplanationBox explanation={r.explanation} />
                 <CandidatesTable
                   candidates={r.candidates_evaluated ?? []}
                   winner={r.method_used}
                 />
                 <ForecastChart forecast={r.forecast} />
-              </div>
+              </CardContent>
             )}
-          </div>
+          </Card>
         ))}
       </div>
     </div>
