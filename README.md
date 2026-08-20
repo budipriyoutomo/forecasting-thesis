@@ -88,7 +88,8 @@ make revision m="tambah tabel users"  # bikin migrasi baru
 
 ## Deploy ke VPS
 
-Detail lengkap (topologi, jebakan, alasan tiap keputusan) ada di `docs/ARCHITECTURE.md` §10.
+**Langkah lengkap dari VPS kosong sampai jalan: `docs/DEPLOYMENT.md`** (hardening server, Docker, DNS/TLS, user admin pertama, cron, backup, troubleshooting).
+Topologi & alasan tiap keputusan ada di `docs/ARCHITECTURE.md` §10.
 
 ```bash
 cp .env.prod.example .env.prod && chmod 600 .env.prod   # lalu isi kredensial

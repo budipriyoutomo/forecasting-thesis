@@ -8,5 +8,6 @@
 > 3. `docs/ARCHITECTURE.md` — arsitektur teknis lengkap (data model, API contract, forecasting engine, storage flow)
 > 4. `docs/TASK_BREAKDOWN.md` — urutan fase implementasi
 > 5. `docs/RECONCILIATION.md` — histori keputusan (kalau ada pertanyaan "kenapa begini")
+> 6. `docs/DEPLOYMENT.md` — runbook deployment VPS (hanya kalau menyentuh deployment)
 
 File ini sengaja singkat — supaya tidak ada dua sumber kebenaran yang bisa saling tidak sinkron. Kalau Claude Code versi kamu tidak otomatis membaca `AGENTS.md`, jalankan Claude Code dari root repo ini; file ini (`CLAUDE.md`) akan otomatis terbaca dan mengarahkanmu ke `AGENTS.md`.

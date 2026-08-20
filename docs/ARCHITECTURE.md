@@ -65,6 +65,7 @@ forecastiq/
 ├── docs/
 │   ├── PRD.md
 │   ├── ARCHITECTURE.md              ← dokumen ini
+│   ├── DEPLOYMENT.md                ← runbook deployment VPS (langkah demi langkah)
 │   ├── TASK_BREAKDOWN.md
 │   └── RECONCILIATION.md
 │
@@ -761,6 +762,8 @@ Frontend & backend berbagi satu domain → request API bersifat **same-origin**,
 | `backend/.dockerignore`, `frontend/.dockerignore` | mencegah `.env`, `.venv`, `node_modules` masuk image |
 
 ### Alur deploy
+
+> Runbook langkah demi langkah (siapkan VPS, firewall, Docker, DNS, user admin pertama, backup, troubleshooting) ada di **`DEPLOYMENT.md`**. Ringkasnya:
 
 ```bash
 cp .env.prod.example .env.prod && chmod 600 .env.prod   # lalu isi kredensial
