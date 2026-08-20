@@ -1,0 +1,20 @@
+# Rahasia — lihat catatan di backend/.dockerignore.
+.env
+.env.local
+.env.*
+!.env.local.example
+
+# Dependency & build artefak host — di-install/di-build ulang di dalam image.
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Test tidak dijalankan di dalam image production (dijalankan di CI).
+**/__tests__/
+vitest.config.ts
+vitest.setup.ts
+
+# Lain-lain
+.DS_Store
+*.md

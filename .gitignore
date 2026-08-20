@@ -33,3 +33,7 @@ out/
 
 # Baseline visual & harness screenshot untuk redesign frontend (lokal, tidak di-commit)
 .redesign/
+
+# Konfigurasi deployment production (berisi kredensial)
+.env.prod
+!.env.prod.example

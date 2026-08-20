@@ -28,7 +28,9 @@ settings = get_settings()
 app = FastAPI(title="ForecastIQ API", version=API_VERSION)
 
 # CORS untuk frontend Next.js. Origin dibaca dari env — di production diisi
-# domain Vercel saja (hardening CORS: docs/TASK_BREAKDOWN.md Fase 9).
+# domain publik saja (hardening CORS: docs/TASK_BREAKDOWN.md Fase 9). Di deployment
+# VPS frontend & backend satu domain di balik Caddy, jadi request-nya same-origin
+# dan CORS praktis tak pernah terpakai (docs/ARCHITECTURE.md §10).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

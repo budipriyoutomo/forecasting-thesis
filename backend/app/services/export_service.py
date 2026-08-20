@@ -3,8 +3,8 @@ ExportService — export hasil forecast & reorder ke Excel/PDF (Fase 8).
 
 Fungsi builder MURNI (bytes, mudah dites): `build_forecast_xlsx`,
 `build_reorder_xlsx`, `build_reorder_pdf`. `ExportService` mengorkestrasi:
-ambil data dari repo (cek kepemilikan run), bangun file, simpan ke R2
-`permanent/exports/...` (best-effort — kegagalan R2 tidak menggagalkan download),
+ambil data dari repo (cek kepemilikan run), bangun file, simpan ke object storage
+`permanent/exports/...` (best-effort — kegagalan storage tidak menggagalkan download),
 lalu kembalikan bytes untuk diunduh.
 """
 import io
@@ -140,7 +140,7 @@ class ExportService:
         return content, filename, mime
 
     def _archive(self, user_id: str, run_id: str, filename: str, content: bytes) -> None:
-        # Simpan ke R2 permanent/exports (best-effort). Kegagalan penyimpanan
+        # Simpan ke permanent/exports (best-effort). Kegagalan penyimpanan
         # arsip tidak boleh menggagalkan download file oleh user.
         if self._storage is None:
             return

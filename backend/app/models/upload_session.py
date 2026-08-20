@@ -2,7 +2,7 @@
 ORM model `upload_sessions` — docs/ARCHITECTURE.md §4.
 
 Satu baris = satu upload CSV konsumsi. Menyimpan ringkasan hasil validasi
-(preview, warnings, jumlah baris/material) + lokasi file di R2. `expires_at`
+(preview, warnings, jumlah baris/material) + lokasi file di object storage. `expires_at`
 dipakai cron cleanup untuk menghapus file temp yang belum divalidasi (§7).
 """
 import uuid

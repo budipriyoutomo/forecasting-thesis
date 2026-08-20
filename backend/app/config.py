@@ -2,7 +2,7 @@
 Application settings — dibaca dari environment variables.
 
 Lihat AGENTS.md §5 dan docs/ARCHITECTURE.md §6.7 untuk daftar lengkap env var
-yang dibutuhkan seiring fase-fase berikutnya (Supabase, Cloudflare R2, dst).
+yang dibutuhkan seiring fase-fase berikutnya (Supabase, object storage, dst).
 Untuk Fase 0 (scaffold ini), hanya subset minimal yang benar-benar dipakai.
 """
 from functools import lru_cache
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Runtime
     ENVIRONMENT: str = "development"  # development / staging / production
-    CORS_ORIGINS: str = "http://localhost:3000"  # dipisah koma; di production isi domain Vercel saja
+    CORS_ORIGINS: str = "http://localhost:3000"  # dipisah koma; di production isi domain publik saja
 
     # Auth
     JWT_SECRET_KEY: str = "dev-secret-change-me"
@@ -62,14 +62,22 @@ class Settings(BaseSettings):
     # Database (dipakai mulai Fase 1 — belum wajib untuk scaffold ini)
     DATABASE_URL: str | None = None
 
-    # Supabase / Cloudflare R2 (dipakai mulai Fase 1/3)
+    # Supabase (dipakai mulai Fase 1)
     SUPABASE_URL: str | None = None
     SUPABASE_KEY: str | None = None
     SUPABASE_SERVICE_ROLE_KEY: str | None = None
-    CLOUDFLARE_R2_ACCOUNT_ID: str | None = None
-    CLOUDFLARE_R2_ACCESS_KEY: str | None = None
-    CLOUDFLARE_R2_SECRET_KEY: str | None = None
-    CLOUDFLARE_R2_BUCKET_NAME: str = "forecastiq-bucket"
+
+    # Object storage S3-compatible (Fase 3). Endpoint dibaca dari env, bukan
+    # diturunkan dari account ID provider tertentu — supaya pindah provider
+    # (Cloudflare R2 → IDCloudHost → MinIO) cukup ganti env, tanpa ubah kode.
+    S3_ENDPOINT_URL: str | None = None
+    S3_ACCESS_KEY: str | None = None
+    S3_SECRET_KEY: str | None = None
+    S3_REGION: str = "SouthJkt-a"
+    S3_BUCKET_NAME: str = "forecastiq-bucket"
+    # auto | path | virtual — pakai "path" kalau provider tidak punya wildcard
+    # DNS untuk `{bucket}.{endpoint}`.
+    S3_ADDRESSING_STYLE: str = "auto"
 
     @property
     def cors_origins_list(self) -> list[str]:

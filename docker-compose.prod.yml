@@ -1,0 +1,75 @@
+# Compose PRODUCTION (VPS). Beda dari docker-compose.yml (dev) dalam hal:
+#   - image di-build, bukan bind-mount source  → kode di container = kode yang di-build
+#   - tanpa --reload / npm run dev             → tidak ada file watcher di production
+#   - port aplikasi TIDAK di-publish ke host   → satu-satunya pintu masuk adalah Caddy (80/443)
+#   - Postgres tanpa port publish              → hanya bisa diakses dari jaringan internal compose
+#
+# Jalankan:  docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# (atau `make prod-up`)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # sertifikat Let's Encrypt — JANGAN dihapus, ada rate limit penerbitan
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN wajib diisi di .env.prod}
+      TLS_EMAIL: ${TLS_EMAIL:?TLS_EMAIL wajib diisi di .env.prod}
+    depends_on:
+      - backend
+      - frontend
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      # Migrasi dijalankan entrypoint saat start (docker-entrypoint.sh).
+      RUN_MIGRATIONS: "true"
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # NEXT_PUBLIC_* di-inline saat build — ganti nilainya wajib disertai `--build`.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL wajib diisi di .env.prod}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  # Hapus service ini kalau DB memakai Supabase — cukup arahkan DATABASE_URL ke sana.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forecastiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-forecastiq}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      # Backend baru start setelah ini hijau — kalau tidak, `alembic upgrade head` gagal saat boot.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forecastiq} -d ${POSTGRES_DB:-forecastiq}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata_prod:
+  caddy_data:
+  caddy_config:

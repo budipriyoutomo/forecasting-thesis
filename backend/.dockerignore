@@ -1,0 +1,26 @@
+# Rahasia — JANGAN pernah masuk ke image. `docker history` menyimpan layer
+# selamanya, jadi file .env yang ter-copy tetap terbaca meski dihapus di layer
+# berikutnya. Kredensial diinjeksikan lewat env_file/secret saat runtime.
+.env
+.env.*
+!.env.example
+
+# Virtualenv host (553 MB, Python 3.14) — image punya interpreter sendiri.
+.venv/
+venv/
+
+# Cache & artefak build
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Test tidak dijalankan di dalam image production (dijalankan di CI).
+tests/
+
+# Lain-lain
+.DS_Store
+*.md

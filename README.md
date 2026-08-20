@@ -86,6 +86,40 @@ make migrate                          # alembic upgrade head
 make revision m="tambah tabel users"  # bikin migrasi baru
 ```
 
+## Deploy ke VPS
+
+Detail lengkap (topologi, jebakan, alasan tiap keputusan) ada di `docs/ARCHITECTURE.md` §10.
+
+```bash
+cp .env.prod.example .env.prod && chmod 600 .env.prod   # lalu isi kredensial
+make prod-check                                          # validasi konfigurasi
+make prod-up                                             # build + start
+make prod-logs
+```
+
+Stack: **Caddy** (TLS otomatis, satu-satunya port publik) → **frontend** Next.js standalone +
+**backend** FastAPI → **Postgres**. Frontend & backend satu domain, jadi request API
+same-origin. Migrasi `alembic upgrade head` jalan otomatis saat container backend start.
+
+Yang wajib disiapkan sebelum `make prod-up`, kalau tidak aplikasi hidup tapi tidak berfungsi:
+
+| Env | Kalau kosong |
+|---|---|
+| `SUPABASE_URL` / `SUPABASE_KEY` | tidak ada yang bisa login (`dev_auth` mati di production) |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | upload & export gagal |
+| `JWT_SECRET_KEY` | token bisa dipalsukan — bikin dengan `openssl rand -hex 32` |
+| `DOMAIN` / `TLS_EMAIL` | Caddy tidak bisa menerbitkan sertifikat |
+
+Dua hal yang gampang bikin bingung:
+
+- **`NEXT_PUBLIC_*` di-inline saat build image.** Mengubahnya di `.env.prod` tanpa `--build`
+  (yaitu `make prod-deploy`, bukan sekadar restart) tidak berpengaruh apa pun.
+- **Jadwalkan cron pembersih file temp** di crontab VPS, kalau tidak file temp menumpuk:
+  `*/30 * * * * cd /path/ke/forecastiq && make prod-cleanup`
+
+Buka firewall untuk **22, 80, 443 saja** — port aplikasi & Postgres sengaja tidak di-publish
+ke host oleh `docker-compose.prod.yml`.
+
 ## Status implementasi
 
 Lihat `docs/TASK_BREAKDOWN.md` untuk daftar fase lengkap. Saat ini:

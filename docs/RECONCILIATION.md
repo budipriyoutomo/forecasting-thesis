@@ -295,5 +295,92 @@ Frontend 129 test hijau (dari 66), typecheck & eslint bersih, build sukses. Komp
 1 → 29. Halaman ber-`DataTable` naik ~50–65 kB First Load JS — kalau nanti terasa berat,
 sasaran pertama adalah memuat `DataTable` secara dinamis.
 
+## Migrasi Object Storage: Cloudflare R2 → IDCloudHost (20 Agustus 2026)
+
+**Pemicu.** Rencana deployment bergeser dari Railway/Vercel ke VPS. Karena infrastruktur lain
+pindah ke penyedia Indonesia, object storage ikut dipindah ke **IDCloudHost Object Storage**
+supaya berada di region yang sama dengan aplikasi (latensi upload/export) dan satu tagihan.
+
+**Kenapa perpindahannya murah.** `storage_service.py` sejak Fase 3 hanya memakai tiga operasi
+S3 standar — `put_object`, `copy_object`, `delete_object` — tanpa presigned URL dan tanpa API
+khas Cloudflare, dengan client boto3 di-inject lewat konstruktor. Jadi seluruh body service
+**nol perubahan**; yang diganti hanya fungsi builder client-nya.
+
+**Yang berubah:**
+
+1. `build_r2_client()` → **`build_s3_client()`**. Endpoint tidak lagi diturunkan dari account ID
+   (`https://{account}.r2.cloudflarestorage.com`) melainkan dibaca utuh dari `S3_ENDPOINT_URL`.
+   Ini alasan utama env-nya di-*rename* dan bukan sekadar diisi nilai baru: bentuk URL R2
+   men-encode asumsi vendor ke dalam kode.
+2. Env `CLOUDFLARE_R2_ACCOUNT_ID/ACCESS_KEY/SECRET_KEY/BUCKET_NAME` →
+   `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET_NAME`, plus dua env baru:
+   - **`S3_REGION`** (default `SouthJkt-a`). R2 memakai `region_name="auto"`, yang **hanya**
+     valid di R2 — signature v4 ikut menandatangani region, jadi nilai `auto` ditolak provider lain.
+   - **`S3_ADDRESSING_STYLE`** (default `auto`). Virtual-host style (`{bucket}.{endpoint}`)
+     butuh wildcard DNS di sisi provider; kalau ternyata tidak tersedia, set `path` **lewat env
+     di server, tanpa deploy ulang kode**. Signature dipatok `s3v4`.
+3. Komentar/docstring yang menyebut "R2" sebagai penyedia aktual diganti "object storage".
+   Yang menyebut R2 sebagai *contoh* provider dipertahankan.
+
+**Yang TIDAK berubah:** layout key (`temp/uploads/…`, `permanent/datasets/…`,
+`permanent/exports/…`) identik, jadi tidak ada migrasi skema. Kalau nanti sudah ada data
+produksi di R2, pindahnya cukup `rclone sync`. Per tanggal ini belum pernah deploy, jadi
+tidak ada data yang perlu dipindah.
+
+**Belum diverifikasi terhadap server sungguhan.** Test memakai client boto3 yang di-mock
+(`370 passed, 1 skipped`). Yang masih perlu dicek saat kredensial IDCloudHost sudah ada:
+apakah `copy_object` didukung penuh (dipakai `move_to_permanent`), dan apakah addressing style
+`auto` bekerja atau harus dipaksa `path`.
+
+## Deployment: Railway/Vercel → VPS Self-Hosted (20 Agustus 2026)
+
+**Pemicu.** Audit kesiapan deploy: kode sudah hijau (backend 370 test, frontend 129 test,
+`next build` sukses), tapi **tidak ada satu pun artefak deployment yang layak production**.
+`docker-compose.yml` yang ada adalah compose *dev* — bind-mount source, `uvicorn --reload`,
+frontend dijalankan dengan `npm run dev`. Menjalankan itu di VPS berarti menjalankan dev
+server sebagai production.
+
+**Temuan paling serius: tidak ada `.dockerignore` di mana pun.** `backend/Dockerfile` memakai
+`COPY . .`, jadi `backend/.env` (kredensial) dan `backend/.venv` (553 MB, interpreter 3.14 yang
+tidak kompatibel dengan image 3.11) ikut masuk image. File `.env` di dalam image bukan sekadar
+boros: `docker history` menyimpan layer selamanya, jadi kredensial tetap terbaca meski file
+dihapus di layer berikutnya. Ini ditambal duluan sebelum image pertama pernah di-build.
+
+**Keputusan & alasannya:**
+
+1. **Compose production terpisah, bukan menambal compose dev.** Perbedaannya terlalu
+   fundamental (bind-mount vs image, reload vs tidak, port publish vs tidak) — satu file
+   dengan override akan menyembunyikan perbedaan yang justru harus terlihat.
+2. **Caddy, bukan Nginx.** TLS Let's Encrypt otomatis termasuk perpanjangan; Nginx butuh
+   certbot + cron sendiri. Untuk deployment satu domain, konfigurasi Caddy ±30 baris.
+3. **Satu domain untuk frontend & backend** (`/api/*` + `/health` → backend, sisanya →
+   frontend). Konsekuensinya request API jadi same-origin, jadi seluruh kelas bug CORS di
+   production hilang, bukan sekadar dikonfigurasi dengan benar.
+4. **Migrasi di entrypoint container, bukan langkah deploy manual.** `set -e` membuat
+   container gagal start kalau `alembic upgrade head` gagal — disengaja: aplikasi hidup di
+   atas skema yang salah lebih berbahaya daripada aplikasi yang tidak hidup. Bisa dimatikan
+   lewat `RUN_MIGRATIONS=false` untuk kasus rollback manual.
+5. **Port aplikasi tidak di-publish ke host.** Backend/frontend/Postgres hanya ada di jaringan
+   internal compose; satu-satunya pintu masuk adalah Caddy di 80/443. Compose dev sebelumnya
+   mem-publish Postgres ke `0.0.0.0:5432` dengan password `forecastiq/forecastiq` — aman di
+   laptop, fatal di VPS.
+6. **Non-root user di kedua image** + healthcheck yang dipakai compose (`depends_on:
+   condition: service_healthy` pada Postgres, supaya migrasi tidak jalan sebelum DB siap).
+7. **`output: "standalone"` di `next.config.mjs`** — image runner cuma butuh `server.js` +
+   node_modules minimal (66 MB) alih-alih seluruh `node_modules` (±500 MB).
+8. **`FORECAST_ENGINES_ENABLED` di `.env.prod.example` sengaja tanpa `lstm`.** TensorFlow masih
+   di-comment di `requirements.txt`, jadi `lstm` akan di-exclude otomatis oleh engine. Lebih
+   baik ketiadaannya eksplisit di konfigurasi daripada tampak aktif tapi diam-diam dilewati.
+
+**Jebakan yang didokumentasikan, bukan dihilangkan:** `NEXT_PUBLIC_*` di-inline ke bundel saat
+`next build`, jadi mengubahnya di `.env.prod` tanpa `--build` tidak berpengaruh. Ini sifat
+Next.js, bukan bug — dicatat di Dockerfile, compose, `.env.prod.example`, dan §10.
+
+**Belum terverifikasi:** Docker daemon di mesin dev sedang mati saat pekerjaan ini dilakukan,
+jadi `docker compose ... config` sudah divalidasi (exit 0) dan `next build --standalone` sudah
+terbukti menghasilkan `server.js`, tapi **kedua image belum pernah benar-benar di-build**.
+Ini juga yang membuat item "verifikasi image Docker backend" di `TASK_BREAKDOWN.md` §10 tetap
+terbuka.
+
 ---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*

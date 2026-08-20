@@ -8,7 +8,8 @@ PIP  := $(abspath $(VENV))/pip
 
 .PHONY: dev backend frontend install venv install-backend install-frontend \
         test test-backend test-frontend cov lint typecheck \
-        migrate revision seed-users seed-demo up down logs clean help
+        migrate revision seed-users seed-demo up down logs clean help \
+        prod-check prod-up prod-down prod-logs prod-deploy prod-cleanup
 
 # Default: jalanin frontend + backend bareng
 dev:
@@ -96,7 +97,7 @@ revision:
 	@test -n "$(m)" || (echo "❌ Pakai: make revision m=\"pesan migrasi\"" && exit 1)
 	cd backend && $(abspath $(VENV))/alembic revision --autogenerate -m "$(m)"
 
-# --- Docker ------------------------------------------------------------------
+# --- Docker (dev) ------------------------------------------------------------
 
 up:
 	docker compose up -d
@@ -106,6 +107,35 @@ down:
 
 logs:
 	docker compose logs -f
+
+# --- Docker (production / VPS) -----------------------------------------------
+# Konfigurasi ada di .env.prod (salin dari .env.prod.example, JANGAN di-commit).
+PROD := docker compose --env-file .env.prod -f docker-compose.prod.yml
+
+prod-check:
+	@test -f .env.prod || (echo "❌ .env.prod belum ada. Jalankan: cp .env.prod.example .env.prod && chmod 600 .env.prod" && exit 1)
+	@$(PROD) config >/dev/null && echo "✅ .env.prod & compose production valid"
+
+# Build + start. Migrasi alembic jalan otomatis di entrypoint backend.
+prod-up: prod-check
+	$(PROD) up -d --build
+
+prod-down:
+	$(PROD) down
+
+prod-logs:
+	$(PROD) logs -f
+
+# Deploy ulang setelah git pull. `--build` wajib kalau NEXT_PUBLIC_* berubah:
+# nilainya di-inline ke bundel frontend saat build, bukan dibaca saat runtime.
+prod-deploy: prod-check
+	$(PROD) up -d --build
+	@$(PROD) ps
+
+# Cron pembersih file temp di object storage — jadwalkan tiap 30 menit di crontab VPS:
+#   */30 * * * * cd /path/ke/forecastiq && make prod-cleanup >> /var/log/forecastiq-cleanup.log 2>&1
+prod-cleanup:
+	$(PROD) exec -T backend python -m app.jobs.cleanup_temp_uploads
 
 # --- Housekeeping ------------------------------------------------------------
 
@@ -127,5 +157,9 @@ help:
 	@echo "make revision   → alembic revision --autogenerate m=\"pesan\""
 	@echo "make seed-users → user demo per role untuk development"
 	@echo "make seed-demo  → data demo: produk, material, BOM, histori 36 bulan, gudang"
-	@echo "make up/down    → docker compose up -d / down"
+	@echo "make up/down    → docker compose up -d / down (dev)"
+	@echo "make prod-up    → build + start stack production (VPS, pakai .env.prod)"
+	@echo "make prod-deploy → deploy ulang setelah git pull"
+	@echo "make prod-logs  → logs stack production"
+	@echo "make prod-cleanup → jalankan cron pembersih file temp"
 	@echo "make clean      → hapus cache pytest/next/__pycache__"

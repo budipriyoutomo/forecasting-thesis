@@ -5,12 +5,12 @@ docs/ARCHITECTURE.md §3/§7.
 Alur POST upload (single-step, langsung divalidasi):
   1. Cek ukuran file (UPLOAD_FILE_TOO_LARGE).
   2. Parse + validasi CSV demand (UPLOAD_INVALID_FORMAT / INSUFFICIENT_DATA).
-  3. Simpan file ke R2 temp, lalu move ke permanent (STORAGE_UPLOAD_FAILED).
+  3. Simpan file ke storage temp, lalu move ke permanent (STORAGE_UPLOAD_FAILED).
   4. Persist upload_session (status=validated) + demand_history (3 seri paralel).
      product_id di-resolve dari master data produk; kode yang belum terdaftar
      diberi warning tanpa auto-create produk (AGENTS.md §6, pola RECONCILIATION #14).
 
-Semua dependency injectable → mudah dites tanpa DB/R2 nyata.
+Semua dependency injectable → mudah dites tanpa DB/storage nyata.
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -55,7 +55,7 @@ class UploadService:
                 f"Ukuran file melebihi batas {settings.MAX_UPLOAD_SIZE_MB} MB."
             )
 
-        # Validasi dulu sebelum menyentuh storage — gagal cepat, tidak menaruh sampah di R2.
+        # Validasi dulu sebelum menyentuh storage — gagal cepat, tidak menaruh sampah di storage.
         summary = data_ingestion_service.parse_and_validate_csv(filename, content)
 
         session_id = str(uuid.uuid4())

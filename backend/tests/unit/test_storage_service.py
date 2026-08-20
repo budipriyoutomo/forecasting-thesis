@@ -85,31 +85,67 @@ def test_delete_temp_gagal_dibungkus_storage_error():
         svc.delete_temp("sess-1", "data.csv")
 
 
-def test_build_r2_client_belum_dikonfigurasi_raise(monkeypatch):
+def _konfigurasi_s3(monkeypatch, **override):
+    """Isi settings S3 dengan nilai valid; `override` menimpa per-test."""
     from app.config import get_settings
-    from app.services.storage_service import build_r2_client
 
     settings = get_settings()
-    monkeypatch.setattr(settings, "CLOUDFLARE_R2_ACCOUNT_ID", None)
-    monkeypatch.setattr(settings, "CLOUDFLARE_R2_ACCESS_KEY", None)
+    nilai = {
+        "S3_ENDPOINT_URL": "https://is3.cloudhost.id",
+        "S3_ACCESS_KEY": "key",
+        "S3_SECRET_KEY": "secret",
+        "S3_REGION": "SouthJkt-a",
+        "S3_ADDRESSING_STYLE": "auto",
+        **override,
+    }
+    for nama, value in nilai.items():
+        monkeypatch.setattr(settings, nama, value)
+    return settings
+
+
+def _fake_boto3(monkeypatch):
+    sentinel = object()
+    fake = MagicMock()
+    fake.client.return_value = sentinel
+    monkeypatch.setitem(__import__("sys").modules, "boto3", fake)
+    return fake, sentinel
+
+
+@pytest.mark.parametrize("kosong", ["S3_ENDPOINT_URL", "S3_ACCESS_KEY"])
+def test_build_s3_client_belum_dikonfigurasi_raise(monkeypatch, kosong):
+    from app.services.storage_service import build_s3_client
+
+    _konfigurasi_s3(monkeypatch, **{kosong: None})
 
     with pytest.raises(StorageUploadFailedError):
-        build_r2_client()
+        build_s3_client()
 
 
-def test_build_r2_client_terkonfigurasi_membuat_client(monkeypatch):
-    from app.config import get_settings
+def test_build_s3_client_pakai_endpoint_dan_region_dari_settings(monkeypatch):
+    """Endpoint & region dibaca dari env — bukan hardcode ke provider tertentu."""
     from app.services import storage_service
 
-    settings = get_settings()
-    monkeypatch.setattr(settings, "CLOUDFLARE_R2_ACCOUNT_ID", "acc")
-    monkeypatch.setattr(settings, "CLOUDFLARE_R2_ACCESS_KEY", "key")
-    monkeypatch.setattr(settings, "CLOUDFLARE_R2_SECRET_KEY", "secret")
+    _konfigurasi_s3(monkeypatch)
+    fake_boto3, sentinel = _fake_boto3(monkeypatch)
 
-    sentinel = object()
-    fake_boto3 = MagicMock()
-    fake_boto3.client.return_value = sentinel
-    monkeypatch.setitem(__import__("sys").modules, "boto3", fake_boto3)
+    assert storage_service.build_s3_client() is sentinel
+    call = fake_boto3.client.call_args
+    assert call.args[0] == "s3"
+    assert call.kwargs["endpoint_url"] == "https://is3.cloudhost.id"
+    assert call.kwargs["region_name"] == "SouthJkt-a"
+    assert call.kwargs["aws_access_key_id"] == "key"
+    assert call.kwargs["aws_secret_access_key"] == "secret"
 
-    assert storage_service.build_r2_client() is sentinel
-    assert fake_boto3.client.call_args.args[0] == "s3"
+
+def test_build_s3_client_addressing_style_path_diteruskan_ke_config(monkeypatch):
+    """S3_ADDRESSING_STYLE=path dipakai kalau provider tak punya wildcard DNS bucket."""
+    from app.services import storage_service
+
+    _konfigurasi_s3(monkeypatch, S3_ADDRESSING_STYLE="path")
+    fake_boto3, _ = _fake_boto3(monkeypatch)
+
+    storage_service.build_s3_client()
+
+    config = fake_boto3.client.call_args.kwargs["config"]
+    assert config.s3["addressing_style"] == "path"
+    assert config.signature_version == "s3v4"

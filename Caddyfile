@@ -1,0 +1,40 @@
+# Reverse proxy + TLS otomatis (Let's Encrypt). Caddy mengurus penerbitan &
+# perpanjangan sertifikat sendiri — tidak perlu certbot/cron.
+#
+# Frontend dan backend berbagi satu domain, jadi permintaan browser ke API
+# bersifat same-origin: preflight CORS tidak pernah terjadi.
+
+{$DOMAIN} {
+	tls {$TLS_EMAIL}
+
+	encode gzip
+
+	# Backend: semua endpoint API + health check (di luar prefix /api/v1).
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+
+	# Sisanya Next.js.
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	header {
+		# HSTS: paksa HTTPS di kunjungan berikutnya. Hapus kalau domain masih
+		# dipakai untuk layanan lain berbasis HTTP.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

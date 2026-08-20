@@ -24,7 +24,7 @@ class _FakeSessionCtx:
 async def test_run_memanggil_cleanup_dan_commit(monkeypatch):
     fake_session = _FakeSessionCtx()
     monkeypatch.setattr(job, "get_sessionmaker", lambda: (lambda: fake_session))
-    monkeypatch.setattr(job, "build_r2_client", lambda: MagicMock())
+    monkeypatch.setattr(job, "build_s3_client", lambda: MagicMock())
 
     # autospec, BUKAN `lambda **kw`: konstruktor palsu yang menelan keyword apa pun
     # membuat drift signature UploadService lolos tanpa ketahuan (job ini pernah

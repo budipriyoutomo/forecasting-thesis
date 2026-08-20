@@ -1,19 +1,22 @@
 """
 Cron cleanup temp upload — docs/ARCHITECTURE.md §7 (jalankan tiap 30 menit).
 
-Menghapus file temp di R2 untuk upload session yang masih `pending` dan sudah
+Menghapus file temp di object storage untuk upload session yang masih `pending` dan sudah
 lewat `expires_at`, lalu menandai statusnya `expired`. Sengaja TIDAK memakai
 Celery/Redis (AGENTS.md §10 #11, MVP sync-first) — cukup dijadwalkan lewat cron
-OS / scheduler platform (mis. Railway cron) memanggil:
+OS / scheduler platform memanggil:
 
     python -m app.jobs.cleanup_temp_uploads
+
+Di deployment VPS, jadwalnya ada di crontab host lewat `make prod-cleanup`
+(docs/ARCHITECTURE.md §10).
 """
 import asyncio
 
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.upload_session_repository import SqlUploadSessionRepository
-from app.services.storage_service import StorageService, build_r2_client
+from app.services.storage_service import StorageService, build_s3_client
 from app.services.upload_service import UploadService
 from app.db.session import get_sessionmaker
 
@@ -23,7 +26,7 @@ async def run() -> int:
         # `demand`/`products` tak dipakai cleanup_expired (hanya storage+sessions),
         # tapi tetap wajib diisi — konstruktor UploadService tidak punya default.
         service = UploadService(
-            storage=StorageService(build_r2_client()),
+            storage=StorageService(build_s3_client()),
             sessions=SqlUploadSessionRepository(session),
             demand=SqlDemandHistoryRepository(session),
             products=SqlProductRepository(session),

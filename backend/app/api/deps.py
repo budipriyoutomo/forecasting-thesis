@@ -34,7 +34,7 @@ from app.services.material_service import MaterialService
 from app.services.override_service import OverrideService
 from app.services.product_service import ProductService
 from app.services.reorder_service import ReorderService
-from app.services.storage_service import StorageService, build_r2_client
+from app.services.storage_service import StorageService, build_s3_client
 from app.services.dev_auth import build_authenticator
 from app.services.upload_service import UploadService
 from app.services.warehouse_service import WarehouseService
@@ -106,7 +106,7 @@ def get_bom_service(session: AsyncSession = Depends(get_db)) -> BomService:
 
 def get_upload_service(session: AsyncSession = Depends(get_db)) -> UploadService:
     return UploadService(
-        storage=StorageService(build_r2_client()),
+        storage=StorageService(build_s3_client()),
         sessions=SqlUploadSessionRepository(session),
         demand=SqlDemandHistoryRepository(session),
         products=SqlProductRepository(session),
@@ -133,10 +133,10 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
 
 
 def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService:
-    # Storage best-effort: kalau R2 belum dikonfigurasi, export tetap jalan
-    # (file diunduh langsung), arsip ke R2 di-skip.
+    # Storage best-effort: kalau object storage belum dikonfigurasi, export tetap jalan
+    # (file diunduh langsung), arsip ke storage di-skip.
     try:
-        storage = StorageService(build_r2_client())
+        storage = StorageService(build_s3_client())
     except StorageUploadFailedError:
         storage = None
     return ExportService(

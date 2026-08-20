@@ -14,13 +14,13 @@
 ```
 ┌─────────────────────┐        HTTPS/REST (/api/v1)     ┌──────────────────────┐
 │  Frontend (Next.js)  │ <──────────────────────────────> │  Backend (FastAPI)   │
-│  Vercel               │                                  │  Railway              │
+│  VPS (Docker+Caddy)   │                                  │  VPS (Docker)         │
 └─────────────────────┘                                  └──────────┬───────────┘
                                                                      │
                                     ┌────────────────────────────────┼─────────────────────────┐
                                     │                                │                         │
                           ┌─────────▼─────────┐          ┌───────────▼──────────┐   ┌───────────▼─────────┐
-                          │ PostgreSQL (Supabase) │       │ Cloudflare R2         │   │ Supabase Auth (JWT) │
+                          │ PostgreSQL (VPS/Supabase)│    │ Object Storage (S3)   │   │ Supabase Auth (JWT) │
                           │ products, materials,  │       │ temp/ + permanent/    │   │                     │
                           │ boms, forecast_runs/   │       │ CSV & export files    │   │                     │
                           │ results, reorder,      │       └───────────────────────┘   └─────────────────────┘
@@ -44,10 +44,10 @@
 
 | Layer | Teknologi | Hosting |
 |---|---|---|
-| Frontend | Next.js (App Router) + TypeScript + Tailwind v3 + shadcn/ui (Radix) + TanStack Query + TanStack Table v8 + Recharts + next-themes | Vercel |
-| Backend | FastAPI (Python 3.11+) + Pydantic v2 + SQLAlchemy 2.0 async | Railway |
-| Database | PostgreSQL | Supabase |
-| Object Storage | Cloudflare R2 (CSV upload & export) | Cloudflare |
+| Frontend | Next.js (App Router) + TypeScript + Tailwind v3 + shadcn/ui (Radix) + TanStack Query + TanStack Table v8 + Recharts + next-themes | VPS (Docker, di balik Caddy) |
+| Backend | FastAPI (Python 3.11+) + Pydantic v2 + SQLAlchemy 2.0 async | VPS (Docker, di balik Caddy) |
+| Database | PostgreSQL | VPS (Docker) — atau Supabase, cukup ganti `DATABASE_URL` |
+| Object Storage | S3-compatible via boto3 (CSV upload & export) | IDCloudHost Object Storage |
 | Auth | Supabase Auth (JWT) | Supabase |
 | Forecasting — konvensional | pandas/numpy (Moving Average, Exponential Smoothing — implementasi manual sesuai rumus Bab III thesis, bukan statsmodels) | Backend (bundled) |
 | Forecasting — ML | scikit-learn (`RandomForestRegressor`), `xgboost` (`XGBRegressor`), TensorFlow/Keras (`LSTM`) | Backend (bundled) |
@@ -151,7 +151,7 @@ forecastiq/
 │   │   │   ├── cost_service.py             ← TIC (Ordering Cost + Holding Cost), % penghematan
 │   │   │   ├── inventory_metrics_service.py ← service level, fill rate, stock out rate, inventory turnover
 │   │   │   ├── override_service.py
-│   │   │   ├── storage_service.py          ← Cloudflare R2
+│   │   │   ├── storage_service.py          ← object storage S3-compatible
 │   │   │   └── auth_service.py
 │   │   ├── models/                         ← SQLAlchemy ORM models
 │   │   ├── schemas/                        ← Pydantic request/response
@@ -222,7 +222,7 @@ forecastiq/
 | id | UUID | PK |
 | user_id | UUID FK → users | |
 | file_name | VARCHAR | |
-| file_url | TEXT | URL di R2 (temp atau permanent) |
+| file_url | TEXT | URL di object storage (temp atau permanent) |
 | file_size_kb | INTEGER | |
 | n_rows | INTEGER | |
 | n_products_detected | INTEGER | |
@@ -414,7 +414,7 @@ GET    /api/v1/dashboard/summary
 
 ### HTTP Status Code
 
-200 berhasil · 201 resource dibuat · 400 validation error · 401 unauthorized · 403 forbidden · 404 not found · 422 invalid secara bisnis · 429 rate limit · 500 internal error · 503 dependency eksternal (Supabase/R2) unavailable
+200 berhasil · 201 resource dibuat · 400 validation error · 401 unauthorized · 403 forbidden · 404 not found · 422 invalid secara bisnis · 429 rate limit · 500 internal error · 503 dependency eksternal (Supabase/object storage) unavailable
 
 ### Error Codes (v3.1, final — merge dengan implementasi git aktual)
 
@@ -590,10 +590,12 @@ DATABASE_URL=postgresql://...
 SUPABASE_URL=...
 SUPABASE_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
-CLOUDFLARE_R2_ACCOUNT_ID=...
-CLOUDFLARE_R2_ACCESS_KEY=...
-CLOUDFLARE_R2_SECRET_KEY=...
-CLOUDFLARE_R2_BUCKET_NAME=forecastiq-bucket
+S3_ENDPOINT_URL=https://is3.cloudhost.id
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
+S3_REGION=SouthJkt-a
+S3_BUCKET_NAME=forecastiq-bucket
+S3_ADDRESSING_STYLE=auto      # auto | path | virtual
 JWT_SECRET_KEY=...
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_HOURS=24
@@ -677,7 +679,7 @@ def compute_savings_pct(tic_actual: float, tic_proposed: float) -> float:
 
 ETS, ARIMA, LightGBM, dan Croston/SBA **tidak dihapus** dari codebase — dipindah ke `engines/legacy/` dan tidak didaftarkan ke `MODEL_REGISTRY` aktif secara default (di-comment, lihat §6.3). Rasionalnya ada di `RECONCILIATION.md` §Keputusan Terbuka v3.0 poin 2: metode-metode ini (khususnya Croston untuk demand intermittent/lumpy) tetap relevan untuk kasus forecasting **raw material langsung** di luar konteks produk jadi RTD yang jadi objek thesis. Mengaktifkan kembali cukup uncomment import + tambah ke `FORECAST_ENGINES_ENABLED`, tanpa ubah `forecast_service.py`.
 
-## 7. Storage Flow — Cloudflare R2
+## 7. Storage Flow — Object Storage (S3-compatible)
 
 ```
 forecastiq-bucket/
@@ -691,6 +693,10 @@ forecastiq-bucket/
 ```
 
 Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
+
+**Provider-agnostic.** `storage_service.py` hanya memakai operasi S3 standar — `put_object`, `copy_object`, `delete_object` — tanpa presigned URL dan tanpa API khas vendor. Endpoint, region, kredensial, dan addressing style semuanya dibaca dari env (`S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ADDRESSING_STYLE`), jadi pindah provider cukup ganti env tanpa menyentuh kode. Provider aktif: **IDCloudHost Object Storage** (`https://is3.cloudhost.id`, region `SouthJkt-a`) — lihat `RECONCILIATION.md` §Migrasi Object Storage untuk alasannya.
+
+`S3_ADDRESSING_STYLE` dipakai kalau provider tidak punya wildcard DNS `{bucket}.{endpoint}`: set `path` supaya boto3 memakai `{endpoint}/{bucket}/{key}`. Signature dipatok `s3v4`.
 
 ## 8. Error Handling
 
@@ -713,15 +719,66 @@ Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
 | Services (business logic) | 85% |
 | Forecasting engine module (evaluation, registry, tiap engine) | 85% (mock/fixture data) |
 | BOM/warehouse/EOQ/cost services | 85% — verifikasi manual hasil hitung dengan data contoh |
-| Storage service | 80% (mock R2) |
+| Storage service | 80% (client S3 di-mock) |
 | Database models | 70% |
 
-## 10. Rencana Deployment
+## 10. Deployment — VPS Self-Hosted (Docker)
 
-- Dev: `docker-compose` (backend, frontend, postgres lokal untuk testing).
-- Backend → Railway, Frontend → Vercel, DB/Auth → Supabase, Storage → Cloudflare R2.
-- CI: lint + test + coverage gate sebelum merge (GitHub Actions).
-- **Catatan khusus v3.0:** image Docker backend perlu menyertakan TensorFlow (untuk LSTM) — perhatikan ukuran image & waktu build; pertimbangkan base image `tensorflow/tensorflow:slim` bila build time jadi masalah.
+Target deployment dipindah dari Railway/Vercel ke **VPS self-hosted** (20 Agustus 2026, lihat `RECONCILIATION.md` §Deployment VPS). Storage → IDCloudHost, Auth → Supabase Auth, DB → Postgres di VPS yang sama (atau Supabase, tinggal ganti `DATABASE_URL`).
+
+### Topologi
+
+```
+                    Internet
+                       │  :80 / :443
+              ┌───────▼───────┐
+              │  Caddy         │  TLS otomatis (Let's Encrypt)
+              │  (Caddyfile)   │  satu-satunya port yang terbuka ke publik
+              └─┬───────────┬─┘
+    /api/*, /health │         │  sisanya
+              ┌────▼───┐   ┌───▼─────┐
+              │ backend │   │ frontend │   jaringan internal compose,
+              │  :8000  │   │  :3000   │   port TIDAK di-publish ke host
+              └────┬───┘   └─────────┘
+                   │
+              ┌────▼────┐      ┌─────────────────┐
+              │ postgres │      │ IDCloudHost S3   │ (eksternal)
+              └──────────┘      └─────────────────┘
+```
+
+Frontend & backend berbagi satu domain → request API bersifat **same-origin**, jadi CORS tidak pernah jadi masalah di production.
+
+### File
+
+| File | Peran |
+|---|---|
+| `docker-compose.yml` | **dev saja** — bind mount + `--reload` + `npm run dev` |
+| `docker-compose.prod.yml` | production — image di-build, port aplikasi tidak di-publish |
+| `Caddyfile` | reverse proxy, TLS otomatis, security header |
+| `.env.prod.example` | template seluruh konfigurasi server (salin → `.env.prod`, jangan di-commit) |
+| `backend/Dockerfile` + `docker-entrypoint.sh` | non-root, healthcheck, `alembic upgrade head` saat start |
+| `frontend/Dockerfile` | multi-stage → `output: "standalone"`, non-root |
+| `backend/.dockerignore`, `frontend/.dockerignore` | mencegah `.env`, `.venv`, `node_modules` masuk image |
+
+### Alur deploy
+
+```bash
+cp .env.prod.example .env.prod && chmod 600 .env.prod   # lalu isi kredensial
+make prod-up        # build + start; migrasi jalan otomatis di entrypoint
+make prod-logs
+make prod-deploy    # deploy ulang setelah git pull
+```
+
+Cron pembersih file temp (§7) dijadwalkan di crontab VPS:
+`*/30 * * * * cd /path/ke/forecastiq && make prod-cleanup`
+
+### Yang wajib diperhatikan
+
+- **`NEXT_PUBLIC_*` di-inline saat build image**, bukan dibaca saat runtime. Mengubah nilainya di `.env.prod` tanpa `--build` tidak berpengaruh apa pun.
+- **Migrasi jalan di entrypoint backend**, dan `set -e` membuat container gagal start kalau migrasi gagal — disengaja, supaya aplikasi tidak pernah hidup di atas skema yang salah. Bisa dimatikan lewat `RUN_MIGRATIONS=false`.
+- **Firewall VPS**: buka 22, 80, 443 saja. Postgres tidak di-publish ke host oleh compose production.
+- CI: lint + test + coverage gate sebelum merge (GitHub Actions) — belum ada deploy otomatis, deploy masih manual lewat SSH.
+- **LSTM**: `tensorflow` masih di-comment di `requirements.txt`, jadi engine `lstm` di-exclude otomatis (§6.4). `.env.prod.example` sengaja tidak mencantumkan `lstm` di `FORECAST_ENGINES_ENABLED` supaya perilakunya eksplisit, bukan gagal diam-diam. Untuk mengaktifkan: uncomment `tensorflow>=2.16` (image Python 3.11 mendukung), perhatikan ukuran image (+±1 GB) dan waktu build.
 
 ---
 *Lihat `RECONCILIATION.md` §"Rekonsiliasi v3.0" dan §"Rekonsiliasi v3.1" untuk daftar lengkap perubahan dari v2.0 dan alasannya.*
