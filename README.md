@@ -98,6 +98,11 @@ make prod-up                                             # build + start
 make prod-logs
 ```
 
+`make help` menampilkan seluruh target production (`prod-ps`, `prod-restart`, `prod-migrate`,
+`prod-psql`, `prod-backup`, `prod-restore`, `prod-cleanup`, …). Selama `.env.prod` ada,
+target development (`make up`, `make dev`, `make migrate`, `make seed-*`) menolak jalan —
+semuanya memakai compose versi dev atau `backend/.venv` yang tidak ada di server.
+
 Stack: **Caddy** (TLS otomatis, satu-satunya port publik) → **frontend** Next.js standalone +
 **backend** FastAPI → **Postgres**. Frontend & backend satu domain, jadi request API
 same-origin. Migrasi `alembic upgrade head` jalan otomatis saat container backend start.

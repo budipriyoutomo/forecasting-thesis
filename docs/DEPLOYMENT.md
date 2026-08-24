@@ -231,6 +231,11 @@ Validasi sebelum lanjut:
 make prod-check
 ```
 
+Ini menolak berlanjut kalau `JWT_SECRET_KEY`/`POSTGRES_PASSWORD` masih kosong, `DATABASE_URL`
+masih berisi `GANTI_PASSWORD`, atau `DOMAIN` masih `example.com` — lebih baik gagal di sini
+daripada 10 menit kemudian saat container start. Supabase/S3/biaya yang kosong hanya
+diperingatkan (⚠️), bukan diblokir, karena ada skenario sah untuk menunda pengisiannya.
+
 ### 3.3 (Opsional) Pakai Supabase sebagai database, bukan Postgres di VPS
 
 Kalau memilih ini:
@@ -262,8 +267,8 @@ Yang terjadi berurutan:
 Pantau:
 
 ```bash
-make prod-logs                                   # semua service
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+make prod-logs      # ikuti log semua service
+make prod-ps        # status container
 ```
 
 Semua container harus berstatus `running`, dan backend/postgres `(healthy)`.
@@ -280,8 +285,7 @@ Login butuh **dua hal sekaligus**: kredensial valid di Supabase Auth (§1.2) **d
 profil di tabel `users` milik aplikasi. Yang kedua harus dibuat manual sekali:
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml \
-  exec postgres psql -U forecastiq -d forecastiq
+make prod-psql
 ```
 
 ```sql
@@ -357,8 +361,12 @@ crontab -e
 ```
 
 ```cron
-*/30 * * * * cd /home/deploy/forecastiq && make prod-cleanup >> /var/log/forecastiq-cleanup.log 2>&1
+*/30 * * * * cd /home/deploy/forecastiq && /usr/bin/make prod-cleanup >> /var/log/forecastiq-cleanup.log 2>&1
 ```
+
+Pakai path absolut `/usr/bin/make` — `PATH` milik cron jauh lebih pendek daripada
+`PATH` shell interaktif, dan job yang gagal karena `make: command not found` tidak
+akan terlihat sampai bucket penuh.
 
 Uji sekali secara manual dulu:
 
@@ -372,20 +380,20 @@ Belum otomatis — jadwalkan sendiri. Simpan hasilnya **di luar VPS**; backup ya
 ada di mesin yang sama tidak menolong saat VPS-nya yang hilang.
 
 ```bash
-# Backup manual
-docker compose --env-file .env.prod -f docker-compose.prod.yml \
-  exec -T postgres pg_dump -U forecastiq forecastiq | gzip > ~/backup-$(date +%F).sql.gz
+make prod-backup                    # → ~/forecastiq-backups/db-<tanggal>-<jam>.sql.gz
+make prod-backup BACKUP_DIR=/mnt/backup
 ```
+
+Jadwalkan harian:
 
 ```cron
-0 2 * * * cd /home/deploy/forecastiq && docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres pg_dump -U forecastiq forecastiq | gzip > /home/deploy/backups/db-$(date +\%F).sql.gz
+0 2 * * * cd /home/deploy/forecastiq && /usr/bin/make prod-backup >> /var/log/forecastiq-backup.log 2>&1
 ```
 
-Restore:
+Restore (minta konfirmasi ketik `ya` sebelum menimpa):
 
 ```bash
-gunzip -c backup-2026-08-20.sql.gz | docker compose --env-file .env.prod \
-  -f docker-compose.prod.yml exec -T postgres psql -U forecastiq -d forecastiq
+make prod-restore f=~/forecastiq-backups/db-2026-08-20-0200.sql.gz
 ```
 
 Jangan lupa `.env.prod` sendiri juga perlu dicadangkan (di tempat aman — isinya kredensial).
@@ -412,8 +420,7 @@ make prod-deploy
 > **Migrasi database tidak ikut otomatis mundur.** Kalau versi yang di-rollback
 > menyertakan migrasi skema, turunkan manual dulu **sebelum** menjalankan versi lama:
 > ```bash
-> docker compose --env-file .env.prod -f docker-compose.prod.yml \
->   exec backend alembic downgrade -1
+> make prod-downgrade        # mundur 1 revisi; n=2 untuk lebih
 > ```
 > Restore backup (§7.2) kalau ragu — data historis & override bersifat append-only dan
 > tidak boleh hilang.
@@ -421,15 +428,24 @@ make prod-deploy
 ### 7.5 Perintah harian
 
 ```bash
-make prod-logs                          # ikuti log semua service
-make prod-down                          # hentikan (volume & data tetap aman)
-make prod-up                            # nyalakan lagi
+make prod-ps                       # status semua container
+make prod-logs                     # ikuti log semua service
+make prod-logs s=backend           # satu service saja
+make prod-restart s=backend        # restart satu service
+make prod-down                     # hentikan (volume & data tetap aman)
+make prod-up                       # nyalakan lagi
+make prod-shell                    # shell di container backend
+make help                          # daftar lengkap target
 
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs backend --tail 100
-docker compose --env-file .env.prod -f docker-compose.prod.yml restart backend
-docker system df                        # pemakaian disk
-docker system prune -a                  # bersihkan image lama (hati-hati: bukan volume)
+docker system df                   # pemakaian disk
+docker system prune -a             # bersihkan image lama (hati-hati: bukan volume)
 ```
+
+> **Target development ditolak di server.** Selama `.env.prod` ada, `make up`, `make dev`,
+> `make migrate`, dan `make seed-*` menolak jalan — semuanya memakai `docker-compose.yml`
+> versi dev (bind mount, `--reload`, Postgres terbuka di `:5432`) atau `backend/.venv` yang
+> tidak ada di server. Padanan production-nya ada di `make help`. Kalau memang disengaja:
+> `FORCE_DEV=1 make <target>`.
 
 ---
 
@@ -440,7 +456,7 @@ docker system prune -a                  # bersihkan image lama (hati-hati: bukan
 Gejala: browser memperingatkan sertifikat tidak valid, log Caddy menyebut challenge gagal.
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs caddy --tail 50
+make prod-logs s=caddy
 ```
 
 Urutan pemeriksaan:
@@ -470,13 +486,16 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml build frontend
 make prod-up
 ```
 
+(Dua baris pertama sengaja memakai perintah panjang — tidak ada target `make` untuk
+build per-service karena ini kasus darurat, bukan alur normal.)
+
 ### 8.3 Container backend gagal start / restart terus
 
 Ini **disengaja** kalau migrasi gagal: `docker-entrypoint.sh` memakai `set -e`, jadi
 aplikasi tidak akan pernah hidup di atas skema database yang salah.
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs backend --tail 50
+make prod-logs s=backend
 ```
 
 - `alembic upgrade head` gagal → biasanya `DATABASE_URL` salah (password tidak cocok
@@ -505,8 +524,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml logs backend --ta
   ```
   S3_ADDRESSING_STYLE=path
   ```
-  lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml restart backend`
-  (ini env backend biasa, **tidak** perlu build ulang).
+  lalu `make prod-restart s=backend` (ini env backend biasa, **tidak** perlu build ulang).
 - Upload berhasil tapi gagal saat validasi/pindah permanen → `copy_object` bermasalah.
   Belum diuji ke IDCloudHost; laporkan lognya kalau kejadian.
 
@@ -557,7 +575,7 @@ VPS yang lambat. Di VPS 4 GB dengan banyak SKU, pertimbangkan `UVICORN_WORKERS=1
 | `Caddyfile` | reverse proxy, TLS, security header |
 | `backend/Dockerfile` + `docker-entrypoint.sh` | image backend, migrasi saat start |
 | `frontend/Dockerfile` | image frontend (Next.js standalone) |
-| `Makefile` target `prod-*` | perintah operasional |
+| `Makefile` target `prod-*` | perintah operasional (`make help` untuk daftar lengkap) |
 
 ---
 *Pertanyaan "kenapa begini bukan begitu" dijawab di `RECONCILIATION.md` §Deployment VPS.*
