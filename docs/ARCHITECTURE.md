@@ -36,7 +36,7 @@
 - **Registry pattern untuk model engine** — tambah engine baru = tambah fungsi + daftar di registry, tanpa ubah orchestrator/endpoint/test.
 - **Orkestrasi terpusat** — semua proses forecasting wajib melalui `forecast_service.py`, tidak boleh inline di router.
 - **Comparative selection, bukan classification** — beda dengan v2.0 (ADI/CV² → kuadran), v3.0 membandingkan seluruh metode aktif langsung via backtest dan memilih akurasi terbaik (selaras Bab III thesis).
-- **BOM sebagai jembatan produk jadi → material** — semua modul downstream (buffer stock, kebutuhan material, validasi kapasitas gudang) mengonsumsi hasil forecast produk jadi melalui `bom_service.py`.
+- **BOM sebagai jembatan produk jadi → material, di luar hasil forecast** — hasil forecast murni produk. Modul downstream (reorder/buffer/EOQ, biaya, kapasitas gudang) yang membaca hasil forecast lalu menurunkannya lewat `bom_service.py` **di memori**; tidak ada tabel turunan per run (keputusan 24 Agustus 2026).
 - **Data & Model Integrity** — data historis asli & hasil forecast/override tidak pernah di-overwrite secara silent.
 - **TDD sebagai workflow wajib** — lihat `AGENTS.md` §3.
 
@@ -80,7 +80,7 @@ forecastiq/
 │   │   │   │   ├── boms/               ← CRUD Bill of Materials
 │   │   │   │   ├── warehouse/          ← konfigurasi kapasitas gudang
 │   │   │   │   ├── forecast/new/       ← upload + konfigurasi
-│   │   │   │   ├── forecast/[id]/      ← hasil forecast per run (termasuk breakdown BOM & validasi gudang)
+│   │   │   │   ├── forecast/[id]/      ← hasil forecast per run (produk-only; reorder & validasi gudang menyusul)
 │   │   │   │   └── settings/
 │   │   │   └── layout.tsx
 │   │   ├── components/
@@ -146,7 +146,7 @@ forecastiq/
 │   │   │   │           ├── croston_engine.py
 │   │   │   │           └── prophet_engine.py   ← TODO, belum diimplementasikan
 │   │   │   ├── data_ingestion_service.py   ← parsing & validasi CSV (Forecast/Planning/Actual)
-│   │   │   ├── bom_service.py              ← breakdown kebutuhan material dari forecast produk jadi
+│   │   │   ├── bom_service.py              ← master data BOM + deret kebutuhan material untuk reorder/cost
 │   │   │   ├── reorder_service.py          ← safety stock, buffer stock, reorder point, EOQ dinamis
 │   │   │   ├── warehouse_service.py        ← kapasitas gudang & validasi muat/tidak
 │   │   │   ├── cost_service.py             ← TIC (Ordering Cost + Holding Cost), % penghematan
@@ -201,8 +201,7 @@ forecastiq/
 | unit | VARCHAR | satuan |
 | lead_time_days | INTEGER | |
 | moq | NUMERIC | minimum order quantity |
-| dimension | JSONB | `{length, width, height}` — dipakai untuk kalkulasi kapasitas gudang §6.7 |
-| qty_per_pallet | NUMERIC | jumlah unit material per palet |
+| dimension | JSONB | `{length, width, height}` — dimensi fisik material |
 | manual_safety_stock | NUMERIC, nullable | override manual |
 | created_at / updated_at | TIMESTAMPTZ | |
 
@@ -215,7 +214,7 @@ forecastiq/
 | qty_per_unit | NUMERIC | jumlah material dibutuhkan per 1 unit produk jadi |
 | created_at / updated_at | TIMESTAMPTZ | |
 
-> Satu `product` bisa punya banyak baris `boms` (banyak komponen material). Dipakai oleh `bom_service.py` untuk breakdown forecast produk → kebutuhan material, dan untuk hitung Standar Pemakaian Material (buffer stock, FR-4.2).
+> Satu `product` bisa punya banyak baris `boms` (banyak komponen material). Dipakai `bom_service.py` untuk menurunkan deret kebutuhan material yang jadi input reorder & cost (di memori, tidak dipersist), dan untuk hitung Standar Pemakaian Material (buffer stock, FR-4.2). **Hasil forecast sendiri tidak menyentuh BOM.**
 
 ### `upload_sessions`
 | Kolom | Tipe | Keterangan |
@@ -276,17 +275,8 @@ forecastiq/
 | metrics | JSONB | `{avg_forecast, trend_direction, trend_pct, gap_vs_existing_pct, ...}` |
 | created_at | TIMESTAMPTZ | |
 
-### `material_requirements` (baru — hasil breakdown BOM per run)
-| Kolom | Tipe | Keterangan |
-|---|---|---|
-| id | UUID | PK |
-| run_id | UUID FK → forecast_runs | |
-| material_id | UUID FK → materials | |
-| forecast_qty | NUMERIC | total kebutuhan material hasil breakdown BOM dari seluruh produk terkait |
-| standard_usage_qty | NUMERIC, nullable | Output Produksi Aktual × BOM (dipakai untuk buffer stock) |
-| actual_usage_qty | NUMERIC, nullable | pemakaian aktual material (dari input/upload aktual) |
-| buffer_stock_pct | NUMERIC, nullable | (standard_usage − actual_usage)/standard_usage × 100 |
-| created_at | TIMESTAMPTZ | |
+### ~~`material_requirements`~~ — **DIHAPUS (24 Agustus 2026)**
+> Hasil forecast berhenti di level **produk**. Tabel ini beserta endpoint & target override-nya dibuang lewat migrasi `d0e1f2a3b4c5_v3_drop_material_requirements`. Lihat `RECONCILIATION.md` §"Forecast produk-only". BOM tetap dipakai reorder & cost lewat `breakdown_requirements_series` (deret di memori, tidak dipersist).
 
 ### `reorder_recommendations`
 | Kolom | Tipe | Keterangan |
@@ -295,7 +285,7 @@ forecastiq/
 | run_id | UUID FK → forecast_runs | |
 | material_id | UUID FK → materials | |
 | safety_stock | NUMERIC | SS = Z × STD × √L |
-| buffer_stock | NUMERIC | dari `material_requirements.buffer_stock_pct` |
+| buffer_stock | NUMERIC, nullable | Standar Pemakaian − Aktual Pemakaian (`bom_service.compute_buffer_stock`), dihitung di memori — tabel `material_requirements` sudah dihapus |
 | reorder_point | NUMERIC | |
 | eoq_qty | NUMERIC | hasil EOQ dinamis, dibulatkan ke kelipatan MOQ |
 | ordering_cost | NUMERIC | biaya pesan yang dipakai di perhitungan EOQ |
@@ -305,23 +295,25 @@ forecastiq/
 
 > `current_stock` **bukan** kolom persisten di tabel ini — dikirim sebagai parameter request saat `POST /api/v1/reorder/recommendations` (lihat §5), karena stok aktual berubah-ubah dan sumber kebenarannya ada di luar ForecastIQ (belum ada integrasi ERP/WMS di MVP, lihat `PRD.md` §Out-of-scope).
 
-### `warehouse_config` (baru)
+### `warehouse_config` (redesain 24 Agustus 2026 — kapasitas per PRODUK, angka bebas)
+> Sebelumnya satu baris global per kategori, kapasitas diturunkan dari luas gudang ÷
+> footprint palet. Sekarang satu baris per **produk**, `capacity_qty` diisi planner
+> langsung (unit sama dengan unit produk) — bukan turunan fisik apa pun.
+
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| category | VARCHAR | kategori material yang di-cover (mis. "packaging") |
-| warehouse_area_m2 | NUMERIC | luas gudang |
-| pallet_dimension | JSONB | `{length, width, height}` |
-| updated_at | TIMESTAMPTZ | |
+| product_id | UUID FK → products, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
+| capacity_qty | NUMERIC | kapasitas gudang untuk produk ini, isian bebas planner |
+| created_at / updated_at | TIMESTAMPTZ | |
 
-### `warehouse_validations` (baru — hasil validasi per run)
+### `warehouse_validations` (baru — hasil validasi per run, redesain 24 Agustus 2026)
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
-| total_pallet_capacity | NUMERIC | Luas Gudang ÷ Dimensi Palet |
-| total_pallet_required | NUMERIC | dihitung dari total rekomendasi inventory ÷ qty per pallet, seluruh material |
-| is_within_capacity | BOOLEAN | |
+| is_within_capacity | BOOLEAN | True hanya bila SEMUA produk yang dikonfigurasi muat |
+| details | JSONB | `[{product_id, required_qty, capacity_qty, is_within_capacity}]` — satu entri per produk yang punya config DAN forecast COMPLETED di run ini |
 | created_at | TIMESTAMPTZ | |
 
 ### `inventory_metrics` (baru — per run, per produk/material)
@@ -341,7 +333,7 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| target_type | VARCHAR(20) | `forecast_result` / `material_requirement` / `reorder_recommendation` |
+| target_type | VARCHAR(20) | `forecast_result` / `reorder_recommendation` (nilai `material_requirement` dihapus 24 Agustus 2026) |
 | target_id | UUID | FK dinamis ke salah satu tabel di atas — `OVERRIDE_TARGET_NOT_FOUND` jika `target_id` tidak ditemukan di tabel yang dirujuk `target_type` |
 | user_id | UUID FK → users | siapa yang override |
 | previous_value | JSONB | |
@@ -383,14 +375,15 @@ POST   /api/v1/forecast/runs              # trigger forecast run (horizon, metho
 GET    /api/v1/forecast/runs/{run_id}
 GET    /api/v1/forecast/results?product_id=...
 
-GET    /api/v1/forecast/runs/{run_id}/material-requirements   # breakdown BOM
-
 POST   /api/v1/reorder/recommendations    # generate & persist rekomendasi (body: run_id, current_stock per material — lihat catatan di §4 `reorder_recommendations`)
 GET    /api/v1/reorder/recommendations
 GET    /api/v1/reorder/recommendations/export?format=xlsx|pdf
 
-GET    /api/v1/warehouse/config
-PUT    /api/v1/warehouse/config
+GET    /api/v1/warehouse/config                    # daftar kapasitas (semua produk)
+GET    /api/v1/warehouse/config/{id}
+POST   /api/v1/warehouse/config                    # tambah kapasitas produk (admin)
+PUT    /api/v1/warehouse/config/{id}                # ubah capacity_qty (admin)
+DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
 GET    /api/v1/forecast/runs/{run_id}/inventory-metrics
@@ -431,7 +424,7 @@ OVERRIDE_REASON_REQUIRED     OVERRIDE_TARGET_NOT_FOUND      STORAGE_UPLOAD_FAILE
 RATE_LIMIT_EXCEEDED
 ```
 
-> `WAREHOUSE_CAPACITY_EXCEEDED` bukan hard-block (400) melainkan flag di response 200 (`warehouse_validations.is_within_capacity = false`) — keputusan akhir tetap di tangan planner via override, sesuai FR-6.4 di `PRD.md`. `BOM_NOT_FOUND` dipakai saat breakdown material diminta tapi produk belum punya BOM terdaftar. `AUTH_FORBIDDEN` (403) dipakai saat user terautentikasi tapi tidak berhak atas resource yang diminta (beda dengan `AUTH_INVALID_CREDENTIALS`/`AUTH_TOKEN_EXPIRED` yang 401). `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS` dipakai saat `code` duplikat pada create/import produk atau material. `OVERRIDE_TARGET_NOT_FOUND` dipakai saat `target_id` pada `POST /api/v1/overrides` tidak ditemukan di tabel yang dirujuk `target_type`. Empat code ini diwarisi dari implementasi v2.0 di git (lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1").
+> `WAREHOUSE_CAPACITY_EXCEEDED` bukan hard-block (400) melainkan flag di response 200 (`warehouse_validations.is_within_capacity = false`) — keputusan akhir tetap di tangan planner via override, sesuai FR-6.4 di `PRD.md`. `BOM_NOT_FOUND` dipakai saat baris BOM yang dirujuk tidak ada (CRUD/import, atau saat reorder/cost butuh BOM produk). `AUTH_FORBIDDEN` (403) dipakai saat user terautentikasi tapi tidak berhak atas resource yang diminta (beda dengan `AUTH_INVALID_CREDENTIALS`/`AUTH_TOKEN_EXPIRED` yang 401). `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS` dipakai saat `code` duplikat pada create/import produk atau material. `OVERRIDE_TARGET_NOT_FOUND` dipakai saat `target_id` pada `POST /api/v1/overrides` tidak ditemukan di tabel yang dirujuk `target_type`. Empat code ini diwarisi dari implementasi v2.0 di git (lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1").
 
 ## 6. Forecasting Engine — Comparative Selection (Final v3.0)
 
@@ -633,28 +626,36 @@ WAREHOUSE_PALLET_NO_RACKING=true      # sesuai batasan masalah thesis
 - `method: "xgboost"` (salah satu key aktif di `MODEL_REGISTRY`) → **mode manual**, seluruh produk di run ini dipaksa pakai metode tsb.
 - `method` tidak dikenal/tidak aktif → `400 UNSUPPORTED_FORECAST_METHOD`.
 
-### 6.7 Kalkulasi Kapasitas Gudang (`warehouse_service.py`)
+### 6.7 Kalkulasi Kapasitas Gudang (`warehouse_service.py`, redesain 24 Agustus 2026)
+
+Kapasitas **per produk**, angka bebas (`capacity_qty`) — bukan turunan luas gudang ×
+dimensi palet. Kebutuhan = total qty forecast produk di satu run, dibandingkan
+`capacity_qty` konfigurasinya:
 
 ```python
-def compute_pallet_capacity(warehouse_area_m2: float, pallet_dimension: dict) -> int:
-    pallet_footprint = pallet_dimension["length"] * pallet_dimension["width"]
-    return int(warehouse_area_m2 // pallet_footprint)
-
-def compute_material_capacity(pallet_capacity: int, qty_per_pallet: float) -> float:
-    return pallet_capacity * qty_per_pallet
-
-def validate_capacity(recommendations: list[ReorderRecommendation], materials: dict) -> WarehouseValidation:
-    total_pallet_required = sum(
-        (r.safety_stock + r.buffer_stock + r.eoq_qty) / materials[r.material_id].qty_per_pallet
-        for r in recommendations
-    )
-    pallet_capacity = compute_pallet_capacity(...)
-    return WarehouseValidation(
-        total_pallet_capacity=pallet_capacity,
-        total_pallet_required=total_pallet_required,
-        is_within_capacity=total_pallet_required <= pallet_capacity,
+def validate_capacity(
+    configs: list[WarehouseConfig], forecast_qty_by_product: dict[str, float]
+) -> WarehouseCapacityResult:
+    details = []
+    for config in configs:
+        required = forecast_qty_by_product.get(str(config.product_id))
+        if required is None:
+            continue  # produk tanpa forecast di run ini tak bisa dibandingkan
+        details.append(ProductCapacityResult(
+            product_id=str(config.product_id),
+            required_qty=required,
+            capacity_qty=float(config.capacity_qty),
+            is_within_capacity=required <= float(config.capacity_qty),
+        ))
+    return WarehouseCapacityResult(
+        is_within_capacity=all(d.is_within_capacity for d in details),
+        details=details,
     )
 ```
+
+Agregat `is_within_capacity` True hanya bila **semua** produk yang dibandingkan muat —
+satu produk melebihi kapasitasnya sudah cukup membuat run itu ditandai melebihi,
+tapi `details` tetap menunjukkan produk mana saja yang bermasalah.
 
 ### 6.8 Kalkulasi EOQ Dinamis & Total Cost (`reorder_service.py`, `cost_service.py`)
 
@@ -705,7 +706,7 @@ Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
 - Semua kandidat gagal → `MODEL_SELECTION_FAILED`, `forecast_results.status` untuk produk tsb ditandai gagal (run lain tetap lanjut).
 - Data < `BACKTEST_MIN_PERIODS` (atau `LSTM_MIN_PERIODS` khusus LSTM) → `INSUFFICIENT_DATA`, fail fast sebelum backtest.
 - Timeout per-engine (`ENGINE_TIMEOUT_SECONDS` / `LSTM_ENGINE_TIMEOUT_SECONDS`) — bukan timeout global.
-- Produk tanpa BOM terdaftar saat breakdown material diminta → `BOM_NOT_FOUND` (bukan fatal — forecast produk tetap tersimpan, hanya breakdown material yang tidak tersedia).
+- Produk tanpa BOM terdaftar saat reorder/cost dihitung → `BOM_NOT_FOUND` (bukan fatal — forecast produk tidak bergantung BOM sama sekali).
 - Rekomendasi melebihi kapasitas gudang → **bukan error**, ditandai `is_within_capacity = false` di response, planner tetap bisa lanjut dengan override.
 - User terautentikasi tapi tidak berhak atas resource → `AUTH_FORBIDDEN` (403), bukan `404` (hindari kebocoran informasi keberadaan resource tetap dipertimbangkan per kasus).
 - Kode (`code`) duplikat saat create/import produk atau material → `PRODUCT_CODE_EXISTS` / `MATERIAL_CODE_EXISTS` (400/422), bukan 500 dari constraint violation database yang bocor ke client.

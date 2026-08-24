@@ -20,7 +20,7 @@ from app.utils.exceptions import (
 REQUIRED_IMPORT_COLUMNS = {"code", "name", "unit"}
 OPTIONAL_IMPORT_COLUMNS = {
     "category", "lead_time_days", "moq", "manual_safety_stock",
-    "qty_per_pallet", "length", "width", "height",  # v3.0 kapasitas gudang
+    "length", "width", "height",  # v3.0 dimensi fisik material
 }
 
 
@@ -134,6 +134,5 @@ class MaterialService:
             lead_time_days=lead_days,
             moq=num("moq") or Decimal(0),
             manual_safety_stock=num("manual_safety_stock"),
-            qty_per_pallet=num("qty_per_pallet"),
             dimension=dimension,
         )

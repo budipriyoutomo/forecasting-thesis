@@ -26,10 +26,12 @@ export interface DashboardSummary {
   };
   n_recent_overrides: number;
   // Fase 9 (additive) — null bila belum ada validasi/metrik untuk run terakhir.
+  // Kapasitas per produk (redesain 24 Agustus 2026) — ringkasan jumlah produk
+  // yang melebihi kapasitasnya, bukan lagi agregat palet.
   warehouse: {
     is_within_capacity: boolean;
-    total_pallet_required: number;
-    total_pallet_capacity: number;
+    n_products_over: number;
+    n_products_checked: number;
   } | null;
   inventory_metrics: Record<string, DashboardMetricScope> | null;
 }

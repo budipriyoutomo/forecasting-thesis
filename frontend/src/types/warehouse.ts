@@ -1,25 +1,24 @@
-// Cocok dengan backend/app/schemas/warehouse.py
-export interface PalletDimension {
-  length: number;
-  width: number;
-  height: number;
-}
-
+// Cocok dengan backend/app/schemas/warehouse.py — kapasitas per produk, angka bebas.
 export interface WarehouseConfig {
-  category: string;
-  warehouse_area_m2: string; // Decimal → string
-  pallet_dimension: PalletDimension;
+  id: string;
+  product_id: string;
+  capacity_qty: string; // Decimal → string
 }
 
 export interface WarehouseConfigInput {
-  category?: string;
-  warehouse_area_m2: number;
-  pallet_dimension: PalletDimension;
+  product_id: string;
+  capacity_qty: number;
+}
+
+export interface WarehouseProductValidation {
+  product_id: string;
+  required_qty: string;
+  capacity_qty: string;
+  is_within_capacity: boolean;
 }
 
 export interface WarehouseValidation {
   run_id: string;
-  total_pallet_capacity: string;
-  total_pallet_required: string;
   is_within_capacity: boolean;
+  details: WarehouseProductValidation[];
 }

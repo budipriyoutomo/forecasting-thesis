@@ -227,15 +227,3 @@ describe("api.uploads.list", () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 });
-
-describe("api.forecast.materialRequirements", () => {
-  it("GET /api/v1/forecast/runs/{id}/material-requirements dengan bearer token", async () => {
-    const spy = mockFetch({ success: true, data: [] });
-
-    await api.forecast.materialRequirements("run1", "tok");
-
-    expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/forecast\/runs\/run1\/material-requirements$/);
-    const init = spy.mock.calls[0][1] as RequestInit;
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
-  });
-});

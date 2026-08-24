@@ -1,16 +1,19 @@
 """
-ORM model kapasitas gudang (v3.0 Fase 6) — docs/ARCHITECTURE.md §4/§6.7.
+ORM model kapasitas gudang (v3.0 Fase 6, redesain 24 Agustus 2026) —
+docs/ARCHITECTURE.md §4/§6.7.
 
-`warehouse_config`  : parameter fisik gudang (luas, dimensi palet) per kategori.
-`warehouse_validations` : hasil validasi per run — apakah rekomendasi inventory
-muat secara fisik. Melebihi kapasitas BUKAN error, hanya flag `is_within_capacity`
+`warehouse_config`  : kapasitas per PRODUK, angka bebas (unit produk, bukan palet).
+                      Input planner langsung — tidak diturunkan dari luas gudang ×
+                      dimensi palet lagi (keputusan user: free input).
+`warehouse_validations` : hasil validasi per run — per produk, apakah forecast qty
+muat kapasitasnya. Melebihi kapasitas BUKAN error, hanya flag `is_within_capacity`
 (keputusan tetap di planner, AGENTS.md larangan #17).
 """
 import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,9 +26,13 @@ class WarehouseConfig(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    category: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, default="packaging")
-    warehouse_area_m2: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    pallet_dimension: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {length, width, height}
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id"), unique=True, nullable=False, index=True
+    )
+    capacity_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
@@ -40,9 +47,11 @@ class WarehouseValidation(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("forecast_runs.id"), nullable=False, index=True
     )
-    total_pallet_capacity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    total_pallet_required: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # True hanya bila SEMUA produk yang dikonfigurasi muat kapasitasnya.
     is_within_capacity: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # [{product_id, required_qty, capacity_qty, is_within_capacity}] — satu entri
+    # per produk yang punya WarehouseConfig DAN forecast COMPLETED di run ini.
+    details: Mapped[list] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

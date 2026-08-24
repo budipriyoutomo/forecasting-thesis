@@ -1,8 +1,5 @@
 // Cocok dengan backend/app/schemas/override.py — jaga urutan & isi tetap sama.
-export type OverrideTargetType =
-  | "forecast_result"
-  | "reorder_recommendation"
-  | "material_requirement";
+export type OverrideTargetType = "forecast_result" | "reorder_recommendation";
 
 export interface Override {
   id: string;

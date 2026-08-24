@@ -10,24 +10,19 @@ from app.api.deps import get_forecast_run_service
 from app.main import app
 from app.services.forecast_run_service import ForecastRunService
 from tests.unit.test_forecast_run_service import (
-    FakeBomRepo,
     FakeDemandRepo,
     FakeForecastRepo,
     FakeProductRepo,
-    FakeRequirementRepo,
-    _bom,
     _product,
     _rows,
 )
 
 
-def _override(products, rows_by_product, boms_by_product=None, requirements=None):
+def _override(products, rows_by_product):
     service = ForecastRunService(
         forecast_repo=FakeForecastRepo(),
         products=FakeProductRepo(products),
         demand=FakeDemandRepo(rows_by_product),
-        boms=FakeBomRepo(boms_by_product),
-        requirements=requirements,
     )
     app.dependency_overrides[get_forecast_run_service] = lambda: service
     return service
@@ -170,64 +165,17 @@ async def test_list_results_per_product(client, auth_headers, smooth_df):
     assert res.json()["data"][0]["product_id"] == "p1"
 
 
-# ── GET /forecast/runs/{run_id}/material-requirements (Fase 9) ────────────────
-# Kebutuhan material hasil breakdown BOM: sebelumnya dipersist tapi tak pernah
-# bisa dibaca lewat API, jadi planner tak punya `target_id` untuk override
-# (AGENTS.md §5 "Planner Override — non-negotiable").
-
-
-async def _run_with_requirements(client, auth_headers, smooth_df):
-    service = _override(
-        [_product("p1", "SKU-001")],
-        {"p1": _rows(smooth_df)},
-        boms_by_product={"p1": [_bom("p1", "M1", 2), _bom("p1", "M2", 1)]},
-        requirements=FakeRequirementRepo(),
-    )
+@pytest.mark.asyncio
+async def test_endpoint_material_requirements_sudah_tidak_ada(client, auth_headers, smooth_df):
+    """Guard regresi: forecast produk-only — rute breakdown BOM dihapus (404)."""
+    _override([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
     created = await client.post(
         "/api/v1/forecast/runs", headers=auth_headers, json={"product_ids": ["p1"], "horizon": 7}
     )
-    return service, created.json()["data"]["run"]["run_id"]
+    run_id = created.json()["data"]["run"]["run_id"]
 
-
-@pytest.mark.asyncio
-async def test_material_requirements_ok(client, auth_headers, smooth_df):
-    _, run_id = await _run_with_requirements(client, auth_headers, smooth_df)
-
-    res = await client.get(f"/api/v1/forecast/runs/{run_id}/material-requirements", headers=auth_headers)
-
-    assert res.status_code == 200
-    data = res.json()["data"]
-    assert {row["material_id"] for row in data} == {"M1", "M2"}
-    # `id` wajib ada — itu `target_id` yang dipakai planner untuk override.
-    assert all(row["id"] for row in data)
-    assert all(row["run_id"] == run_id for row in data)
-
-
-@pytest.mark.asyncio
-async def test_material_requirements_tanpa_token_401(client, auth_headers, smooth_df):
-    _, run_id = await _run_with_requirements(client, auth_headers, smooth_df)
-
-    res = await client.get(f"/api/v1/forecast/runs/{run_id}/material-requirements")
-
-    assert res.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_material_requirements_run_tidak_ada_404(client, auth_headers, smooth_df):
-    await _run_with_requirements(client, auth_headers, smooth_df)
-
-    res = await client.get("/api/v1/forecast/runs/ghost/material-requirements", headers=auth_headers)
+    res = await client.get(
+        f"/api/v1/forecast/runs/{run_id}/material-requirements", headers=auth_headers
+    )
 
     assert res.status_code == 404
-    assert res.json()["error"]["code"] == "FORECAST_RUN_NOT_FOUND"
-
-
-@pytest.mark.asyncio
-async def test_material_requirements_run_milik_user_lain_403(client, auth_headers, smooth_df):
-    service, run_id = await _run_with_requirements(client, auth_headers, smooth_df)
-    service._repo.runs[run_id].user_id = "00000000-0000-0000-0000-000000000099"
-
-    res = await client.get(f"/api/v1/forecast/runs/{run_id}/material-requirements", headers=auth_headers)
-
-    assert res.status_code == 403
-    assert res.json()["error"]["code"] == "AUTH_FORBIDDEN"

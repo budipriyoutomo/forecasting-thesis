@@ -9,7 +9,6 @@ import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
-import { MaterialRequirementsTable } from "@/components/forecast/MaterialRequirementsTable";
 import { FormError } from "@/components/common/FormError";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
 import { useExport } from "@/hooks/useExport";
-import { useCreateForecastRun, useMaterialRequirements } from "@/hooks/useForecast";
+import { useCreateForecastRun } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
@@ -35,8 +34,6 @@ export default function ForecastConfigPage() {
   const warehouse = useWarehouseValidation();
   const exporter = useExport();
   const runId = run.data?.run.run_id;
-  // Kebutuhan material tersedia langsung setelah run (breakdown BOM jalan di create_run).
-  const requirements = useMaterialRequirements(runId ?? null);
 
   // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
   const metricsRunId = reorder.data && runId ? runId : null;
@@ -146,18 +143,7 @@ export default function ForecastConfigPage() {
                 Export forecast (Excel)
               </Button>
             </div>
-            <ForecastResults data={run.data} />
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium">Kebutuhan Material (BOM)</h2>
-            <FormError message={requirements.isError ? requirements.error.message : null} />
-            {requirements.data && (
-              <MaterialRequirementsTable
-                requirements={requirements.data}
-                materials={materials ?? []}
-              />
-            )}
+            <ForecastResults data={run.data} products={products ?? []} />
           </section>
 
           <section className="flex flex-col gap-3">
@@ -217,7 +203,9 @@ export default function ForecastConfigPage() {
                 </Button>
               </div>
               <FormError message={warehouse.isError ? warehouse.error.message : null} />
-              {warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} />}
+              {warehouse.data && (
+                <WarehouseCapacityBadge validation={warehouse.data} products={products ?? []} />
+              )}
             </section>
           )}
 

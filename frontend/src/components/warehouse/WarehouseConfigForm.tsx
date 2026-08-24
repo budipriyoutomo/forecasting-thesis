@@ -15,61 +15,87 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Product } from "@/types/product";
 import type { WarehouseConfig, WarehouseConfigInput } from "@/types/warehouse";
 
 const schema = z.object({
-  warehouse_area_m2: z.coerce.number().gt(0, "Harus lebih dari 0"),
-  length: z.coerce.number().gt(0, "Harus lebih dari 0"),
-  width: z.coerce.number().gt(0, "Harus lebih dari 0"),
-  height: z.coerce.number().gt(0, "Harus lebih dari 0"),
+  product_id: z.string().min(1, "Produk wajib dipilih"),
+  capacity_qty: z.coerce.number().gt(0, "Harus lebih dari 0"),
 });
 
 type FormValues = z.infer<typeof schema>;
 
+// Kapasitas adalah angka bebas isian planner — bukan turunan luas gudang ×
+// dimensi palet (keputusan user 24 Agustus 2026). Produk terkunci saat mode
+// ubah karena satu produk hanya boleh punya satu baris kapasitas (unique).
 export function WarehouseConfigForm({
+  products,
   initial,
   onSubmit,
   submitting,
   error,
 }: {
-  initial?: WarehouseConfig | null;
+  products: Product[];
+  initial?: WarehouseConfig;
   onSubmit: (input: WarehouseConfigInput) => void;
   submitting?: boolean;
   error?: string | null;
 }) {
-  // Nilai awal harus selalu terdefinisi. Dibiarkan undefined, `field.value` ikut
-  // undefined dan `z.coerce.number()` menghasilkan NaN — zod lalu memunculkan pesan
-  // tipe bawaannya, bukan "Harus lebih dari 0" yang dimaksud. String kosong
-  // di-coerce jadi 0 sehingga aturan `.gt(0)` yang berbicara.
-  const kosong = "" as unknown as number;
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: initial
-      ? {
-          warehouse_area_m2: Number(initial.warehouse_area_m2),
-          length: initial.pallet_dimension.length,
-          width: initial.pallet_dimension.width,
-          height: initial.pallet_dimension.height,
-        }
-      : { warehouse_area_m2: kosong, length: kosong, width: kosong, height: kosong },
+    defaultValues: {
+      product_id: initial?.product_id ?? "",
+      capacity_qty: initial ? Number(initial.capacity_qty) : ("" as unknown as number),
+    },
   });
 
-  const submit = form.handleSubmit((v) =>
-    onSubmit({
-      warehouse_area_m2: v.warehouse_area_m2,
-      pallet_dimension: { length: v.length, width: v.width, height: v.height },
-    }),
-  );
+  const submit = form.handleSubmit((v) => onSubmit(v));
 
   return (
     <Form {...form}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <FormField
           control={form.control}
-          name="warehouse_area_m2"
+          name="product_id"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Luas gudang (m²)</FormLabel>
+              <FormLabel>Produk</FormLabel>
+              <Select
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={Boolean(initial)}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih produk…" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.code} — {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="capacity_qty"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Kapasitas gudang (unit produk)</FormLabel>
               <FormControl>
                 <Input type="number" step="any" {...field} />
               </FormControl>
@@ -78,38 +104,10 @@ export function WarehouseConfigForm({
           )}
         />
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-medium">Dimensi palet (m)</legend>
-          <div className="grid grid-cols-3 gap-3">
-            {(
-              [
-                ["length", "Panjang"],
-                ["width", "Lebar"],
-                ["height", "Tinggi"],
-              ] as const
-            ).map(([name, label]) => (
-              <FormField
-                key={name}
-                control={form.control}
-                name={name}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">{label}</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="any" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ))}
-          </div>
-        </fieldset>
-
         <FormError message={error} />
 
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Menyimpan…" : "Simpan konfigurasi"}
+          {submitting ? "Menyimpan…" : "Simpan"}
         </Button>
       </form>
     </Form>

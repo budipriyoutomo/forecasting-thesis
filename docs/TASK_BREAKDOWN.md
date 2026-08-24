@@ -60,10 +60,10 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 
 ## 3. Fase Migrasi 2 — Master Data: Produk (🆕), Material (🟡), BOM (🆕) — ✅ SELESAI (25 Juli 2026)
 
-- [x] Model `materials` — 🟡 **diperluas** dari tabel material v2.0: tambah kolom `dimension` (JSONB `{length, width, height}`) dan `qty_per_pallet` (dipakai kalkulasi kapasitas gudang, §6). Migration additive (`ALTER TABLE ... ADD COLUMN`), bukan `DROP`+`CREATE`.
+- [x] Model `materials` — 🟡 **diperluas** dari tabel material v2.0: tambah kolom `dimension` (JSONB `{length, width, height}`) dan ~~`qty_per_pallet`~~ (dipakai kalkulasi kapasitas gudang, §6). Migration additive (`ALTER TABLE ... ADD COLUMN`), bukan `DROP`+`CREATE`. `qty_per_pallet` **dihapus lagi 24 Agustus 2026** — lihat §7 (kapasitas gudang redesain jadi per-produk, angka bebas, tidak butuh qty per palet material).
 - [x] Model `products` — 🆕 net-new. `code` unik → `PRODUCT_CODE_EXISTS` jika duplikat (code baru, tambahkan ke `exceptions.py`).
 - [x] Model `boms` — 🆕 net-new (product_id, material_id, qty_per_unit).
-- [x] Endpoint `api/v1/products` (🆕, CRUD + import) dan `api/v1/boms` (🆕, CRUD + import). Endpoint `api/v1/materials` — 🟡 **diperluas** (tambah field dimension/qty_per_pallet ke request/response schema, cek apakah `MATERIAL_CODE_EXISTS` sudah ada di `exceptions.py` — sudah ada di git v2.0, tinggal dipakai konsisten di endpoint `products` juga).
+- [x] Endpoint `api/v1/products` (🆕, CRUD + import) dan `api/v1/boms` (🆕, CRUD + import). Endpoint `api/v1/materials` — 🟡 **diperluas** (tambah field dimension/qty_per_pallet ke request/response schema — `qty_per_pallet` dihapus lagi 24 Agustus 2026 — cek apakah `MATERIAL_CODE_EXISTS` sudah ada di `exceptions.py` — sudah ada di git v2.0, tinggal dipakai konsisten di endpoint `products` juga).
 - [x] **TDD**: test baru untuk `products`/`boms` (happy path, `PRODUCT_CODE_EXISTS`, `BOM_NOT_FOUND` referensi product_id/material_id tidak ada, `403 AUTH_FORBIDDEN`); test regresi untuk `materials` (field baru tidak merusak endpoint lama).
 - [x] Frontend: halaman `products/` (🆕), `boms/` (🆕) — bisa reuse pola komponen tabel/form dari halaman `materials/` v2.0 yang sudah ada, jangan bangun dari nol.
 
@@ -99,26 +99,34 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 
 **Selesai jika:** forecast run end-to-end pakai 5 metode baru (comparative + manual), `candidates_evaluated` tersimpan, engine v2.0 lama masih ada di `legacy/` tapi tidak terpanggil di jalur aktif, coverage ≥ 85%.
 
-## 6. Fase Migrasi 5 — BOM Breakdown, Safety Stock, Buffer Stock & EOQ (🟡 diperluas + 🆕 net-new) — ✅ SELESAI (25 Juli 2026)
+## 6. Fase Migrasi 5 — BOM Breakdown, Safety Stock, Buffer Stock & EOQ (🟡 diperluas + 🆕 net-new) — ✅ SELESAI (25 Juli 2026), sebagian **DIBATALKAN 24 Agustus 2026**
+
+> ⚠️ Bagian BOM breakdown yang dipersist (`material_requirements`) **dihapus 24 Agustus 2026** — hasil forecast berhenti di level produk. Reorder/buffer/EOQ tetap berlaku dan tetap memakai BOM lewat deret di memori. Lihat `RECONCILIATION.md` §"Forecast produk-only".
 
 - [x] `bom_service.py` — 🆕 net-new (belum ada konsep BOM di v2.0 raw-material-langsung).
-- [x] Model `material_requirements` — 🆕 net-new.
+- [x] ~~Model `material_requirements` — 🆕 net-new.~~ **DIHAPUS 24 Agustus 2026** (migrasi `d0e1f2a3b4c5`).
 - [x] `reorder_service.py` — 🟡 **diperluas**: safety stock (`SS = Z × STD × √L`) v2.0 kemungkinan sudah ada logicnya (cek implementasi aktual di git) — **dipertahankan** sebagai basis. Buffer stock dan **EOQ dinamis** (`TC = nS + Σ(Iₜ×H)`) adalah 🆕 net-new, ditambahkan ke service yang sama.
 - [x] Model `reorder_recommendations` — 🟡 **diperluas**: tambah kolom `buffer_stock`, `eoq_qty`, `ordering_cost`, `holding_cost`, `total_inventory_cost`. `current_stock` **bukan** kolom baru — dikirim sebagai request param di endpoint generate (lihat §7 di bawah), bukan disimpan.
 - [x] **Endpoint reorder — cek & perbaiki pola git**: git v2.0 sudah punya `POST /api/v1/reorder/recommendations` (generate+persist, dengan `current_stock`) selain `GET`. Pastikan pola ini **dipertahankan** di v3.0 (jangan turun jadi `GET`-only) — ini sudah diterapkan di `ARCHITECTURE.md` §5 v3.1, tinggal pastikan implementasi kode ikut.
 - [x] **TDD**: skenario lead time, MOQ, demand stabil/volatile; `BOM_NOT_FOUND` (forecast tetap tersimpan); verifikasi manual perhitungan EOQ.
 
-**Selesai jika:** kebutuhan material terhitung dari forecast × BOM, buffer stock & EOQ benar secara matematis, endpoint `POST`+`GET` reorder konsisten dengan pola git v2.0.
+**Selesai jika:** buffer stock & EOQ benar secara matematis (deret kebutuhan material dihitung di memori, tidak dipersist), endpoint `POST`+`GET` reorder konsisten dengan pola git v2.0.
 
-## 7. Fase Migrasi 6 — Validasi Kapasitas Gudang (🆕 NET-NEW — sesuai judul thesis) — ✅ SELESAI (25 Juli 2026)
+## 7. Fase Migrasi 6 — Validasi Kapasitas Gudang (🆕 NET-NEW — sesuai judul thesis) — ✅ SELESAI (25 Juli 2026), **REDESAIN 24 Agustus 2026**
 
-- [x] Model `warehouse_config`, `warehouse_validations` — 🆕 net-new, tidak ada padanan di v2.0.
-- [x] `warehouse_service.py` — 🆕 net-new: `compute_pallet_capacity()`, `compute_material_capacity()`, `validate_capacity()` (`ARCHITECTURE.md` §6.7).
-- [x] Endpoint `GET/PUT /api/v1/warehouse/config`, `GET /api/v1/forecast/runs/{run_id}/warehouse-validation` — 🆕.
-- [x] **TDD**: kapasitas cukup/tidak cukup, berbagai dimensi palet — verifikasi hitung manual.
-- [x] Frontend: halaman `warehouse/` (🆕), indikator visual di halaman hasil forecast/reorder yang sudah ada (🟡 diperluas, tambah badge, bukan halaman baru).
+> ⚠️ Desain awal (baris di bawah) berbasis **luas gudang ÷ footprint palet**, satu
+> konfigurasi global per kategori. **Diganti total 24 Agustus 2026**: kapasitas kini
+> per **produk**, angka bebas isian planner (`capacity_qty`), dibandingkan langsung
+> terhadap total qty forecast produk itu di satu run — tanpa dimensi palet atau luas
+> gudang sama sekali. Lihat `RECONCILIATION.md` §"Kapasitas Gudang per Produk".
 
-**Selesai jika:** validasi kapasitas gudang berbasis palet berjalan dan tampil sebagai flag non-blocking di UI existing.
+- [x] ~~Model `warehouse_config`, `warehouse_validations` — 🆕 net-new, tidak ada padanan di v2.0.~~ **Diganti 24 Agustus 2026**: `warehouse_config` kini `product_id` (unique) + `capacity_qty`; `warehouse_validations` kini `is_within_capacity` (agregat) + `details` (JSONB per produk).
+- [x] ~~`warehouse_service.py` — 🆕 net-new: `compute_pallet_capacity()`, `compute_material_capacity()`, `validate_capacity()`.~~ **Diganti**: `compute_pallet_capacity`/`compute_material_capacity` dihapus; `validate_capacity()` kini murni per-produk (`ARCHITECTURE.md` §6.7) + CRUD `create_config`/`update_config`/`delete_config`.
+- [x] ~~Endpoint `GET/PUT /api/v1/warehouse/config`~~ **Diganti**: CRUD penuh (`GET` list + by id, `POST`, `PUT`, `DELETE` per baris) — pola sama seperti `/boms`. `GET /api/v1/forecast/runs/{run_id}/warehouse-validation` dipertahankan, response-nya kini `details` per produk.
+- [x] **TDD**: kapasitas cukup/tidak cukup, berbagai dimensi palet — verifikasi hitung manual. Test lama diganti 24 Agustus 2026 dengan skenario per-produk (lihat `RECONCILIATION.md`).
+- [x] Frontend: halaman `warehouse/` (🆕), indikator visual di halaman hasil forecast/reorder yang sudah ada (🟡 diperluas, tambah badge, bukan halaman baru). **Redesain 24 Agustus 2026**: halaman `warehouse/` jadi CRUD tabel (pola `boms/`) — pilih produk + isi kapasitas; `WarehouseCapacityBadge` menampilkan breakdown per produk, bukan satu progress bar palet.
+
+**Selesai jika:** validasi kapasitas gudang per produk berjalan dan tampil sebagai flag non-blocking di UI, per produk.
 
 ## 8. Fase Migrasi 7 — Optimasi Total Biaya & Evaluasi Kinerja Inventory (🆕 NET-NEW) — ✅ SELESAI (26 Juli 2026)
 
@@ -134,19 +142,21 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 ## 9. Fase Migrasi 8 — Planner Override & Audit Trail (🟡 DIPERLUAS) — ✅ SELESAI (26 Juli 2026)
 
 - [x] Model `overrides`, `override_service.py` — 🟢 **dipertahankan** sepenuhnya (append-only, `reason` wajib, `OVERRIDE_REASON_REQUIRED` sudah ada di v2.0). Tanpa perubahan skema.
-- [x] 🆕 tambahan: `target_type` kini bisa merujuk `material_requirement` — resolver + snapshot builder + Literal schema diperluas satu entri (RECONCILIATION §Fase 8). Resolver pakai `SqlMaterialRequirementRepository.get_requirement` (sudah ada Fase 5).
-- [x] 🆕 tambahan: `OVERRIDE_TARGET_NOT_FOUND` tervalidasi juga untuk `material_requirement` (tak ada error code baru).
-- [x] **TDD**: regresi override lama tetap PASSED; test baru `test_create_override_material_requirement_snapshot`, `..._target_tidak_ada_404` (service) + `test_create_override_material_requirement_201` (API).
+- [x] ~~🆕 tambahan: `target_type` kini bisa merujuk `material_requirement`.~~ **DIBATALKAN 24 Agustus 2026** — resolver, snapshot builder, dan entri Literal dihapus lagi; target override tinggal `forecast_result` & `reorder_recommendation`.
+- [x] ~~🆕 tambahan: `OVERRIDE_TARGET_NOT_FOUND` tervalidasi juga untuk `material_requirement`.~~ **DIBATALKAN 24 Agustus 2026** — `material_requirement` kini ditolak 422 di schema.
+- [x] **TDD**: regresi override lama tetap PASSED. Test `material_requirement` (snapshot/404/201) dihapus 24 Agustus 2026, diganti guard `test_create_override_material_requirement_422`.
 
-**Selesai:** override berfungsi untuk seluruh entitas v3.0 (forecast_result, reorder_recommendation, material_requirement); tidak ada regresi; `override_service` coverage 100%.
+**Selesai:** override berfungsi untuk entitas v3.0 (forecast_result, reorder_recommendation); tidak ada regresi; `override_service` coverage 100%.
 
 ## 10. Fase Migrasi 9 — Dashboard, Export & Cutover Final — ✅ SELESAI (27 Juli 2026), sisa 2 item non-blocking
 
 - [x] Dashboard (`dashboard/summary`) — 🟡 **diperluas** (backend): scaffolding v2.0 dipertahankan, ditambah `total_inventory_cost` run terakhir, `avg_mape`, indikator kapasitas gudang (`warehouse`), ringkasan metrik inventory per scope (`inventory_metrics`). Repo warehouse/metrics opsional → additive, tanpa regresi (RECONCILIATION §Fase 9).
 - [x] Export service — 🟡 **diperluas**: kolom `buffer_stock`/`eoq_qty`/`ordering_cost`/`holding_cost`/`total_inventory_cost` ditambah ke reorder xlsx **setelah** kolom lama (status tetap kolom 5 → backward compat).
 - [x] Frontend: widget `cost-summary` & `inventory-metrics` — `CostSummaryCard.tsx`, `InventoryMetricsTable.tsx` + hook `useMetrics.ts` + `api.metrics` + types + vitest (4 test, hijau). Dirakit ke halaman hasil forecast (`forecast/new/config`), tampil setelah reorder dihitung. `ExplanationBox`/pages produk/BOM/warehouse sudah dari fase sebelumnya.
-- [x] **Susulan (4 Agustus 2026)** — `GET /forecast/runs/{run_id}/material-requirements`: sudah ada di kontrak `ARCHITECTURE.md` §5 sejak v3.1 tapi **tak pernah diimplementasi**, sehingga `SqlMaterialRequirementRepository.list_by_run` jadi dead code dan planner tak punya `target_id` untuk override `material_requirement` (melanggar `AGENTS.md` §5 "Planner Override — non-negotiable"). Ditambah: `ForecastRunService.list_requirements` + `MaterialRequirementOut` + endpoint (8 test backend), `OverrideTargetType` frontend disamakan dengan `schemas/override.py`, `MaterialRequirementsTable.tsx` + `useMaterialRequirements` + `api.forecast.materialRequirements` (6 test frontend), dirakit ke halaman `forecast/new/config` antara hasil forecast & reorder.
+- [x] ~~**Susulan (4 Agustus 2026)** — `GET /forecast/runs/{run_id}/material-requirements`~~ **DIBATALKAN 24 Agustus 2026** (endpoint, hook, tabel FE, dan tabel DB dihapus — hasil forecast produk-only). Konteks aslinya: sudah ada di kontrak `ARCHITECTURE.md` §5 sejak v3.1 tapi **tak pernah diimplementasi**, sehingga `SqlMaterialRequirementRepository.list_by_run` jadi dead code dan planner tak punya `target_id` untuk override `material_requirement` (melanggar `AGENTS.md` §5 "Planner Override — non-negotiable"). Ditambah: `ForecastRunService.list_requirements` + `MaterialRequirementOut` + endpoint (8 test backend), `OverrideTargetType` frontend disamakan dengan `schemas/override.py`, `MaterialRequirementsTable.tsx` + `useMaterialRequirements` + `api.forecast.materialRequirements` (6 test frontend), dirakit ke halaman `forecast/new/config` antara hasil forecast & reorder.
 - [x] **Bugfix (4 Agustus 2026)** — cron `cleanup_temp_uploads` merakit `UploadService(consumptions=…, materials=…)`, sisa rename v3.0 (signature sudah `demand`/`products`) → `TypeError` tiap job jalan, file temp R2 **tidak pernah dibersihkan** (FR-1.5 mati diam-diam). Lolos 340 test karena `test_cleanup_job.py` memonkeypatch `UploadService` dengan `lambda **kw` yang menelan keyword apa pun; diganti `create_autospec` supaya drift signature ketahuan. Job kini pakai `SqlDemandHistoryRepository`/`SqlProductRepository`.
+- [x] **Template CSV di halaman upload (24 Agustus 2026)** — user sebelumnya harus menebak struktur file (teks bantuan di `UploadPanel` bahkan salah menyebut kelima kolom wajib). Ditambah `src/lib/templates.ts` (kontrak kolom + generator CSV, 12 baris contoh 2 SKU supaya lolos `UPLOAD_MIN_ROWS=10`) dan `DemandTemplateCard.tsx` (tabel kolom wajib/opsional + tombol unduh, blob di browser tanpa endpoint baru), dirakit di `/forecast/new` di atas panel upload. Teks kolom wajib `UploadPanel` diperbaiki. 8 test frontend; isi template diverifikasi lolos `parse_and_validate_csv`.
+- [x] **Qty forecast tampil di UI (24 Agustus 2026)** — hasil forecast sebelumnya hanya berupa grafik + metrik; angka qty per periode tak pernah terbaca planner. Ditambah `ForecastQtyTable.tsx` (total qty, rata-rata per periode, rincian per periode + batas bawah/atas dalam Collapsible), dirakit di `ForecastResults` setelah `ForecastChart`. 4 test frontend. Judul tiap kartu hasil juga diganti dari `product_id` (UUID mentah) jadi `kode — nama` lewat prop `products` opsional (pola sama dengan `materials` di `ReorderTable`), 3 test frontend.
 - [x] `ExplanationBox` — logic penjelasan Comparative Selection. **Selesai 4 Agustus 2026**: `forecast_service` kini menempelkan narasi dasar pemilihan di depan penjelasan engine (pemenang, jumlah metode dibandingkan, metrik ranking + nilai, runner-up) — mode manual tidak ditempeli. Frontend: `CandidatesTable.tsx` merender `candidates_evaluated` (sebelumnya tersimpan di DB tapi tak pernah tampil) sebagai tabel terurut + badge pemenang, dirakit di `ForecastResults`. 2 test backend + 4 test frontend.
 - [x] **Cutover checklist** (lihat §0 poin 6) — disetujui user 27 Juli 2026:
   - [x] Seluruh fase migrasi 1–8 PASSED (332 backend + 53 frontend hijau).

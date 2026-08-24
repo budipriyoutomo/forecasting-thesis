@@ -50,7 +50,7 @@ __all__ = [
     "DEMO_BOM",
     "DEMO_MATERIALS",
     "DEMO_PRODUCTS",
-    "DEMO_WAREHOUSE",
+    "DEMO_WAREHOUSE_CAPACITY",
     "DemandPoint",
     "SeedSummary",
     "build_demand_series",
@@ -78,7 +78,6 @@ class DemoMaterial:
     unit: str
     lead_time_days: int
     moq: int
-    qty_per_pallet: int
     dimension: dict  # meter — {length, width, height}
 
 
@@ -90,10 +89,9 @@ class DemoBomLine:
 
 
 @dataclass(frozen=True)
-class DemoWarehouse:
-    category: str
-    warehouse_area_m2: float
-    pallet_dimension: dict  # meter
+class DemoWarehouseCapacity:
+    product_code: str
+    capacity_qty: int  # unit produk (PCS) — angka bebas, isian planner langsung
 
 
 DEMO_PRODUCTS: tuple[DemoProduct, ...] = (
@@ -111,27 +109,27 @@ DEMO_PRODUCTS: tuple[DemoProduct, ...] = (
 _SHARED_MATERIALS: tuple[DemoMaterial, ...] = (
     DemoMaterial(
         "CUP-PP-200", "Cup PP 200ml", "packaging", "PCS",
-        lead_time_days=21, moq=200_000, qty_per_pallet=24_000,
+        lead_time_days=21, moq=200_000,
         dimension={"length": 0.07, "width": 0.07, "height": 0.10},
     ),
     DemoMaterial(
         "LID-FOIL-200", "Lid Foil Sealing 200ml", "packaging", "PCS",
-        lead_time_days=30, moq=500_000, qty_per_pallet=120_000,
+        lead_time_days=30, moq=500_000,
         dimension={"length": 0.07, "width": 0.07, "height": 0.0002},
     ),
     DemoMaterial(
         "STRAW-6MM", "Sedotan Bend 6mm (wrapped)", "packaging", "PCS",
-        lead_time_days=14, moq=300_000, qty_per_pallet=200_000,
+        lead_time_days=14, moq=300_000,
         dimension={"length": 0.21, "width": 0.006, "height": 0.006},
     ),
     DemoMaterial(
         "CTN-12", "Karton Isi 12 Cup", "packaging", "PCS",
-        lead_time_days=10, moq=20_000, qty_per_pallet=800,
+        lead_time_days=10, moq=20_000,
         dimension={"length": 0.30, "width": 0.22, "height": 0.12},
     ),
     DemoMaterial(
         "FILM-LDPE", "Shrink Film LDPE", "packaging", "KG",
-        lead_time_days=21, moq=500, qty_per_pallet=600,
+        lead_time_days=21, moq=500,
         dimension={"length": 0.40, "width": 0.30, "height": 0.30},
     ),
 )
@@ -144,7 +142,6 @@ _LABEL_MATERIALS: tuple[DemoMaterial, ...] = tuple(
         "PCS",
         lead_time_days=25,
         moq=250_000,
-        qty_per_pallet=150_000,
         dimension={"length": 0.08, "width": 0.06, "height": 0.0001},
     )
     for product in DEMO_PRODUCTS
@@ -171,13 +168,17 @@ DEMO_BOM: tuple[DemoBomLine, ...] = tuple(
     )
 )
 
-# Gudang packaging: palet standar 1,2 × 1,0 m (tanpa racking, sesuai batasan thesis)
-# → kapasitas = 4000 ÷ 1,2 = 3333 palet. Cukup untuk horizon 6 bulan seluruh SKU;
-# turunkan luasnya dari halaman Warehouse untuk melihat flag melebihi kapasitas.
-DEMO_WAREHOUSE = DemoWarehouse(
-    category="packaging",
-    warehouse_area_m2=4000,
-    pallet_dimension={"length": 1.2, "width": 1.0, "height": 1.5},
+# Kapasitas gudang per SKU (input bebas planner, bukan turunan luas × palet).
+# Angka cukup longgar untuk 6 SKU pertama; KBYMG sengaja diisi longgar-pas supaya
+# ada contoh yang gampang didorong ke "melebihi kapasitas" saat horizon dinaikkan.
+DEMO_WAREHOUSE_CAPACITY: tuple[DemoWarehouseCapacity, ...] = (
+    DemoWarehouseCapacity("KBYPL 200", 600_000),
+    DemoWarehouseCapacity("KBYST 200", 600_000),
+    DemoWarehouseCapacity("KBYBB 200", 500_000),
+    DemoWarehouseCapacity("KBYLY 200", 500_000),
+    DemoWarehouseCapacity("KBYBF 200", 400_000),
+    DemoWarehouseCapacity("KBYSR 200", 400_000),
+    DemoWarehouseCapacity("KBYMG 200", 350_000),
 )
 
 
@@ -298,7 +299,7 @@ class SeedSummary:
     materials_created: int = 0
     boms_created: int = 0
     demand_rows: int = 0
-    warehouse_created: bool = False
+    warehouse_created: int = 0
 
 
 def _dec(value) -> Decimal:
@@ -341,7 +342,6 @@ async def seed_demo_data(
                     lead_time_days=spec.lead_time_days,
                     moq=_dec(spec.moq),
                     dimension=spec.dimension,
-                    qty_per_pallet=_dec(spec.qty_per_pallet),
                 )
             )
             summary.materials_created += 1
@@ -405,15 +405,14 @@ async def seed_demo_data(
         ]
         summary.demand_rows = await demand.bulk_add(rows)
 
-    if await warehouse.get_by_category(DEMO_WAREHOUSE.category) is None:
+    for spec in DEMO_WAREHOUSE_CAPACITY:
+        product = product_by_code[spec.product_code]
+        if await warehouse.get_by_product(str(product.id)) is not None:
+            continue
         await warehouse.add(
-            WarehouseConfig(
-                category=DEMO_WAREHOUSE.category,
-                warehouse_area_m2=_dec(DEMO_WAREHOUSE.warehouse_area_m2),
-                pallet_dimension=DEMO_WAREHOUSE.pallet_dimension,
-            )
+            WarehouseConfig(product_id=product.id, capacity_qty=_dec(spec.capacity_qty))
         )
-        summary.warehouse_created = True
+        summary.warehouse_created += 1
 
     return summary
 
@@ -453,7 +452,7 @@ async def run() -> int:
     print(f"  material      {summary.materials_created} dibuat")
     print(f"  BOM           {summary.boms_created} baris dibuat")
     print(f"  demand        {summary.demand_rows} baris dibuat")
-    print(f"  gudang        {'dibuat' if summary.warehouse_created else 'sudah ada'}")
+    print(f"  gudang        {summary.warehouse_created} konfigurasi dibuat")
     print(
         "\nLangkah berikut: login sebagai "
         f"{DEMO_USERS[1].email} lalu jalankan forecast run dari halaman Forecast."

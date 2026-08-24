@@ -100,6 +100,13 @@ class WarehouseConfigNotFoundError(AppError):
     code = "WAREHOUSE_CONFIG_NOT_FOUND"
 
 
+class WarehouseConfigExistsError(AppError):
+    """Produk sudah punya WarehouseConfig — satu produk maksimal satu baris kapasitas."""
+
+    status_code = 409
+    code = "WAREHOUSE_CONFIG_EXISTS"
+
+
 # Catatan: WAREHOUSE_CAPACITY_EXCEEDED BUKAN HTTP error — dipakai sebagai flag
 # `is_within_capacity=false` di response 200 (docs/ARCHITECTURE.md §5, larangan #17),
 # jadi tidak ada exception class untuk itu (keputusan tetap di tangan planner).

@@ -124,7 +124,7 @@ Keputusan ini lahir dari proses coding nyata (bukan dari draft dokumen), dan **s
 | 14 | `consumption_history.material_id` dibuat nullable + kolom `material_code` (mengatasi kode di file upload yang belum terdaftar di master data) | ✅ Ya, pola dipertahankan | Di v3.1, `demand_history.product_id` mengikuti pola sama: nullable + kolom `product_code`, agar upload tidak ditolak total hanya karena SKU belum terdaftar. |
 | 15 | Kolom `status` di `forecast_results` (COMPLETED/INSUFFICIENT_DATA/MODEL_SELECTION_FAILED per-item) | ✅ Ya | Tetap dibutuhkan di v3.1 — kegagalan 1 produk tidak boleh menggagalkan run (AGENTS.md §5). |
 | 16 | `POST /reorder/recommendations` (generate+persist) + `current_stock` sebagai **input request**, bukan kolom tabel | ✅ Ya | Pola yang sama dipakai untuk endpoint EOQ/warehouse-validation baru di v3.1 — generate dulu via POST, baru bisa di-GET. |
-| 17 | `OVERRIDE_TARGET_NOT_FOUND` (404) — target override polimorfik tidak ditemukan | ✅ Ya | Berlaku juga untuk target baru v3.1 (`material_requirement`). |
+| 17 | `OVERRIDE_TARGET_NOT_FOUND` (404) — target override polimorfik tidak ditemukan | ✅ Ya | Target: `forecast_result` & `reorder_recommendation`. (`material_requirement` sempat ditambah v3.1, dihapus 24 Agustus 2026 — lihat §"Forecast produk-only".) |
 
 **Error code tambahan baru di v3.1** (mengikuti pola #13 di atas, supaya konsisten): `PRODUCT_CODE_EXISTS` (409) — konflik keunikan `products.code`. Ditambahkan di sini dulu sebelum dipakai di kode, sesuai larangan §13 AGENTS.md.
 
@@ -384,3 +384,75 @@ terbuka.
 
 ---
 *Dokumen ini adalah working note, bukan bagian dari deliverable utama — tapi disimpan agar keputusan tidak hilang/terulang tanya lagi di masa depan.*
+
+## Forecast Produk-Only: Hapus Turunan BOM/Material dari Hasil Forecast (24 Agustus 2026)
+
+**Keputusan user:** hasil forecast adalah **produk**, bukan material. Jalur "forecast produk → breakdown BOM → `material_requirements`" **dihapus total** (opsi hapus, bukan sekadar dinonaktifkan), termasuk endpoint, schema, komponen frontend, tabel DB, dan test terkait.
+
+### Alasan
+Turunan ke material membuat hasil satu forecast run punya dua level entitas (produk & material) padahal yang diminta hanya level produk. Sisa jalur itu (endpoint, target override, tabel per run) menambah permukaan yang harus dijaga tanpa dipakai.
+
+### Yang dihapus
+| Lapis | Item |
+|---|---|
+| DB | Tabel `material_requirements` (migrasi `d0e1f2a3b4c5_v3_drop_material_requirements`) + baris `overrides` dengan `target_type='material_requirement'` |
+| Model/Repo | `app/models/material_requirement.py`, `app/repositories/material_requirement_repository.py` |
+| Service | `ForecastRunService._build_requirements` & `.list_requirements` (ctor turun jadi `forecast_repo`, `products`, `demand`); `bom_service.breakdown_requirements` (versi non-deret, jadi nol pemanggil) |
+| API | `GET /forecast/runs/{run_id}/material-requirements`, `MaterialRequirementOut`, resolver + snapshot builder override, entri Literal `material_requirement` (kini 422) |
+| Frontend | `MaterialRequirementsTable.tsx` (+test), `useMaterialRequirements`, `api.forecast.materialRequirements`, tipe `MaterialRequirement`, `OverrideTargetType.material_requirement`, seksi "Kebutuhan Material (BOM)" di `forecast/new/config` |
+
+### Yang TETAP (sengaja tidak disentuh)
+- **BOM sebagai master data** — CRUD, import CSV, halaman `/boms`.
+- **Reorder & cost** — `reorder_service` dan `cost_service` tetap menurunkan kebutuhan material dari forecast produk lewat `bom_service.breakdown_requirements_series`, **di memori**, tanpa tabel turunan. Buffer stock (`compute_standard_usage`/`compute_buffer_stock`) juga tetap.
+
+Konsekuensinya: BOM bukan lagi bagian dari *hasil* forecast, hanya input perhitungan downstream.
+
+### Breaking change (disadari & disetujui)
+- `GET /forecast/runs/{run_id}/material-requirements` kini **404**.
+- `POST /overrides` dengan `target_type: "material_requirement"` kini **422**.
+- Migrasi bersifat **destruktif**: `downgrade()` mengembalikan struktur tabel tapi **bukan isinya**, dan baris override bertarget material sudah dihapus permanen. Backup DB sebelum `alembic upgrade head` di produksi.
+
+### Guard regresi
+`test_run_produk_only_tanpa_turunan_material` (service), `test_endpoint_material_requirements_sudah_tidak_ada` (API 404), `test_create_override_material_requirement_422` (schema). Backend 359 test PASSED, frontend 123 test PASSED, `tsc --noEmit` & ESLint bersih.
+
+## Kapasitas Gudang per Produk (24 Agustus 2026)
+
+**Keputusan user:** konfigurasi gudang adalah **produk + kapasitas**, di mana kapasitas
+adalah **angka bebas isian planner** — bukan diturunkan dari luas gudang × dimensi
+palet seperti desain Fase Migrasi 6 sebelumnya.
+
+### Alasan
+Desain berbasis palet (`warehouse_area_m2` ÷ footprint palet, `materials.qty_per_pallet`)
+memaksa asumsi fisik (racking, satuan palet) yang tidak cocok dengan cara planner
+sebenarnya berpikir soal kapasitas gudang — mereka tahu angka kapasitasnya (mis. dari
+pengalaman/observasi lapangan), bukan dimensi palet dan luas gudang dalam m².
+
+### Yang berubah
+| Lapis | Sebelum | Sesudah |
+|---|---|---|
+| `warehouse_config` | 1 baris global per `category`, `warehouse_area_m2` + `pallet_dimension` | 1 baris per `product_id` (unique), `capacity_qty` bebas |
+| `warehouse_validations` | Agregat: `total_pallet_capacity`/`total_pallet_required` | `is_within_capacity` (agregat) + `details` (JSONB list per produk: `product_id`, `required_qty`, `capacity_qty`, `is_within_capacity`) |
+| Validasi | Σ (safety_stock + buffer + eoq) material ÷ qty_per_pallet, dibanding kapasitas palet gudang | Per produk: Σ qty forecast produk di run itu, dibanding `capacity_qty` produk itu |
+| `materials.qty_per_pallet` | Ada (NUMERIC nullable) | **Dihapus** — tidak ada pemakai lagi setelah validasi lepas dari palet (keputusan user eksplisit: hapus, bukan biarkan nganggur) |
+| Endpoint | `GET/PUT /warehouse/config` (satu baris) | CRUD penuh: `GET` (list + by id), `POST`, `PUT`, `DELETE` per baris — pola sama seperti `/boms` |
+
+`materials.dimension` (`{length, width, height}`) **tidak** ikut dihapus — di luar
+pertanyaan user (hanya `qty_per_pallet` yang diminta hapus), dan secara semantik
+tetap dimensi fisik material yang independen dari cara kapasitas gudang dihitung.
+
+### Konsekuensi pada modul lain
+Reorder, cost, dan BOM breakdown **tidak disentuh** — semuanya beroperasi di level
+material lewat `bom_service.breakdown_requirements_series`, sama sekali independen
+dari `warehouse_config`. Validasi kapasitas gudang murni downstream: forecast produk
+→ (opsional) dibandingkan kapasitas produk itu, tanpa melibatkan BOM/material sama
+sekali.
+
+### Breaking change (disadari & disetujui)
+- `GET /api/v1/warehouse/config` sekarang balikin **array**, bukan objek tunggal.
+- `PUT /api/v1/warehouse/config` (tanpa id) sudah tidak ada — diganti `POST` (create) dan `PUT /warehouse/config/{id}` (update capacity_qty saja).
+- Response `GET /forecast/runs/{run_id}/warehouse-validation` berubah bentuk total (`total_pallet_capacity`/`total_pallet_required`) → `details` per produk.
+- `dashboard/summary.warehouse` berubah dari `{is_within_capacity, total_pallet_required, total_pallet_capacity}` → `{is_within_capacity, n_products_over, n_products_checked}`.
+- Migrasi `e1f2a3b4c5d6` **destruktif**: `warehouse_config`/`warehouse_validations` lama di-drop, isinya tidak bisa dipetakan otomatis ke produk (tidak ada relasi kategori→produk) — planner isi ulang dari halaman Warehouse. `materials.qty_per_pallet` juga di-drop; `downgrade()` mengembalikan struktur tapi bukan isinya. Backup DB sebelum `alembic upgrade head` di produksi.
+
+### Guard regresi
+Backend: `test_warehouse_service.py` & `test_warehouse_api.py` ditulis ulang total (CRUD + validasi per produk), `test_dashboard_service.py` & `test_seed_demo_data.py` disesuaikan. Frontend: `WarehouseConfigForm.test.tsx`, `WarehouseConfigTable.test.tsx`, `WarehouseCapacityBadge.test.tsx` ditulis ulang. 369 test backend PASSED, 143 test frontend PASSED, `tsc --noEmit`, `next lint`, dan `next build` bersih.

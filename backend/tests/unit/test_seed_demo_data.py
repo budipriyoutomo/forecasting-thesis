@@ -15,7 +15,7 @@ from app.scripts.seed_demo_data import (
     DEMO_BOM,
     DEMO_MATERIALS,
     DEMO_PRODUCTS,
-    DEMO_WAREHOUSE,
+    DEMO_WAREHOUSE_CAPACITY,
     build_demand_series,
     seed_demo_data,
 )
@@ -68,13 +68,13 @@ class FakeDemandRepository:
 
 class FakeWarehouseRepository:
     def __init__(self):
-        self.configs = {}
+        self.configs_by_product = {}
 
-    async def get_by_category(self, category):
-        return self.configs.get(category)
+    async def get_by_product(self, product_id):
+        return self.configs_by_product.get(product_id)
 
     async def add(self, config):
-        self.configs[config.category] = config
+        self.configs_by_product[config.product_id] = config
         return config
 
 
@@ -120,17 +120,16 @@ def test_setiap_produk_punya_minimal_satu_baris_bom():
     assert {line.product_code for line in DEMO_BOM} == {p.code for p in DEMO_PRODUCTS}
 
 
-def test_material_punya_qty_per_pallet_untuk_validasi_kapasitas_gudang():
-    # Material tanpa qty_per_pallet dilewati warehouse_service.validate_capacity.
+def test_material_dimensi_fisik_valid():
     for material in DEMO_MATERIALS:
-        assert float(material.qty_per_pallet) > 0
         assert set(material.dimension) == {"length", "width", "height"}
 
 
-def test_dimensi_palet_gudang_valid():
-    dimension = DEMO_WAREHOUSE.pallet_dimension
-    assert set(dimension) == {"length", "width", "height"}
-    assert float(DEMO_WAREHOUSE.warehouse_area_m2) > 0
+def test_kapasitas_gudang_per_produk_valid():
+    product_codes = {p.code for p in DEMO_PRODUCTS}
+    assert {c.product_code for c in DEMO_WAREHOUSE_CAPACITY} == product_codes
+    for c in DEMO_WAREHOUSE_CAPACITY:
+        assert c.capacity_qty > 0
 
 
 # ── Deret demand ─────────────────────────────────────────────────────────
@@ -195,10 +194,11 @@ async def test_seed_membuat_seluruh_master_data_dan_histori():
     assert summary.products_created == len(DEMO_PRODUCTS)
     assert summary.materials_created == len(DEMO_MATERIALS)
     assert summary.boms_created == len(DEMO_BOM)
-    assert summary.warehouse_created is True
+    assert summary.warehouse_created == len(DEMO_WAREHOUSE_CAPACITY)
     assert summary.demand_rows == sum(len(build_demand_series(p.code)) for p in DEMO_PRODUCTS)
     assert len(repos["demand"].rows) == summary.demand_rows
-    assert repos["warehouse"].configs[DEMO_WAREHOUSE.category] is not None
+    product = await repos["products"].get_by_code("KBYPL 200")
+    assert repos["warehouse"].configs_by_product[product.id] is not None
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_seed_idempoten_dijalankan_dua_kali_tidak_menduplikasi():
     assert summary.materials_created == 0
     assert summary.boms_created == 0
     assert summary.demand_rows == 0
-    assert summary.warehouse_created is False
+    assert summary.warehouse_created == 0
     assert len(repos["uploads"].items) == 1  # tidak bikin sesi upload kosong
     assert len(repos["demand"].rows) == sum(
         len(build_demand_series(p.code)) for p in DEMO_PRODUCTS

@@ -4,38 +4,53 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type {
-  WarehouseConfig,
-  WarehouseConfigInput,
-  WarehouseValidation,
-} from "@/types/warehouse";
+import type { WarehouseConfig, WarehouseConfigInput, WarehouseValidation } from "@/types/warehouse";
 
 const KEY = ["warehouse-config"];
 
-export function useWarehouseConfig() {
+export function useWarehouseConfigs() {
   const token = getToken();
-  return useQuery<WarehouseConfig | null>({
+  return useQuery<WarehouseConfig[]>({
     queryKey: KEY,
     enabled: Boolean(token),
     queryFn: async () => {
-      const res = await api.warehouse.getConfig(token as string);
-      // Belum diatur (404) bukan error fatal untuk UI — kembalikan null.
-      if (!res.success) {
-        if (res.error.code === "WAREHOUSE_CONFIG_NOT_FOUND") return null;
-        throw new Error(res.error.message);
-      }
+      const res = await api.warehouse.list(token as string);
+      if (!res.success) throw new Error(res.error.message);
       return res.data;
     },
   });
 }
 
-export function useSetWarehouseConfig() {
+export function useCreateWarehouseConfig() {
   const qc = useQueryClient();
   return useMutation<WarehouseConfig, Error, WarehouseConfigInput>({
     mutationFn: async (input) => {
-      const res = await api.warehouse.setConfig(input, getToken() as string);
+      const res = await api.warehouse.create(input, getToken() as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useUpdateWarehouseConfig() {
+  const qc = useQueryClient();
+  return useMutation<WarehouseConfig, Error, { id: string; capacity_qty: number }>({
+    mutationFn: async ({ id, capacity_qty }) => {
+      const res = await api.warehouse.update(id, capacity_qty, getToken() as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useDeleteWarehouseConfig() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      const res = await api.warehouse.remove(id, getToken() as string);
+      if (!res.success) throw new Error(res.error.message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });

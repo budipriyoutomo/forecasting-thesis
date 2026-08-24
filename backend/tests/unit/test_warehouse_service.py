@@ -1,20 +1,18 @@
 """
-Fase 6 v3.0 — kapasitas gudang. Angka diverifikasi manual (AGENTS.md §3).
+Fase 6 v3.0, redesain 24 Agustus 2026 — kapasitas gudang per PRODUK, angka bebas.
+Angka diverifikasi manual (AGENTS.md §3).
 """
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
-from app.services.warehouse_service import (
-    WarehouseService,
-    compute_material_capacity,
-    compute_pallet_capacity,
-    validate_capacity,
-)
+from app.services.warehouse_service import WarehouseService, validate_capacity
 from app.utils.exceptions import (
     ForbiddenRoleError,
     ForecastRunNotFoundError,
+    ProductNotFoundError,
+    WarehouseConfigExistsError,
     WarehouseConfigNotFoundError,
 )
 
@@ -22,56 +20,45 @@ USER = "u1"
 OTHER = "u2"
 
 
-def _rec(mid, ss=0, buffer=0, eoq=0):
-    return SimpleNamespace(
-        material_id=mid, safety_stock=Decimal(ss), buffer_stock=Decimal(buffer), eoq_qty=Decimal(eoq)
-    )
+def _config(cid="c1", pid="p1", capacity=100):
+    return SimpleNamespace(id=cid, product_id=pid, capacity_qty=Decimal(capacity))
 
 
-def _material(mid, qpp):
-    return SimpleNamespace(id=mid, qty_per_pallet=Decimal(qpp) if qpp is not None else None)
+def _result(pid, status="COMPLETED", values=None):
+    forecast_data = [{"date": "2026-01-01", "value": v} for v in (values or [])] if values is not None else None
+    return SimpleNamespace(product_id=pid, status=status, forecast_data=forecast_data)
 
 
 # ── Fungsi murni ──
 
 
-def test_pallet_capacity_footprint():
-    # area 100 m², palet 2×1.25 → footprint 2.5 → 40 palet
-    assert compute_pallet_capacity(100, {"length": 2, "width": 1.25, "height": 1}) == 40
-
-
-def test_pallet_capacity_footprint_nol_aman():
-    assert compute_pallet_capacity(100, {"length": 0, "width": 1, "height": 1}) == 0
-
-
-def test_material_capacity():
-    assert compute_material_capacity(40, 500) == pytest.approx(20000)
-
-
 def test_validate_capacity_muat():
-    # kapasitas 100 palet ; M1 butuh 500/250=2 palet, M2 250/250=1 → total 3 ≤ 100
-    recs = [_rec("M1", ss=100, eoq=400), _rec("M2", ss=250)]
-    materials = {"M1": _material("M1", 250), "M2": _material("M2", 250)}
-    res = validate_capacity(recs, materials, 100, {"length": 1, "width": 1, "height": 1})
-    assert res.total_pallet_capacity == 100
-    assert res.total_pallet_required == pytest.approx(3)
+    configs = [_config(pid="p1", capacity=100)]
+    res = validate_capacity(configs, {"p1": 80})
     assert res.is_within_capacity is True
+    assert res.details[0].required_qty == pytest.approx(80)
+    assert res.details[0].capacity_qty == pytest.approx(100)
 
 
 def test_validate_capacity_melebihi():
-    recs = [_rec("M1", ss=100, eoq=400), _rec("M2", ss=250)]
-    materials = {"M1": _material("M1", 250), "M2": _material("M2", 250)}
-    res = validate_capacity(recs, materials, 1, {"length": 1, "width": 1, "height": 1})
-    assert res.total_pallet_capacity == 1
+    configs = [_config(pid="p1", capacity=100)]
+    res = validate_capacity(configs, {"p1": 150})
     assert res.is_within_capacity is False
+    assert res.details[0].is_within_capacity is False
 
 
-def test_validate_capacity_material_tanpa_qpp_dilewati():
-    recs = [_rec("M1", ss=500)]
-    materials = {"M1": _material("M1", None)}
-    res = validate_capacity(recs, materials, 100, {"length": 1, "width": 1, "height": 1})
-    assert res.total_pallet_required == 0.0
-    assert res.is_within_capacity is True
+def test_validate_capacity_agregat_false_bila_salah_satu_produk_melebihi():
+    configs = [_config(cid="c1", pid="p1", capacity=100), _config(cid="c2", pid="p2", capacity=50)]
+    res = validate_capacity(configs, {"p1": 80, "p2": 60})
+    assert res.is_within_capacity is False
+    assert len(res.details) == 2
+
+
+def test_validate_capacity_produk_tanpa_forecast_dilewati():
+    configs = [_config(pid="p1", capacity=100)]
+    res = validate_capacity(configs, {})
+    assert res.details == []
+    assert res.is_within_capacity is True  # tak ada yang dibandingkan → tak ada yang melebihi
 
 
 # ── Orkestrasi ──
@@ -79,18 +66,29 @@ def test_validate_capacity_material_tanpa_qpp_dilewati():
 
 class FakeConfigRepo:
     def __init__(self, configs=None):
-        self._by_cat = {c.category: c for c in (configs or [])}
+        self._rows = {c.id: c for c in (configs or [])}
+        self._by_product = {c.product_id: c for c in (configs or [])}
 
-    async def get_by_category(self, category):
-        return self._by_cat.get(category)
+    async def list(self):
+        return list(self._rows.values())
+
+    async def get_by_id(self, config_id):
+        return self._rows.get(config_id)
+
+    async def get_by_product(self, product_id):
+        return self._by_product.get(product_id)
 
     async def add(self, config):
-        self._by_cat[config.category] = config
+        self._rows[config.id] = config
+        self._by_product[config.product_id] = config
         return config
 
     async def save(self, config):
-        self._by_cat[config.category] = config
         return config
+
+    async def delete(self, config):
+        self._rows.pop(config.id, None)
+        self._by_product.pop(config.product_id, None)
 
 
 class FakeValidationRepo:
@@ -102,41 +100,32 @@ class FakeValidationRepo:
         return validation
 
 
-class FakeReorderRepo:
-    def __init__(self, recs):
-        self._recs = recs
-
-    async def list_by_run(self, run_id):
-        return self._recs
-
-
-class FakeMaterialRepo:
-    def __init__(self, materials):
-        self._by_id = {str(m.id): m for m in materials}
-
-    async def get_by_id(self, mid):
-        return self._by_id.get(str(mid))
-
-
 class FakeForecastRepo:
-    def __init__(self, run):
+    def __init__(self, run, results=None):
         self._run = run
+        self._results = results or []
 
     async def get_run(self, run_id):
         return self._run if self._run and str(self._run.id) == str(run_id) else None
 
+    async def list_results(self, run_id):
+        return self._results
 
-def _config(cat="packaging", area=100, dim=None):
-    return SimpleNamespace(category=cat, warehouse_area_m2=Decimal(area), pallet_dimension=dim or {"length": 1, "width": 1, "height": 1})
+
+class FakeProductRepo:
+    def __init__(self, products=None):
+        self._by_id = {p: p for p in (products or [])}
+
+    async def get_by_id(self, pid):
+        return pid if pid in self._by_id else None
 
 
-def _service(run=None, recs=None, materials=None, configs=None):
+def _service(run=None, results=None, configs=None, products=None):
     return WarehouseService(
         config_repo=FakeConfigRepo(configs),
         validation_repo=FakeValidationRepo(),
-        reorder_repo=FakeReorderRepo(recs or []),
-        materials=FakeMaterialRepo(materials or []),
-        forecast_repo=FakeForecastRepo(run),
+        forecast_repo=FakeForecastRepo(run, results),
+        products=FakeProductRepo(products if products is not None else ["p1", "p2"]),
     )
 
 
@@ -144,16 +133,44 @@ def _service(run=None, recs=None, materials=None, configs=None):
 async def test_get_config_belum_ada_404():
     svc = _service()
     with pytest.raises(WarehouseConfigNotFoundError):
-        await svc.get_config()
+        await svc.get_config("ghost")
 
 
 @pytest.mark.asyncio
-async def test_upsert_config_create_lalu_update():
+async def test_create_config():
     svc = _service()
-    c1 = await svc.upsert_config("packaging", 100, {"length": 1, "width": 1, "height": 1})
-    assert float(c1.warehouse_area_m2) == 100
-    c2 = await svc.upsert_config("packaging", 250, {"length": 1, "width": 1, "height": 1})
-    assert float(c2.warehouse_area_m2) == 250
+    config = await svc.create_config("p1", 500)
+    assert float(config.capacity_qty) == 500
+    assert str(config.product_id) == "p1"
+
+
+@pytest.mark.asyncio
+async def test_create_config_produk_tidak_ada_404():
+    svc = _service(products=[])
+    with pytest.raises(ProductNotFoundError):
+        await svc.create_config("ghost", 500)
+
+
+@pytest.mark.asyncio
+async def test_create_config_duplikat_409():
+    svc = _service(configs=[_config(pid="p1")])
+    with pytest.raises(WarehouseConfigExistsError):
+        await svc.create_config("p1", 500)
+
+
+@pytest.mark.asyncio
+async def test_update_config():
+    svc = _service(configs=[_config(cid="c1", pid="p1", capacity=100)])
+    updated = await svc.update_config("c1", 250)
+    assert float(updated.capacity_qty) == 250
+
+
+@pytest.mark.asyncio
+async def test_delete_config():
+    svc = _service(configs=[_config(cid="c1", pid="p1")])
+    await svc.delete_config("c1")
+    with pytest.raises(WarehouseConfigNotFoundError):
+        await svc.get_config("c1")
 
 
 @pytest.mark.asyncio
@@ -161,19 +178,31 @@ async def test_validate_for_run_persist_flag():
     run = SimpleNamespace(id="r1", user_id=USER)
     svc = _service(
         run=run,
-        recs=[_rec("M1", ss=100, eoq=400)],
-        materials=[_material("M1", 250)],
-        configs=[_config(area=100)],
+        results=[_result("p1", values=[40, 40])],
+        configs=[_config(pid="p1", capacity=100)],
     )
     v = await svc.validate_for_run(USER, "r1")
     assert v.is_within_capacity is True
-    assert float(v.total_pallet_required) == pytest.approx(2)
+    assert v.details[0]["required_qty"] == pytest.approx(80)
+
+
+@pytest.mark.asyncio
+async def test_validate_for_run_produk_gagal_forecast_dilewati():
+    run = SimpleNamespace(id="r1", user_id=USER)
+    svc = _service(
+        run=run,
+        results=[_result("p1", status="INSUFFICIENT_DATA", values=None)],
+        configs=[_config(pid="p1", capacity=100)],
+    )
+    v = await svc.validate_for_run(USER, "r1")
+    assert v.details == []
+    assert v.is_within_capacity is True
 
 
 @pytest.mark.asyncio
 async def test_validate_for_run_tanpa_config_404():
     run = SimpleNamespace(id="r1", user_id=USER)
-    svc = _service(run=run, recs=[], materials=[])
+    svc = _service(run=run, results=[])
     with pytest.raises(WarehouseConfigNotFoundError):
         await svc.validate_for_run(USER, "r1")
 

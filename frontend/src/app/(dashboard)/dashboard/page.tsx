@@ -104,8 +104,8 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="text-lg">Kapasitas gudang</CardTitle>
                 <CardDescription>
-                  Butuh {formatNumber(summary.warehouse.total_pallet_required, 1)} palet dari{" "}
-                  {formatNumber(summary.warehouse.total_pallet_capacity, 0)} tersedia.
+                  {summary.warehouse.n_products_over} dari {summary.warehouse.n_products_checked}{" "}
+                  produk melebihi kapasitasnya.
                 </CardDescription>
               </CardHeader>
               <CardContent>

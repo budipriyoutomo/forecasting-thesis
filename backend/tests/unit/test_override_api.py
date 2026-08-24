@@ -59,22 +59,8 @@ async def test_create_override_201(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_create_override_material_requirement_201(client, auth_headers):
-    # Fase 8: target_type `material_requirement` diterima (Literal schema diperluas).
-    target = SimpleNamespace(
-        id="mr1",
-        forecast_qty=Decimal("1200"),
-        standard_usage_qty=Decimal("1150"),
-        actual_usage_qty=Decimal("1180"),
-        buffer_stock_pct=Decimal("5"),
-    )
-
-    async def resolver(tid):
-        return {"mr1": target}.get(str(tid))
-
-    service = OverrideService(FakeOverrideRepo(), {"material_requirement": resolver})
-    app.dependency_overrides[get_override_service] = lambda: service
-
+async def test_create_override_material_requirement_422(client, auth_headers):
+    """Guard regresi: target_type `material_requirement` sudah tak dikenal (Literal schema)."""
     res = await client.post(
         "/api/v1/overrides",
         headers=auth_headers,
@@ -86,8 +72,7 @@ async def test_create_override_material_requirement_201(client, auth_headers):
         },
     )
 
-    assert res.status_code == 201
-    assert res.json()["data"]["previous_value"]["forecast_qty"] == "1200"
+    assert res.status_code == 422
 
 
 @pytest.mark.asyncio

@@ -28,7 +28,7 @@ Tim PPIC (Production Planning & Inventory Control) saat ini menentukan kebutuhan
 **[CHANGED]** Dua masalah tambahan yang jadi fokus v3.0:
 
 - Perusahaan sudah punya angka **Forecast eksisting** dan **Planning** sendiri, tapi tidak punya cara membuktikan apakah metode baru lebih akurat dari yang dipakai sekarang.
-- Rekomendasi pengadaan sering **tidak muat secara fisik di gudang** — jumlah ekonomis (EOQ) dihitung tanpa memperhatikan kapasitas palet yang tersedia, sehingga rekomendasi tidak bisa dieksekusi apa adanya.
+- Rekomendasi pengadaan sering **tidak muat secara fisik di gudang** — jumlah ekonomis (EOQ) dihitung tanpa memperhatikan kapasitas gudang yang tersedia, sehingga rekomendasi tidak bisa dieksekusi apa adanya.
 
 **ForecastIQ** dibangun untuk mengotomatisasi prediksi demand **produk jadi**, menurunkannya jadi kebutuhan raw material via **BOM**, lalu mengubahnya jadi keputusan pengadaan (safety stock, buffer stock, EOQ) yang **tervalidasi terhadap kapasitas gudang** dan **terukur total biayanya** — dengan mesin seleksi model otomatis (**Comparative Selection**) yang membandingkan seluruh metode aktif, menjelaskan *mengapa* metode itu menang dalam bahasa natural, dan tetap memberi planner kendali penuh untuk override dengan audit trail.
 
@@ -39,7 +39,7 @@ Tim PPIC (Production Planning & Inventory Control) saat ini menentukan kebutuhan
 1. **[CHANGED]** Memprediksi demand **produk jadi** (SKU) untuk periode mendatang (bulanan) berdasarkan data historis, dengan metode yang dipilih otomatis lewat perbandingan akurasi seluruh metode aktif.
 2. **[NEW]** Menurunkan hasil forecast produk menjadi **kebutuhan raw material** melalui BOM (Bill of Material).
 3. **[CHANGED]** Memberikan rekomendasi **safety stock**, **buffer stock**, **reorder point**, dan **EOQ (jumlah pesanan ekonomis)** per item material.
-4. **[NEW]** Memvalidasi apakah rekomendasi tersebut **muat secara fisik di gudang** berdasarkan kapasitas palet.
+4. **[NEW]** Memvalidasi apakah forecast produk **muat kapasitas gudangnya**, per produk (kapasitas isian bebas planner — **[CHANGED 24 Agustus 2026]** bukan turunan luas gudang × dimensi palet).
 5. **[NEW]** Mengukur **total biaya persediaan (TIC)** usulan sistem dibanding baseline perusahaan, dan melaporkan **% penghematan**.
 6. **[NEW]** Mengevaluasi **kinerja inventory** (service level, fill rate, stock out rate, inventory turnover) untuk skenario baseline vs ForecastIQ.
 7. Menjelaskan hasil forecast dalam bahasa natural (bukan angka statistik mentah) agar planner non-teknis memahami dasar keputusan sistem.
@@ -51,25 +51,25 @@ Tim PPIC (Production Planning & Inventory Control) saat ini menentukan kebutuhan
 
 | Peran | Kebutuhan Utama |
 |---|---|
-| Staff/Supervisor PPIC (Planner) | Upload data historis, menjalankan forecast, melihat kebutuhan material hasil BOM breakdown, melihat rekomendasi order, override jika perlu |
+| Staff/Supervisor PPIC (Planner) | Upload data historis, menjalankan forecast produk, melihat rekomendasi order, override jika perlu |
 | Tim Purchasing | Melihat rekomendasi reorder, EOQ, & jumlah pengadaan per material |
 | Manajer Produksi/Supply Chain | Melihat dashboard ringkasan, tren, akurasi forecast, **[NEW]** total biaya persediaan & metrik kinerja inventory, dan riwayat override untuk pengambilan keputusan |
-| Admin | Mengelola master data **produk, material, dan BOM**, user, **[NEW]** konfigurasi gudang (luas & dimensi palet), dan konfigurasi sistem (engine aktif, metrik ranking) |
+| Admin | Mengelola master data **produk, material, dan BOM**, user, **[NEW]** konfigurasi kapasitas gudang per produk, dan konfigurasi sistem (engine aktif, metrik ranking) |
 
 ## 4. Lingkup (Scope)
 
 ### 4.1 Dalam Lingkup (In-Scope) — MVP
 - **[CHANGED]** Upload data historis demand **produk jadi** via file **CSV/Excel**, dengan **tiga seri paralel per SKU per periode**: `forecast_existing` (angka forecast perusahaan saat ini), `planning` (rencana produksi), dan `actual` (realisasi). Tiga kolom ini yang memungkinkan sistem membuktikan peningkatan akurasi dibanding metode existing.
 - Validasi & pembersihan data (deteksi kolom wajib, format tanggal, nilai kosong/anomali) sebelum diproses.
-- **[CHANGED]** Master data **produk** (kode SKU, nama), **material** (kode, nama, satuan, kategori, lead time supplier, MOQ, **[NEW]** dimensi & qty per palet), dan **[NEW] BOM** (produk → material, qty per unit).
+- **[CHANGED]** Master data **produk** (kode SKU, nama), **material** (kode, nama, satuan, kategori, lead time supplier, MOQ, **[NEW]** dimensi fisik), dan **[NEW] BOM** (produk → material, qty per unit).
 - **[CHANGED]** **Comparative Selection Engine**: jalankan **seluruh** metode aktif untuk tiap SKU, hitung MAD/MFE/MSE/MAPE tiap metode via backtest, pilih metode dengan metrik ranking terbaik. Tanpa klasifikasi kuadran demand.
 - **Penjelasan bahasa natural** untuk setiap hasil forecast (metode apa yang dipilih dan mengapa).
 - **[NEW] BOM breakdown**: forecast produk × BOM → kebutuhan raw material per periode.
 - **[CHANGED]** Perhitungan **safety stock**, **[NEW] buffer stock**, **reorder point**, dan **[NEW] EOQ dinamis** per item material berdasarkan hasil forecast, lead time, MOQ, dan service level yang dikonfigurasi.
-- **[NEW] Validasi kapasitas gudang**: hitung kapasitas palet dari luas gudang & dimensi palet, bandingkan dengan kebutuhan palet dari rekomendasi — tampil sebagai flag non-blocking.
+- **[NEW] Validasi kapasitas gudang**: kapasitas per produk (isian bebas planner) dibandingkan dengan total qty forecast produk itu — tampil sebagai flag non-blocking, per produk.
 - **[NEW] Total biaya persediaan (TIC)**: ordering cost + holding cost, usulan ForecastIQ vs baseline perusahaan, beserta % penghematan.
 - **[NEW] Evaluasi kinerja inventory**: service level, fill rate, stock out rate, inventory turnover — dihitung untuk dua skenario (baseline & ForecastIQ).
-- **[CHANGED]** **Planner override**: planner dapat mengubah manual hasil forecast, rekomendasi reorder, **[NEW]** atau kebutuhan material hasil BOM breakdown; wajib menyertakan alasan, tersimpan sebagai revisi (bukan overwrite) dengan audit trail lengkap.
+- **[CHANGED]** **Planner override**: planner dapat mengubah manual hasil forecast atau rekomendasi reorder; wajib menyertakan alasan, tersimpan sebagai revisi (bukan overwrite) dengan audit trail lengkap.
 - Dashboard visualisasi: tren aktual vs forecast, status stok per item, daftar item yang perlu segera di-reorder, riwayat override, **[NEW]** ringkasan biaya & metrik inventory, **[NEW]** indikator kapasitas gudang.
 - Export hasil forecast & rekomendasi reorder ke Excel/PDF.
 - Manajemen user dasar (login, role: Admin/PPIC/Purchasing/Viewer).
@@ -91,12 +91,12 @@ Tim PPIC (Production Planning & Inventory Control) saat ini menentukan kebutuhan
 **[NEW]** Alur utama v3.0, untuk membaca urutan FR di bawah:
 
 ```
-upload demand produk (FR-1) → forecast produk (FR-3) → BOM breakdown (FR-9)
-  → reorder + buffer + EOQ (FR-4) → validasi kapasitas gudang (FR-10)
+upload demand produk (FR-1) → forecast produk (FR-3)   ← hasil forecast berhenti di sini
+  → reorder + buffer + EOQ (FR-4, pakai BOM di memori) → validasi kapasitas gudang (FR-10)
   → TIC & metrik kinerja inventory (FR-11) → dashboard (FR-6) / export (FR-7)
 ```
 
-Planner override (FR-5) dapat menyentuh tiga titik dalam alur ini: hasil forecast, kebutuhan material, dan rekomendasi reorder.
+Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast dan rekomendasi reorder. (Titik ketiga, kebutuhan material, dihapus 24 Agustus 2026 — lihat FR-9.)
 
 ### FR-1 Data Ingestion
 - FR-1.1 **[CHANGED]** User dapat mengupload file CSV/Excel berisi data historis demand produk jadi. Kolom wajib: `product_code`, `period`, `actual`; ditambah dua seri opsional `forecast_existing` dan `planning` yang dipakai sebagai pembanding baseline. **[DROPPED]** Format lama berbasis `material_code` **tidak lagi diterima** — upload raw material langsung dilepas dari scope v3.0 (keputusan 4 Agustus 2026, lihat `RECONCILIATION.md`).
@@ -106,7 +106,7 @@ Planner override (FR-5) dapat menyentuh tiga titik dalam alur ini: hasil forecas
 - FR-1.5 File upload disimpan sementara (temp storage, TTL 1 jam) sampai divalidasi, lalu dipindah ke penyimpanan permanen jika valid.
 
 ### FR-2 Master Data: Produk, Material & BOM
-- FR-2.1 CRUD master data material: kode, nama, kategori, satuan, lead time supplier (hari), minimum order quantity (MOQ), safety stock manual (opsional override), **[NEW]** dimensi material dan qty per palet (dipakai kalkulasi kapasitas gudang).
+- FR-2.1 CRUD master data material: kode, nama, kategori, satuan, lead time supplier (hari), minimum order quantity (MOQ), safety stock manual (opsional override), **[NEW]** dimensi fisik material.
 - FR-2.2 Import master data material via Excel/CSV.
 - FR-2.3 **[NEW]** CRUD + import master data **produk** (SKU): kode unik, nama. Kode duplikat ditolak dengan `PRODUCT_CODE_EXISTS`.
 - FR-2.4 **[NEW]** CRUD + import **BOM**: relasi produk → material dengan qty per unit produk. Referensi produk/material yang tidak ada ditolak dengan `BOM_NOT_FOUND`.
@@ -137,7 +137,7 @@ Planner override (FR-5) dapat menyentuh tiga titik dalam alur ini: hasil forecas
 - FR-4.8 **[CHANGED]** Rekomendasi digenerate lewat `POST` dengan `current_stock` dikirim sebagai parameter request (bukan kolom tersimpan), lalu bisa dibaca ulang lewat `GET`.
 
 ### FR-5 Planner Override & Audit Trail
-- FR-5.1 **[CHANGED]** Planner dapat override manual hasil forecast, rekomendasi reorder, **[NEW]** atau kebutuhan material hasil BOM breakdown (`material_requirement`) untuk item tertentu.
+- FR-5.1 **[CHANGED]** Planner dapat override manual hasil forecast atau rekomendasi reorder untuk item tertentu. ~~kebutuhan material hasil BOM breakdown (`material_requirement`)~~ **[REMOVED 24 Agustus 2026]** — hasil forecast berhenti di level produk, target override itu ikut dihapus (lihat FR-9).
 - FR-5.2 Setiap override wajib menyertakan alasan (tidak boleh kosong — ditolak dengan error jika kosong).
 - FR-5.3 Override disimpan sebagai revisi baru (append-only), tidak menghapus/menimpa hasil sistem asli.
 - FR-5.4 Riwayat override (siapa, kapan, nilai sebelum/sesudah, alasan) dapat dilihat kembali oleh Admin/Manajer.
@@ -157,19 +157,21 @@ Planner override (FR-5) dapat menyentuh tiga titik dalam alur ini: hasil forecas
 - FR-8.1 Login dengan role: Admin, PPIC (Planner), Purchasing, Viewer.
 - FR-8.2 Role menentukan akses (mis. Purchasing hanya bisa lihat rekomendasi reorder, tidak bisa override atau ubah master data). Akses yang ditolak karena role mengembalikan `AUTH_FORBIDDEN` (403).
 
-### FR-9 BOM Breakdown & Kebutuhan Material **[NEW]**
-> Dijalankan **antara FR-3 dan FR-4** dalam alur: hasil forecast produk jadi input kebutuhan material, yang lalu jadi dasar rekomendasi reorder.
+### FR-9 BOM Breakdown & Kebutuhan Material **[REMOVED 24 Agustus 2026]**
+> **Dibatalkan.** Hasil forecast adalah **produk**, titik — tidak ada entitas kebutuhan material yang tersimpan per run. Tabel `material_requirements`, endpoint `GET /forecast/runs/{run_id}/material-requirements`, dan target override `material_requirement` dihapus (lihat `RECONCILIATION.md` §"Forecast produk-only").
 
-- FR-9.1 Sistem menurunkan hasil forecast produk menjadi kebutuhan raw material per periode: `kebutuhan material = forecast produk × qty_per_unit BOM`, diakumulasi lintas produk yang memakai material sama.
-- FR-9.2 Hasil breakdown disimpan sebagai `material_requirements` per forecast run, dan bisa di-override planner (lihat FR-5.1).
-- FR-9.3 Jika produk tidak punya BOM, forecast produk **tetap tersimpan** — hanya breakdown material untuk produk itu yang dilewati (kegagalan parsial, bukan total).
+- ~~FR-9.1 Sistem menurunkan hasil forecast produk menjadi kebutuhan raw material per periode.~~ **[REMOVED]**
+- ~~FR-9.2 Hasil breakdown disimpan sebagai `material_requirements` per forecast run.~~ **[REMOVED]**
+- ~~FR-9.3 Produk tanpa BOM: forecast tetap tersimpan, breakdown dilewati.~~ **[REMOVED]** — tidak relevan lagi karena forecast tak pernah menyentuh BOM.
 
-### FR-10 Validasi Kapasitas Gudang **[NEW]**
-- FR-10.1 Admin dapat mengatur konfigurasi gudang: luas gudang (m²) dan dimensi palet (panjang × lebar × tinggi).
-- FR-10.2 Sistem menghitung kapasitas palet = Luas Gudang ÷ footprint palet (panjang × lebar), dan kapasitas material = jumlah palet × qty material per palet.
-- FR-10.3 Sistem menghitung kebutuhan palet dari rekomendasi (safety stock + buffer + EOQ, dibagi qty per palet) dan membandingkannya dengan kapasitas. Material tanpa `qty_per_pallet` dilewati (kebutuhan paletnya tidak bisa dihitung).
-- FR-10.4 Hasil validasi tampil sebagai **flag non-blocking** (muat / tidak muat) di halaman hasil forecast & reorder — sistem tidak menolak rekomendasi, hanya memberi peringatan agar planner bisa menyesuaikan.
-- FR-10.5 Konfigurasi gudang yang belum diisi menghasilkan `WAREHOUSE_CONFIG_NOT_FOUND`, bukan diam-diam memakai angka default.
+> BOM tetap ada sebagai **master data** dan tetap dipakai FR-4 (reorder/EOQ) & FR-11 (biaya) lewat perhitungan di memori, bukan lewat tabel turunan per run.
+
+### FR-10 Validasi Kapasitas Gudang **[NEW, redesain 24 Agustus 2026]**
+- FR-10.1 Admin dapat mengatur kapasitas gudang **per produk**: satu baris per produk, `capacity_qty` diisi bebas oleh planner (unit sama dengan unit produk) — **bukan** diturunkan dari luas gudang atau dimensi palet. Satu produk maksimal satu baris (`WAREHOUSE_CONFIG_EXISTS` bila duplikat).
+- FR-10.2 Sistem membandingkan, per produk yang dikonfigurasi: kebutuhan = total qty forecast produk itu di satu run, terhadap `capacity_qty` konfigurasinya.
+- FR-10.3 Produk tanpa konfigurasi kapasitas, atau tanpa forecast COMPLETED di run itu, dilewati (tak bisa dibandingkan) — tidak menggagalkan validasi produk lain.
+- FR-10.4 Hasil validasi tampil sebagai **flag non-blocking**, per produk (muat / tidak muat) di halaman hasil forecast — sistem tidak menolak rekomendasi, hanya memberi peringatan agar planner bisa menyesuaikan. Flag agregat run = True hanya bila SEMUA produk yang dibandingkan muat.
+- FR-10.5 Belum ada konfigurasi kapasitas sama sekali menghasilkan `WAREHOUSE_CONFIG_NOT_FOUND`, bukan diam-diam memakai angka default.
 
 ### FR-11 Total Biaya & Evaluasi Kinerja Inventory **[NEW]**
 - FR-11.1 Sistem menghitung **TIC (Total Inventory Cost)** = ordering cost + holding cost, untuk dua skenario: **usulan ForecastIQ** (dari rekomendasi tersimpan) dan **baseline perusahaan** (dari seri `planning`, lewat jalur BOM → EOQ yang sama agar perbandingannya simetris).
@@ -204,7 +206,7 @@ Sistem menjalankan **seluruh metode aktif** untuk tiap SKU, menghitung **MAD/MFE
 - **Scalability**: Registry/Factory pattern untuk model engine — metode baru bisa ditambah tanpa mengubah orchestrator/endpoint/test yang sudah ada.
 - **Auditability**: Setiap upload, forecast run, dan override tercatat lengkap (siapa, kapan, versi data, alasan).
 - **Data & Model Integrity**: Data historis asli tidak pernah dimodifikasi secara silent; hasil forecast/override tidak pernah di-overwrite, selalu sebagai entri baru.
-- **Testability**: **[CHANGED]** Seluruh logic inti (metrik evaluasi, tiap engine, BOM breakdown, reorder/EOQ, kapasitas gudang, TIC, metrik inventory) dikembangkan dengan TDD dan coverage minimum sesuai `AGENTS.md`. Rumus yang punya konsekuensi angka (EOQ, TIC, kapasitas palet, 4 metrik inventory) diverifikasi manual di test, bukan hanya di-snapshot.
+- **Testability**: **[CHANGED]** Seluruh logic inti (metrik evaluasi, tiap engine, reorder/EOQ, kapasitas gudang, TIC, metrik inventory) dikembangkan dengan TDD dan coverage minimum sesuai `AGENTS.md`. Rumus yang punya konsekuensi angka (EOQ, TIC, kapasitas gudang per produk, 4 metrik inventory) diverifikasi manual di test, bukan hanya di-snapshot.
 
 ## 8. Asumsi & Batasan
 
@@ -236,7 +238,7 @@ Sistem menjalankan **seluruh metode aktif** untuk tiap SKU, menghitung **MAD/MFE
 4. Sebagai **Planner PPIC**, saya ingin bisa override rekomendasi sistem untuk item tertentu (mis. karena ada informasi dari lapangan yang sistem tidak tahu), dengan mencatat alasannya.
 5. Sebagai **Tim Purchasing**, saya ingin melihat daftar material yang perlu segera di-reorder beserta jumlah rekomendasinya, agar saya bisa langsung membuat PO.
 6. Sebagai **Manajer**, saya ingin melihat dashboard akurasi forecast dan riwayat override, agar saya bisa menilai keandalan sistem dan pola judgment planner dari waktu ke waktu.
-7. **[CHANGED]** Sebagai **Admin**, saya ingin mengatur lead time & MOQ per material, BOM per produk, **[NEW]** luas gudang & dimensi palet, serta daftar metode aktif dan metrik ranking, agar perhitungan reorder point, kapasitas, dan pemilihan model sesuai kondisi riil.
+7. **[CHANGED]** Sebagai **Admin**, saya ingin mengatur lead time & MOQ per material, BOM per produk, **[NEW]** kapasitas gudang per produk (angka bebas), serta daftar metode aktif dan metrik ranking, agar perhitungan reorder point, kapasitas, dan pemilihan model sesuai kondisi riil.
 8. **[CHANGED]** Sebagai **Planner PPIC**, saya ingin bisa memilih sendiri metode forecasting (mis. paksa pakai XGBoost) sebelum generate, karena saya sudah tahu dari pengalaman metode mana yang biasanya cocok untuk item tertentu — tanpa harus menunggu hasil perbandingan otomatis dulu baru override.
 9. **[NEW]** Sebagai **Planner PPIC**, saya ingin melihat kebutuhan raw material yang otomatis diturunkan dari forecast produk lewat BOM, agar saya tidak perlu menghitung sendiri berapa bahan yang dibutuhkan untuk memenuhi rencana produksi.
 10. **[NEW]** Sebagai **Manajer Gudang**, saya ingin diperingatkan kalau rekomendasi pengadaan tidak muat di gudang, agar saya bisa menyesuaikan jadwal pengiriman sebelum barang terlanjur datang dan menumpuk di lorong.

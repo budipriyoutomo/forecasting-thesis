@@ -43,7 +43,7 @@ export function UploadPanel() {
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">Unggah CSV histori demand</p>
             <p className="text-sm text-muted-foreground">
-              Kolom wajib: product_code, period, forecast_existing, planning, actual.
+              Kolom wajib: product_code, period, actual. Opsional: forecast_existing, planning.
             </p>
           </div>
           <input

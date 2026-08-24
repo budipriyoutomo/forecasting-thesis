@@ -72,43 +72,4 @@ describe("OverrideForm", () => {
       "tok",
     );
   });
-
-  // Backend menerima `material_requirement` sejak Fase 8 (schemas/override.py) —
-  // form harus bisa menargetkannya juga, bukan hanya forecast/reorder.
-  it("bisa override material_requirement hasil BOM breakdown", async () => {
-    const spy = vi.spyOn(api.overrides, "create").mockResolvedValue({
-      success: true,
-      data: {
-        id: "o2",
-        target_type: "material_requirement",
-        target_id: "req1",
-        user_id: "u1",
-        previous_value: { required_qty: "500" },
-        new_value: { required_qty: 640 },
-        reason: "ada rework batch sebelumnya",
-        created_at: null,
-      },
-    });
-    const onDone = renderForm(vi.fn(), {
-      targetType: "material_requirement",
-      targetId: "req1",
-      field: "required_qty",
-      label: "Kebutuhan material baru",
-    });
-
-    await userEvent.type(screen.getByLabelText(/kebutuhan material baru/i), "640");
-    await userEvent.type(screen.getByLabelText(/alasan override/i), "ada rework batch sebelumnya");
-    await userEvent.click(screen.getByRole("button", { name: /simpan override/i }));
-
-    await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(spy).toHaveBeenCalledWith(
-      {
-        target_type: "material_requirement",
-        target_id: "req1",
-        new_value: { required_qty: 640 },
-        reason: "ada rework batch sebelumnya",
-      },
-      "tok",
-    );
-  });
 });

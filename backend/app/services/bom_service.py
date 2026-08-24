@@ -2,11 +2,10 @@
 BomService — CRUD master data Bill of Materials + import CSV (Fase 2 v3.0).
 
 Setiap baris BOM merujuk `product_id` + `material_id` yang HARUS ada di master data
-(ProductNotFoundError / MaterialNotFoundError bila tidak). Breakdown kebutuhan material
-dari forecast (memakai BOM ini) menyusul di Fase 5.
+(ProductNotFoundError / MaterialNotFoundError bila tidak).
 
-Catatan: `BomNotFoundError` (404) dipakai saat baris BOM yang diminta tidak ada; di
-Fase 5 kode yang sama dipakai saat sebuah produk belum punya BOM saat breakdown diminta.
+Hasil forecast TIDAK diturunkan ke BOM/material (lihat docs/RECONCILIATION.md
+§"Forecast produk-only"). BOM di sini hanya dipakai master data + reorder/cost.
 """
 import csv as csv_module
 import io
@@ -26,7 +25,7 @@ from app.utils.exceptions import (
 REQUIRED_IMPORT_COLUMNS = {"product_code", "material_code", "qty_per_unit"}
 
 
-# ── Breakdown & buffer stock (Fase 5 v3.0) — fungsi murni, diverifikasi manual ──
+# ── Breakdown deret & buffer stock — fungsi murni, dipakai reorder & cost ──
 
 
 @dataclass
@@ -37,31 +36,12 @@ class BomLine:
     qty_per_unit: float
 
 
-def breakdown_requirements(
-    product_forecasts: dict[str, float], bom_lines: list[BomLine]
-) -> dict[str, float]:
-    """
-    Turunkan kebutuhan material dari forecast produk jadi via BOM:
-      kebutuhan_material = Σ_produk (forecast_produk × qty_per_unit).
-    Produk tanpa forecast diabaikan; material bisa dipakai banyak produk (diakumulasi).
-    """
-    requirements: dict[str, float] = {}
-    for line in bom_lines:
-        qty = product_forecasts.get(line.product_id)
-        if qty is None:
-            continue
-        requirements[line.material_id] = (
-            requirements.get(line.material_id, 0.0) + float(qty) * float(line.qty_per_unit)
-        )
-    return requirements
-
-
 def breakdown_requirements_series(
     product_series: dict[str, list[float]], bom_lines: list[BomLine]
 ) -> dict[str, list[float]]:
     """
-    Versi per-periode dari breakdown_requirements: dari deret forecast tiap produk,
-    hasilkan deret kebutuhan per material (dipakai reorder untuk μ/σ & EOQ).
+    Dari deret forecast tiap produk, hasilkan deret kebutuhan per material
+    (dipakai reorder & cost untuk μ/σ, EOQ, dan biaya).
       material_series[t] = Σ_produk (produk_series[t] × qty_per_unit)
     Produk tanpa deret diabaikan; panjang deret material = deret produk terpanjang.
     """

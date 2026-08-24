@@ -12,7 +12,6 @@ from app.models.forecast_result import ForecastResult  # noqa: F401
 from app.models.forecast_run import ForecastRun  # noqa: F401
 from app.models.inventory_metrics import InventoryMetric  # noqa: F401
 from app.models.material import Material  # noqa: F401
-from app.models.material_requirement import MaterialRequirement  # noqa: F401
 from app.models.product import Product  # noqa: F401
 from app.models.override import Override  # noqa: F401
 from app.models.reorder_recommendation import ReorderRecommendation  # noqa: F401

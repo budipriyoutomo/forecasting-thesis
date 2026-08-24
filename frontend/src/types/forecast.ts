@@ -54,15 +54,3 @@ export interface ForecastRunInput {
   horizon_unit?: string;
   method?: string | null;
 }
-
-// Hasil breakdown BOM per run. Nilai Decimal diserialisasi backend sebagai string.
-// `id` = target_id saat override dengan target_type "material_requirement".
-export interface MaterialRequirement {
-  id: string;
-  run_id: string;
-  material_id: string;
-  forecast_qty: string;
-  standard_usage_qty: string | null;
-  actual_usage_qty: string | null;
-  buffer_stock_pct: string | null;
-}

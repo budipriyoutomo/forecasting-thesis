@@ -67,7 +67,7 @@ TDD adalah **workflow wajib**, bukan opsional. Tidak ada implementasi tanpa test
 | ✅ Insufficient data | Data historis di bawah `BACKTEST_MIN_PERIODS` (atau `LSTM_MIN_PERIODS` untuk LSTM) → `INSUFFICIENT_DATA` |
 | ✅ Model engine failure mock | Simulasi satu engine (Moving Average/ES/Random Forest/XGBoost/LSTM) gagal saat backtest → exclude, lanjut kandidat lain |
 | ✅ All engines fail | Semua kandidat gagal → `MODEL_SELECTION_FAILED` |
-| ✅ BOM missing | Breakdown material diminta tapi produk belum punya BOM → `BOM_NOT_FOUND`, forecast produk tetap tersimpan |
+| ✅ BOM missing | Reorder/cost butuh BOM tapi produk belum punya → `BOM_NOT_FOUND`; forecast produk tetap tersimpan (forecast tidak bergantung BOM) |
 | ✅ Warehouse capacity | Rekomendasi melebihi kapasitas gudang → flag `is_within_capacity = false`, bukan error block |
 | ✅ Override target invalid | `target_id` override tidak ditemukan di tabel yang dirujuk `target_type` → `OVERRIDE_TARGET_NOT_FOUND` |
 | ✅ Business logic | Validasi rule bisnis spesifik (contoh: `SESSION_EXPIRED`, override tanpa alasan → `OVERRIDE_REASON_REQUIRED`) |
@@ -166,13 +166,13 @@ backend/app/services/forecasting/
 | Semua metode kandidat gagal | Return `MODEL_SELECTION_FAILED`, `forecast_results` untuk produk tsb ditandai gagal (run lain tetap lanjut) |
 | Data historis di bawah minimum periode | Return `INSUFFICIENT_DATA` sebelum backtest dijalankan (fail fast) |
 | Backtest per metode timeout | Timeout individual per engine (`ENGINE_TIMEOUT_SECONDS` konvensional/tree, `LSTM_ENGINE_TIMEOUT_SECONDS` khusus LSTM), bukan timeout global |
-| Produk tanpa BOM saat breakdown material diminta | Return `BOM_NOT_FOUND` untuk breakdown-nya saja — forecast produk tetap tersimpan sukses |
+| Produk tanpa BOM saat reorder/cost dihitung | Return `BOM_NOT_FOUND` untuk perhitungan itu saja — forecast produk tetap tersimpan sukses |
 | Rekomendasi melebihi kapasitas gudang | **Bukan error** — flag `is_within_capacity = false`, planner tetap bisa lanjut (override) |
 
 > ⚠️ **Kegagalan satu metode tidak boleh menggagalkan seluruh proses perbandingan.** Selama minimal satu metode berhasil di-backtest, proses seleksi tetap lanjut. **Kegagalan satu produk tidak boleh menggagalkan seluruh forecast run** (run mencakup banyak produk sekaligus).
 
 ### Planner Override — non-negotiable
-- Setiap `forecast_result`, `material_requirement`, dan `reorder_recommendation` **harus bisa di-override manual** oleh planner.
+- Setiap `forecast_result` dan `reorder_recommendation` **harus bisa di-override manual** oleh planner.
 - Setiap override **wajib disertai audit trail**: siapa, kapan, nilai sebelum/sesudah, dan alasan (`OVERRIDE_REASON_REQUIRED` jika alasan kosong).
 - Override tidak menghapus hasil forecast asli — disimpan sebagai baris baru di tabel `overrides` (append-only), bukan overwrite.
 - `target_id` override wajib divalidasi ada di tabel yang dirujuk `target_type` sebelum disimpan — kalau tidak ada, return `OVERRIDE_TARGET_NOT_FOUND`.
@@ -228,12 +228,12 @@ Dataset upload (CSV: Forecast/Planning/Actual) dan hasil forecast adalah anchor 
 
 ### Yang boleh dilakukan sistem
 - ✅ Validasi dan normalisasi format CSV (parsing tanggal, tipe data) — dengan log jelas apa yang diubah
-- ✅ Generate forecast, confidence interval, breakdown BOM, dan natural language explanation
+- ✅ Generate forecast, confidence interval, dan natural language explanation
 - ✅ Menyimpan revisi override sebagai entri baru dengan audit trail
 
 ### Yang dilarang keras
 - ❌ Mengubah data historis (`demand_history`) asli yang diupload user tanpa jejak (silent mutation)
-- ❌ Overwrite `forecast_results`/`material_requirements`/`reorder_recommendations`/override sebelumnya tanpa menyimpan riwayat
+- ❌ Overwrite `forecast_results`/`reorder_recommendations`/override sebelumnya tanpa menyimpan riwayat
 - ❌ Auto-apply override planner ke produk/material lain tanpa konfirmasi eksplisit
 - ❌ Menghapus file engine legacy (`engines/legacy/`) — cukup biarkan nonaktif, jangan dihapus (lihat §5)
 
@@ -320,7 +320,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Tidak ada modifikasi silent pada data historis asli
 - [ ] Override (jika ada) menyertakan audit trail lengkap, dan `target_id` divalidasi (`OVERRIDE_TARGET_NOT_FOUND` bila tidak ada)
 - [ ] File `.env` tidak ikut ter-commit
-- [ ] Breakdown BOM tetap tersimpan meski produk belum lengkap BOM-nya (bukan hard fail)
+- [ ] Forecast run berhenti di level produk — tidak menurunkan hasil ke BOM/material
 - [ ] Validasi kapasitas gudang menghasilkan flag, bukan block otomatis
 - [ ] Setiap metode forecasting baru adalah 1 fungsi (bukan class), sudah ada test-nya sendiri (`test_<method>_engine.py`)
 - [ ] Mode manual (`method` diisi user) sudah diuji: sukses, error saat metode tidak dikenal (`UNSUPPORTED_FORECAST_METHOD`), dan tidak fallback saat gagal

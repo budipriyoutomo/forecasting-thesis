@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { DemandTemplateCard } from "@/components/upload/DemandTemplateCard";
 import { UploadHistory } from "@/components/upload/UploadHistory";
 import { UploadPanel } from "@/components/upload/UploadPanel";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,8 @@ export default function UploadPage() {
           </Button>
         }
       />
+
+      <DemandTemplateCard />
 
       <UploadPanel />
 

@@ -104,7 +104,11 @@ async def test_summary_widget_v3_tic_warehouse_metrics():
         SimpleNamespace(status="safe", total_inventory_cost=Decimal("80")),
     ]
     wval = SimpleNamespace(
-        is_within_capacity=True, total_pallet_required=Decimal("3"), total_pallet_capacity=Decimal("100")
+        is_within_capacity=True,
+        details=[
+            {"product_id": "p1", "required_qty": 80, "capacity_qty": 100, "is_within_capacity": True},
+            {"product_id": "p2", "required_qty": 40, "capacity_qty": 50, "is_within_capacity": True},
+        ],
     )
     metrics = [
         SimpleNamespace(scope="baseline", service_level=Decimal("0.90"), fill_rate=Decimal("0.95"),
@@ -126,7 +130,8 @@ async def test_summary_widget_v3_tic_warehouse_metrics():
     assert s["latest_run"]["total_inventory_cost"] == pytest.approx(200)
     assert s["latest_run"]["avg_mape"] == pytest.approx(5.0)
     assert s["warehouse"]["is_within_capacity"] is True
-    assert s["warehouse"]["total_pallet_required"] == pytest.approx(3)
+    assert s["warehouse"]["n_products_over"] == 0
+    assert s["warehouse"]["n_products_checked"] == 2
     assert s["inventory_metrics"]["forecastiq"]["service_level"] == pytest.approx(0.98)
     assert s["inventory_metrics"]["baseline"]["fill_rate"] == pytest.approx(0.95)
 

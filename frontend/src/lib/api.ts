@@ -1,7 +1,7 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { DashboardSummary } from "@/types/dashboard";
-import type { ForecastRunInput, ForecastRunResponse, MaterialRequirement } from "@/types/forecast";
+import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { CostSummary, InventoryMetric } from "@/types/metrics";
@@ -133,17 +133,34 @@ export const api = {
   },
 
   warehouse: {
-    getConfig: (token: string): Promise<ApiResponse<WarehouseConfig>> =>
-      request<WarehouseConfig>("/api/v1/warehouse/config", {
+    list: (token: string): Promise<ApiResponse<WarehouseConfig[]>> =>
+      request<WarehouseConfig[]>("/api/v1/warehouse/config", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),
 
-    setConfig: (input: WarehouseConfigInput, token: string): Promise<ApiResponse<WarehouseConfig>> =>
+    create: (input: WarehouseConfigInput, token: string): Promise<ApiResponse<WarehouseConfig>> =>
       request<WarehouseConfig>("/api/v1/warehouse/config", {
-        method: "PUT",
+        method: "POST",
         headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
         body: JSON.stringify(input),
+      }),
+
+    update: (
+      id: string,
+      capacityQty: number,
+      token: string,
+    ): Promise<ApiResponse<WarehouseConfig>> =>
+      request<WarehouseConfig>(`/api/v1/warehouse/config/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ capacity_qty: capacityQty }),
+      }),
+
+    remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/warehouse/config/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       }),
 
     validateRun: (runId: string, token: string): Promise<ApiResponse<WarehouseValidation>> =>
@@ -192,16 +209,6 @@ export const api = {
 
     getRun: (runId: string, token: string): Promise<ApiResponse<ForecastRunResponse>> =>
       request<ForecastRunResponse>(`/api/v1/forecast/runs/${runId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      }),
-
-    // Kebutuhan material hasil breakdown BOM — sumber `target_id` untuk override.
-    materialRequirements: (
-      runId: string,
-      token: string,
-    ): Promise<ApiResponse<MaterialRequirement[]>> =>
-      request<MaterialRequirement[]>(`/api/v1/forecast/runs/${runId}/material-requirements`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),

@@ -79,8 +79,8 @@ class DashboardService:
                 if v is not None:
                     warehouse = {
                         "is_within_capacity": v.is_within_capacity,
-                        "total_pallet_required": float(v.total_pallet_required),
-                        "total_pallet_capacity": float(v.total_pallet_capacity),
+                        "n_products_over": sum(1 for d in v.details if not d["is_within_capacity"]),
+                        "n_products_checked": len(v.details),
                     }
 
             if self._inv_metrics is not None:

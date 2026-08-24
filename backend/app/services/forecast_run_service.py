@@ -4,7 +4,8 @@ ForecastRunService (v3.0) — orkestrasi satu forecast run untuk BANYAK PRODUK j
 Alur (produk-only, docs/ARCHITECTURE.md §6):
   1. Ambil histori demand tiap produk dari demand_history (seri `actual`).
   2. forecast_service (SATU-SATUNYA entry point engine) → forecast_results(product_id).
-  3. Breakdown BOM: forecast produk × qty_per_unit → material_requirements per material.
+
+Hasil run berhenti di level produk — tidak ada turunan ke BOM/material di sini.
 
 Kegagalan satu produk dicatat per-baris & TIDAK menggagalkan run (AGENTS.md §5).
 Metode manual tak dikenal ditolak di awal (400) sebelum run dibuat (§6.6).
@@ -15,8 +16,6 @@ import pandas as pd
 
 from app.models.forecast_result import ForecastResult
 from app.models.forecast_run import ForecastRun
-from app.models.material_requirement import MaterialRequirement
-from app.services.bom_service import BomLine, breakdown_requirements
 from app.services.forecasting import forecast_service, registry
 from app.utils.exceptions import (
     ForbiddenRoleError,
@@ -41,12 +40,10 @@ def _metrics(points) -> dict | None:
 
 
 class ForecastRunService:
-    def __init__(self, forecast_repo, products, demand, boms=None, requirements=None):
+    def __init__(self, forecast_repo, products, demand):
         self._repo = forecast_repo
         self._products = products
         self._demand = demand
-        self._boms = boms
-        self._requirements = requirements
 
     async def create_run(
         self,
@@ -79,7 +76,6 @@ class ForecastRunService:
         await self._repo.add_run(run)
 
         results = []
-        product_forecast_qty: dict[str, float] = {}
         for product in products:
             record = await self._forecast_one(product, horizon, method)
             results.append(
@@ -100,13 +96,8 @@ class ForecastRunService:
                     metrics=_metrics(record.forecast),
                 )
             )
-            if record.status == "COMPLETED" and record.forecast:
-                product_forecast_qty[str(product.id)] = sum(p.value for p in record.forecast)
-
         if results:
             await self._repo.add_results(results)
-
-        await self._build_requirements(run, product_forecast_qty)
 
         run.status = "COMPLETED"
         run.completed_at = now
@@ -123,22 +114,6 @@ class ForecastRunService:
         )
         return forecast_service.run_forecast_for_product(df, horizon, requested_method=method)
 
-    async def _build_requirements(self, run, product_forecast_qty: dict[str, float]) -> None:
-        """Breakdown BOM → material_requirements per run (Fase 5). No-op bila repo/BOM
-        tak diinjeksi atau tak ada forecast produk yang berhasil."""
-        if self._boms is None or self._requirements is None or not product_forecast_qty:
-            return
-        bom_lines: list[BomLine] = []
-        for pid in product_forecast_qty:
-            for bom in await self._boms.list(pid):
-                bom_lines.append(BomLine(str(bom.product_id), str(bom.material_id), float(bom.qty_per_unit)))
-        requirements = breakdown_requirements(product_forecast_qty, bom_lines)
-        rows = [
-            MaterialRequirement(run_id=run.id, material_id=material_id, forecast_qty=qty)
-            for material_id, qty in requirements.items()
-        ]
-        await self._requirements.replace_for_run(str(run.id), rows)
-
     async def get_run(self, user_id: str, run_id: str):
         run = await self._require_run(user_id, run_id)
         results = await self._repo.list_results(run_id)
@@ -146,17 +121,6 @@ class ForecastRunService:
 
     async def get_results_for_product(self, product_id: str):
         return await self._repo.list_results_for_product(product_id)
-
-    async def list_requirements(self, user_id: str, run_id: str):
-        """Kebutuhan material hasil breakdown BOM untuk satu run (Fase 5, dibaca Fase 9).
-
-        Repo opsional — pola sama dengan `_build_requirements`: tanpa repo, run
-        tetap valid, hanya tak punya requirement untuk ditampilkan.
-        """
-        await self._require_run(user_id, run_id)
-        if self._requirements is None:
-            return []
-        return await self._requirements.list_by_run(run_id)
 
     async def _require_run(self, user_id: str, run_id: str):
         run = await self._repo.get_run(run_id)

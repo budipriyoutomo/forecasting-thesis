@@ -1,32 +1,7 @@
-"""Fase 5 v3.0 — breakdown BOM, standar pemakaian & buffer stock (fungsi murni)."""
+"""Standar pemakaian & buffer stock (fungsi murni) — dipakai reorder/cost."""
 import pytest
 
-from app.services.bom_service import (
-    BomLine,
-    breakdown_requirements,
-    compute_buffer_stock,
-    compute_standard_usage,
-)
-
-
-def test_breakdown_akumulasi_per_material():
-    # produk P1 forecast 100, P2 forecast 50.
-    # BOM: P1 butuh 2×M1 + 1×M2 ; P2 butuh 3×M1.
-    #   M1 = 100*2 + 50*3 = 350 ; M2 = 100*1 = 100
-    lines = [
-        BomLine("P1", "M1", 2),
-        BomLine("P1", "M2", 1),
-        BomLine("P2", "M1", 3),
-    ]
-    req = breakdown_requirements({"P1": 100, "P2": 50}, lines)
-    assert req["M1"] == pytest.approx(350)
-    assert req["M2"] == pytest.approx(100)
-
-
-def test_breakdown_abaikan_produk_tanpa_forecast():
-    lines = [BomLine("P1", "M1", 2), BomLine("P2", "M1", 5)]
-    req = breakdown_requirements({"P1": 10}, lines)  # P2 tak ada forecast
-    assert req == {"M1": pytest.approx(20)}
+from app.services.bom_service import compute_buffer_stock, compute_standard_usage
 
 
 def test_standard_usage():

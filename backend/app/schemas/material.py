@@ -23,7 +23,6 @@ class MaterialCreate(BaseModel):
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
     # v3.0 — kapasitas gudang (docs §6.7)
     dimension: Dimension | None = Field(default=None)
-    qty_per_pallet: Decimal | None = Field(default=None, gt=0)
 
 
 class MaterialUpdate(BaseModel):
@@ -36,7 +35,6 @@ class MaterialUpdate(BaseModel):
     moq: Decimal | None = Field(default=None, ge=0)
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
     dimension: Dimension | None = Field(default=None)
-    qty_per_pallet: Decimal | None = Field(default=None, gt=0)
 
 
 class MaterialResponse(BaseModel):
@@ -51,4 +49,3 @@ class MaterialResponse(BaseModel):
     moq: Decimal
     manual_safety_stock: Decimal | None
     dimension: dict | None = None
-    qty_per_pallet: Decimal | None = None

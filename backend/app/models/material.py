@@ -30,7 +30,6 @@ class Material(Base):
     manual_safety_stock: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     # v3.0 — kapasitas gudang (docs/ARCHITECTURE.md §4/§6.7)
     dimension: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {length, width, height}
-    qty_per_pallet: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

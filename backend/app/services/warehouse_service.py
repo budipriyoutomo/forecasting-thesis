@@ -1,9 +1,12 @@
 """
-WarehouseService (v3.0 Fase 6) — kapasitas gudang berbasis palet & validasi
-apakah rekomendasi inventory muat fisik (docs/ARCHITECTURE.md §6.7).
+WarehouseService (v3.0 Fase 6, redesain 24 Agustus 2026) — kapasitas gudang per
+PRODUK, angka bebas, docs/ARCHITECTURE.md §6.7.
 
-Fungsi murni (`compute_*`, `validate_capacity`) diverifikasi manual (AGENTS.md §3).
-Melebihi kapasitas BUKAN error — hanya flag `is_within_capacity` (larangan #17).
+Konfigurasi dulunya "luas gudang ÷ footprint palet"; sekarang planner mengisi
+`capacity_qty` langsung per produk (satuan sama dengan unit produk). Validasi
+dijalankan per produk: kebutuhan = total qty forecast produk di satu run,
+dibandingkan `capacity_qty` konfigurasinya. Melebihi kapasitas BUKAN error —
+hanya flag `is_within_capacity` (larangan #17), keputusan tetap di planner.
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -12,6 +15,8 @@ from app.models.warehouse import WarehouseConfig, WarehouseValidation
 from app.utils.exceptions import (
     ForbiddenRoleError,
     ForecastRunNotFoundError,
+    ProductNotFoundError,
+    WarehouseConfigExistsError,
     WarehouseConfigNotFoundError,
 )
 
@@ -21,104 +26,110 @@ def _dec(value) -> Decimal:
 
 
 @dataclass
-class WarehouseCapacityResult:
-    total_pallet_capacity: int
-    total_pallet_required: float
+class ProductCapacityResult:
+    product_id: str
+    required_qty: float
+    capacity_qty: float
     is_within_capacity: bool
 
 
-def compute_pallet_capacity(warehouse_area_m2: float, pallet_dimension: dict) -> int:
-    """Jumlah palet muat = Luas Gudang ÷ footprint palet (panjang × lebar)."""
-    footprint = float(pallet_dimension["length"]) * float(pallet_dimension["width"])
-    if footprint <= 0:
-        return 0
-    return int(float(warehouse_area_m2) // footprint)
-
-
-def compute_material_capacity(pallet_capacity: int, qty_per_pallet: float) -> float:
-    """Kapasitas material (unit) = jumlah palet × qty material per palet."""
-    return float(pallet_capacity) * float(qty_per_pallet)
-
-
-def _required_units(rec) -> float:
-    ss = float(rec.safety_stock or 0)
-    buffer = float(getattr(rec, "buffer_stock", 0) or 0)
-    eoq = float(getattr(rec, "eoq_qty", 0) or 0)
-    return ss + buffer + eoq
+@dataclass
+class WarehouseCapacityResult:
+    is_within_capacity: bool
+    details: list[ProductCapacityResult]
 
 
 def validate_capacity(
-    recommendations, materials_by_id: dict, warehouse_area_m2: float, pallet_dimension: dict
+    configs: list[WarehouseConfig], forecast_qty_by_product: dict[str, float]
 ) -> WarehouseCapacityResult:
     """
-    Total palet dibutuhkan = Σ_material (safety_stock + buffer + eoq) ÷ qty_per_pallet.
-    Muat bila total ≤ kapasitas palet gudang. Material tanpa qty_per_pallet dilewati
-    (tak bisa dihitung kebutuhan paletnya).
+    Per produk yang dikonfigurasi DAN punya forecast di run ini:
+      is_within_capacity_produk = required_qty (Σ forecast) <= capacity_qty.
+    Agregat `is_within_capacity` = True hanya bila SEMUA entri muat. Produk tanpa
+    config atau tanpa forecast di run ini dilewati (tak bisa dibandingkan).
     """
-    pallet_capacity = compute_pallet_capacity(warehouse_area_m2, pallet_dimension)
-    total_required = 0.0
-    for rec in recommendations:
-        material = materials_by_id.get(str(rec.material_id))
-        qpp = float(material.qty_per_pallet) if material and material.qty_per_pallet else 0.0
-        if qpp <= 0:
+    details: list[ProductCapacityResult] = []
+    for config in configs:
+        pid = str(config.product_id)
+        required = forecast_qty_by_product.get(pid)
+        if required is None:
             continue
-        total_required += _required_units(rec) / qpp
+        capacity = float(config.capacity_qty)
+        details.append(
+            ProductCapacityResult(
+                product_id=pid,
+                required_qty=float(required),
+                capacity_qty=capacity,
+                is_within_capacity=required <= capacity,
+            )
+        )
     return WarehouseCapacityResult(
-        total_pallet_capacity=pallet_capacity,
-        total_pallet_required=total_required,
-        is_within_capacity=total_required <= pallet_capacity,
+        is_within_capacity=all(d.is_within_capacity for d in details),
+        details=details,
     )
 
 
 class WarehouseService:
-    def __init__(self, config_repo, validation_repo, reorder_repo, materials, forecast_repo):
+    def __init__(self, config_repo, validation_repo, forecast_repo, products):
         self._config = config_repo
         self._validations = validation_repo
-        self._reorder = reorder_repo
-        self._materials = materials
         self._forecast = forecast_repo
+        self._products = products
 
-    async def get_config(self, category: str = "packaging") -> WarehouseConfig:
-        config = await self._config.get_by_category(category)
+    async def list_configs(self) -> list[WarehouseConfig]:
+        return await self._config.list()
+
+    async def get_config(self, config_id: str) -> WarehouseConfig:
+        config = await self._config.get_by_id(config_id)
         if config is None:
-            raise WarehouseConfigNotFoundError("Konfigurasi gudang belum diatur.")
+            raise WarehouseConfigNotFoundError("Konfigurasi gudang tidak ditemukan.")
         return config
 
-    async def upsert_config(self, category: str, area_m2, pallet_dimension: dict) -> WarehouseConfig:
-        config = await self._config.get_by_category(category)
-        if config is None:
-            config = WarehouseConfig(
-                category=category, warehouse_area_m2=_dec(area_m2), pallet_dimension=pallet_dimension
-            )
-            return await self._config.add(config)
-        config.warehouse_area_m2 = _dec(area_m2)
-        config.pallet_dimension = pallet_dimension
+    async def create_config(self, product_id: str, capacity_qty) -> WarehouseConfig:
+        if await self._products.get_by_id(product_id) is None:
+            raise ProductNotFoundError(f"Produk '{product_id}' tidak ditemukan.")
+        if await self._config.get_by_product(product_id) is not None:
+            raise WarehouseConfigExistsError("Produk ini sudah punya konfigurasi kapasitas.")
+        config = WarehouseConfig(product_id=product_id, capacity_qty=_dec(capacity_qty))
+        return await self._config.add(config)
+
+    async def update_config(self, config_id: str, capacity_qty) -> WarehouseConfig:
+        config = await self.get_config(config_id)
+        config.capacity_qty = _dec(capacity_qty)
         return await self._config.save(config)
 
-    async def validate_for_run(
-        self, user_id: str, run_id: str, category: str = "packaging"
-    ) -> WarehouseValidation:
+    async def delete_config(self, config_id: str) -> None:
+        config = await self.get_config(config_id)
+        await self._config.delete(config)
+
+    async def validate_for_run(self, user_id: str, run_id: str) -> WarehouseValidation:
         await self._require_run(user_id, run_id)
-        config = await self.get_config(category)
+        configs = await self._config.list()
+        if not configs:
+            raise WarehouseConfigNotFoundError("Belum ada konfigurasi kapasitas gudang.")
 
-        recs = await self._reorder.list_by_run(run_id)
-        materials_by_id: dict = {}
-        for rec in recs:
-            mid = str(rec.material_id)
-            if mid not in materials_by_id:
-                materials_by_id[mid] = await self._materials.get_by_id(mid)
+        results = await self._forecast.list_results(run_id)
+        forecast_qty_by_product: dict[str, float] = {}
+        for r in results:
+            if r.status == "COMPLETED" and r.forecast_data:
+                pid = str(r.product_id)
+                forecast_qty_by_product[pid] = sum(p["value"] for p in r.forecast_data)
 
-        result = validate_capacity(
-            recs, materials_by_id, float(config.warehouse_area_m2), config.pallet_dimension
-        )
+        result = validate_capacity(configs, forecast_qty_by_product)
         validation = WarehouseValidation(
             run_id=run_id,
-            total_pallet_capacity=_dec(result.total_pallet_capacity),
-            total_pallet_required=_dec(result.total_pallet_required),
             is_within_capacity=result.is_within_capacity,
+            details=[
+                {
+                    "product_id": d.product_id,
+                    "required_qty": d.required_qty,
+                    "capacity_qty": d.capacity_qty,
+                    "is_within_capacity": d.is_within_capacity,
+                }
+                for d in result.details
+            ],
         )
-        await self._validations.replace_for_run(str(run_id), validation)
-        return validation
+        return await self._validations.replace_for_run(str(run_id), validation)
 
     async def _require_run(self, user_id: str, run_id: str):
         run = await self._forecast.get_run(run_id)

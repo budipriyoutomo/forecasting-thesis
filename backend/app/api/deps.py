@@ -11,7 +11,6 @@ from app.repositories.demand_history_repository import SqlDemandHistoryRepositor
 from app.repositories.forecast_repository import SqlForecastRepository
 from app.repositories.inventory_metrics_repository import SqlInventoryMetricsRepository
 from app.repositories.material_repository import SqlMaterialRepository
-from app.repositories.material_requirement_repository import SqlMaterialRequirementRepository
 from app.repositories.override_repository import SqlOverrideRepository
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.reorder_repository import SqlReorderRepository
@@ -118,8 +117,6 @@ def get_forecast_run_service(session: AsyncSession = Depends(get_db)) -> Forecas
         forecast_repo=SqlForecastRepository(session),
         products=SqlProductRepository(session),
         demand=SqlDemandHistoryRepository(session),
-        boms=SqlBomRepository(session),
-        requirements=SqlMaterialRequirementRepository(session),
     )
 
 
@@ -150,9 +147,8 @@ def get_warehouse_service(session: AsyncSession = Depends(get_db)) -> WarehouseS
     return WarehouseService(
         config_repo=SqlWarehouseConfigRepository(session),
         validation_repo=SqlWarehouseValidationRepository(session),
-        reorder_repo=SqlReorderRepository(session),
-        materials=SqlMaterialRepository(session),
         forecast_repo=SqlForecastRepository(session),
+        products=SqlProductRepository(session),
     )
 
 
@@ -189,12 +185,9 @@ def get_dashboard_service(session: AsyncSession = Depends(get_db)) -> DashboardS
 def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideService:
     forecast_repo = SqlForecastRepository(session)
     reorder_repo = SqlReorderRepository(session)
-    requirement_repo = SqlMaterialRequirementRepository(session)
     # Resolver polimorfik: target_type → cara mengambil objek target dari DB.
-    # material_requirement ditambah di Fase 8 (RECONCILIATION §Fase 8).
     resolvers = {
         "forecast_result": forecast_repo.get_result,
         "reorder_recommendation": reorder_repo.get_recommendation,
-        "material_requirement": requirement_repo.get_requirement,
     }
     return OverrideService(SqlOverrideRepository(session), resolvers)
