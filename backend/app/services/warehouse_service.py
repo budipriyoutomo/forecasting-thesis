@@ -85,17 +85,18 @@ class WarehouseService:
             raise WarehouseConfigNotFoundError("Konfigurasi gudang tidak ditemukan.")
         return config
 
-    async def create_config(self, product_id: str, capacity_qty) -> WarehouseConfig:
+    async def create_config(self, product_id: str, capacity_qty, uom: str) -> WarehouseConfig:
         if await self._products.get_by_id(product_id) is None:
             raise ProductNotFoundError(f"Produk '{product_id}' tidak ditemukan.")
         if await self._config.get_by_product(product_id) is not None:
             raise WarehouseConfigExistsError("Produk ini sudah punya konfigurasi kapasitas.")
-        config = WarehouseConfig(product_id=product_id, capacity_qty=_dec(capacity_qty))
+        config = WarehouseConfig(product_id=product_id, capacity_qty=_dec(capacity_qty), uom=uom)
         return await self._config.add(config)
 
-    async def update_config(self, config_id: str, capacity_qty) -> WarehouseConfig:
+    async def update_config(self, config_id: str, capacity_qty, uom: str) -> WarehouseConfig:
         config = await self.get_config(config_id)
         config.capacity_qty = _dec(capacity_qty)
+        config.uom = uom
         return await self._config.save(config)
 
     async def delete_config(self, config_id: str) -> None:

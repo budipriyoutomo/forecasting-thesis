@@ -33,6 +33,7 @@ def _config_out(config) -> dict:
             "id": str(config.id),
             "product_id": str(config.product_id),
             "capacity_qty": config.capacity_qty,
+            "uom": config.uom,
         }
     ).model_dump(mode="json")
 
@@ -55,7 +56,7 @@ async def get_warehouse_config(
 async def create_warehouse_config(
     payload: WarehouseConfigCreate, service: WarehouseService = Depends(get_warehouse_service)
 ):
-    config = await service.create_config(payload.product_id, payload.capacity_qty)
+    config = await service.create_config(payload.product_id, payload.capacity_qty, payload.uom)
     return JSONResponse(status_code=201, content={"success": True, "data": _config_out(config)})
 
 
@@ -65,7 +66,7 @@ async def update_warehouse_config(
     payload: WarehouseConfigUpdate,
     service: WarehouseService = Depends(get_warehouse_service),
 ):
-    config = await service.update_config(config_id, payload.capacity_qty)
+    config = await service.update_config(config_id, payload.capacity_qty, payload.uom)
     return {"success": True, "data": _config_out(config)}
 
 

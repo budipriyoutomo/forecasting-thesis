@@ -149,12 +149,13 @@ export const api = {
     update: (
       id: string,
       capacityQty: number,
+      uom: string,
       token: string,
     ): Promise<ApiResponse<WarehouseConfig>> =>
       request<WarehouseConfig>(`/api/v1/warehouse/config/${id}`, {
         method: "PUT",
         headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ capacity_qty: capacityQty }),
+        body: JSON.stringify({ capacity_qty: capacityQty, uom }),
       }),
 
     remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>

@@ -9,13 +9,21 @@ const products: Product[] = [
   { id: "p1", code: "KBYPL 200", name: "KIN Yogurt 200ml", category: null, unit: "PCS" },
 ];
 
-const configs: WarehouseConfig[] = [{ id: "c1", product_id: "p1", capacity_qty: "600000" }];
+const configs: WarehouseConfig[] = [
+  { id: "c1", product_id: "p1", capacity_qty: "600000", uom: "Dus" },
+];
 
 describe("WarehouseConfigTable", () => {
   it("menampilkan kode — nama produk, bukan UUID", () => {
     render(<WarehouseConfigTable configs={configs} products={products} />);
 
     expect(screen.getByText("KBYPL 200 — KIN Yogurt 200ml")).toBeDefined();
+  });
+
+  it("menampilkan UOM free input", () => {
+    render(<WarehouseConfigTable configs={configs} products={products} />);
+
+    expect(screen.getByText("Dus")).toBeDefined();
   });
 
   it("jatuh ke product_id saat produk tidak ada di master data", () => {

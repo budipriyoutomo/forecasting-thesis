@@ -27,36 +27,50 @@ describe("WarehouseConfigForm", () => {
 
     expect(await screen.findByText(/produk wajib dipilih/i)).toBeDefined();
     expect(await screen.findByText(/harus lebih dari 0/i)).toBeDefined();
+    expect(await screen.findByText(/uom wajib diisi/i)).toBeDefined();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("submit mengirim product_id & capacity_qty bebas (bukan turunan palet)", async () => {
+  it("submit mengirim product_id, capacity_qty & uom bebas (bukan turunan palet/master UOM)", async () => {
     const onSubmit = vi.fn();
     render(<WarehouseConfigForm products={PRODUCTS} onSubmit={onSubmit} />);
 
     await pilihProduk(/KBYST 200/);
     await userEvent.type(screen.getByLabelText(/kapasitas/i), "500000");
+    await userEvent.type(screen.getByLabelText(/uom/i), "Dus");
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ product_id: "p2", capacity_qty: 500000 }),
+      expect(onSubmit).toHaveBeenCalledWith({ product_id: "p2", capacity_qty: 500000, uom: "Dus" }),
     );
   });
 
-  it("mode ubah: field produk terkunci ke produk yang sudah ada, hanya kapasitas yang bisa diubah", async () => {
+  it("mode ubah: field produk terkunci ke produk yang sudah ada, kapasitas & UOM bisa diubah", async () => {
     const onSubmit = vi.fn();
-    const initial: WarehouseConfig = { id: "c1", product_id: "p1", capacity_qty: "300000" };
+    const initial: WarehouseConfig = {
+      id: "c1",
+      product_id: "p1",
+      capacity_qty: "300000",
+      uom: "Pcs",
+    };
     render(<WarehouseConfigForm products={PRODUCTS} initial={initial} onSubmit={onSubmit} />);
 
     expect(screen.getByRole("combobox", { name: /^produk$/i })).toHaveProperty("disabled", true);
     expect(screen.getByLabelText(/kapasitas/i)).toHaveProperty("value", "300000");
+    expect(screen.getByLabelText(/uom/i)).toHaveProperty("value", "Pcs");
 
     await userEvent.clear(screen.getByLabelText(/kapasitas/i));
     await userEvent.type(screen.getByLabelText(/kapasitas/i), "450000");
+    await userEvent.clear(screen.getByLabelText(/uom/i));
+    await userEvent.type(screen.getByLabelText(/uom/i), "Karton");
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ product_id: "p1", capacity_qty: 450000 }),
+      expect(onSubmit).toHaveBeenCalledWith({
+        product_id: "p1",
+        capacity_qty: 450000,
+        uom: "Karton",
+      }),
     );
   });
 });

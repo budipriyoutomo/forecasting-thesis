@@ -48,6 +48,10 @@ export function WarehouseConfigTable({
         ),
       },
       {
+        accessorKey: "uom",
+        header: "UOM",
+      },
+      {
         id: "actions",
         enableHiding: false,
         enableSorting: false,

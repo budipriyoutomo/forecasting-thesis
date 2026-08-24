@@ -167,7 +167,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 > BOM tetap ada sebagai **master data** dan tetap dipakai FR-4 (reorder/EOQ) & FR-11 (biaya) lewat perhitungan di memori, bukan lewat tabel turunan per run.
 
 ### FR-10 Validasi Kapasitas Gudang **[NEW, redesain 24 Agustus 2026]**
-- FR-10.1 Admin dapat mengatur kapasitas gudang **per produk**: satu baris per produk, `capacity_qty` diisi bebas oleh planner (unit sama dengan unit produk) — **bukan** diturunkan dari luas gudang atau dimensi palet. Satu produk maksimal satu baris (`WAREHOUSE_CONFIG_EXISTS` bila duplikat).
+- FR-10.1 Admin dapat mengatur kapasitas gudang **per produk**: satu baris per produk, `capacity_qty` diisi bebas oleh planner (unit sama dengan unit produk) — **bukan** diturunkan dari luas gudang atau dimensi palet. Satu produk maksimal satu baris (`WAREHOUSE_CONFIG_EXISTS` bila duplikat). Setiap baris juga punya `uom` (satuan) isian bebas teks — **tidak ada tabel master UOM**.
 - FR-10.2 Sistem membandingkan, per produk yang dikonfigurasi: kebutuhan = total qty forecast produk itu di satu run, terhadap `capacity_qty` konfigurasinya.
 - FR-10.3 Produk tanpa konfigurasi kapasitas, atau tanpa forecast COMPLETED di run itu, dilewati (tak bisa dibandingkan) — tidak menggagalkan validasi produk lain.
 - FR-10.4 Hasil validasi tampil sebagai **flag non-blocking**, per produk (muat / tidak muat) di halaman hasil forecast — sistem tidak menolak rekomendasi, hanya memberi peringatan agar planner bisa menyesuaikan. Flag agregat run = True hanya bila SEMUA produk yang dibandingkan muat.

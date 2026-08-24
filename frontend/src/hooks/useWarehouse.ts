@@ -35,9 +35,9 @@ export function useCreateWarehouseConfig() {
 
 export function useUpdateWarehouseConfig() {
   const qc = useQueryClient();
-  return useMutation<WarehouseConfig, Error, { id: string; capacity_qty: number }>({
-    mutationFn: async ({ id, capacity_qty }) => {
-      const res = await api.warehouse.update(id, capacity_qty, getToken() as string);
+  return useMutation<WarehouseConfig, Error, { id: string; capacity_qty: number; uom: string }>({
+    mutationFn: async ({ id, capacity_qty, uom }) => {
+      const res = await api.warehouse.update(id, capacity_qty, uom, getToken() as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },

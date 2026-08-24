@@ -40,7 +40,8 @@ export default function WarehousePage() {
 
   const onSubmit = (input: WarehouseConfigInput) => {
     const opts = { onSuccess: () => setOpen(false) };
-    if (editing) update.mutate({ id: editing.id, capacity_qty: input.capacity_qty }, opts);
+    if (editing)
+      update.mutate({ id: editing.id, capacity_qty: input.capacity_qty, uom: input.uom }, opts);
     else create.mutate(input, opts);
   };
 
@@ -62,7 +63,7 @@ export default function WarehousePage() {
         }
       />
 
-      {isPending && <TableSkeleton columns={2} />}
+      {isPending && <TableSkeleton columns={3} />}
       {isError && (
         <Alert variant="destructive">
           <AlertDescription>Gagal memuat konfigurasi gudang.</AlertDescription>
@@ -86,7 +87,8 @@ export default function WarehousePage() {
             <DialogTitle>{editing ? "Ubah kapasitas" : "Tambah kapasitas"}</DialogTitle>
             <DialogDescription>
               Kapasitas adalah angka bebas (unit produk) — isikan langsung sesuai kondisi
-              gudang, tidak dihitung dari luas gudang atau dimensi palet.
+              gudang, tidak dihitung dari luas gudang atau dimensi palet. UOM juga isian
+              bebas, tanpa master UOM.
             </DialogDescription>
           </DialogHeader>
           <WarehouseConfigForm

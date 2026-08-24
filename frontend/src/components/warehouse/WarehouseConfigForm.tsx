@@ -28,6 +28,7 @@ import type { WarehouseConfig, WarehouseConfigInput } from "@/types/warehouse";
 const schema = z.object({
   product_id: z.string().min(1, "Produk wajib dipilih"),
   capacity_qty: z.coerce.number().gt(0, "Harus lebih dari 0"),
+  uom: z.string().min(1, "UOM wajib diisi"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -35,6 +36,7 @@ type FormValues = z.infer<typeof schema>;
 // Kapasitas adalah angka bebas isian planner — bukan turunan luas gudang ×
 // dimensi palet (keputusan user 24 Agustus 2026). Produk terkunci saat mode
 // ubah karena satu produk hanya boleh punya satu baris kapasitas (unique).
+// UOM juga free input teks — tidak ada tabel master UOM.
 export function WarehouseConfigForm({
   products,
   initial,
@@ -53,6 +55,7 @@ export function WarehouseConfigForm({
     defaultValues: {
       product_id: initial?.product_id ?? "",
       capacity_qty: initial ? Number(initial.capacity_qty) : ("" as unknown as number),
+      uom: initial?.uom ?? "",
     },
   });
 
@@ -98,6 +101,20 @@ export function WarehouseConfigForm({
               <FormLabel>Kapasitas gudang (unit produk)</FormLabel>
               <FormControl>
                 <Input type="number" step="any" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="uom"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>UOM (unit produk)</FormLabel>
+              <FormControl>
+                <Input placeholder="Dus, Pcs, Karton…" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

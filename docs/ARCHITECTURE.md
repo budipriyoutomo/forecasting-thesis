@@ -298,13 +298,16 @@ forecastiq/
 ### `warehouse_config` (redesain 24 Agustus 2026 — kapasitas per PRODUK, angka bebas)
 > Sebelumnya satu baris global per kategori, kapasitas diturunkan dari luas gudang ÷
 > footprint palet. Sekarang satu baris per **produk**, `capacity_qty` diisi planner
-> langsung (unit sama dengan unit produk) — bukan turunan fisik apa pun.
+> langsung (unit sama dengan unit produk) — bukan turunan fisik apa pun. `uom`
+> ditambahkan 24 Agustus 2026 sebagai isian bebas teks (mis. "Dus", "Pcs",
+> "Karton") — **tidak ada tabel master UOM**, planner ketik langsung per baris.
 
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
 | product_id | UUID FK → products, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
 | capacity_qty | NUMERIC | kapasitas gudang untuk produk ini, isian bebas planner |
+| uom | VARCHAR(50) | satuan kapasitas, isian bebas teks planner — tanpa master UOM |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `warehouse_validations` (baru — hasil validasi per run, redesain 24 Agustus 2026)

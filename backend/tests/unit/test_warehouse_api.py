@@ -58,18 +58,23 @@ async def test_list_config_kosong(client):
 async def test_post_config_admin_lalu_list(client):
     _override()
     res = await client.post(
-        "/api/v1/warehouse/config", headers=_headers("admin"), json={"product_id": "p1", "capacity_qty": 500}
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
     )
     assert res.status_code == 201
     assert float(res.json()["data"]["capacity_qty"]) == 500
     assert res.json()["data"]["product_id"] == "p1"
+    assert res.json()["data"]["uom"] == "Dus"
 
 
 @pytest.mark.asyncio
 async def test_post_config_non_admin_403(client):
     _override()
     res = await client.post(
-        "/api/v1/warehouse/config", headers=_headers("ppic"), json={"product_id": "p1", "capacity_qty": 500}
+        "/api/v1/warehouse/config",
+        headers=_headers("ppic"),
+        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
     )
     assert res.status_code == 403
 
@@ -78,7 +83,9 @@ async def test_post_config_non_admin_403(client):
 async def test_post_config_produk_tidak_ada_404(client):
     _override(products=[])
     res = await client.post(
-        "/api/v1/warehouse/config", headers=_headers("admin"), json={"product_id": "ghost", "capacity_qty": 500}
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"product_id": "ghost", "capacity_qty": 500, "uom": "Dus"},
     )
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
@@ -88,7 +95,9 @@ async def test_post_config_produk_tidak_ada_404(client):
 async def test_post_config_duplikat_409(client):
     _override(configs=[_config(pid="p1")])
     res = await client.post(
-        "/api/v1/warehouse/config", headers=_headers("admin"), json={"product_id": "p1", "capacity_qty": 500}
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
     )
     assert res.status_code == 409
     assert res.json()["error"]["code"] == "WAREHOUSE_CONFIG_EXISTS"
@@ -98,17 +107,22 @@ async def test_post_config_duplikat_409(client):
 async def test_put_config_admin(client):
     _override(configs=[_config(cid="c1", pid="p1", capacity=100)])
     res = await client.put(
-        "/api/v1/warehouse/config/c1", headers=_headers("admin"), json={"capacity_qty": 250}
+        "/api/v1/warehouse/config/c1",
+        headers=_headers("admin"),
+        json={"capacity_qty": 250, "uom": "Karton"},
     )
     assert res.status_code == 200
     assert float(res.json()["data"]["capacity_qty"]) == 250
+    assert res.json()["data"]["uom"] == "Karton"
 
 
 @pytest.mark.asyncio
 async def test_put_config_non_admin_403(client):
     _override(configs=[_config(cid="c1", pid="p1")])
     res = await client.put(
-        "/api/v1/warehouse/config/c1", headers=_headers("ppic"), json={"capacity_qty": 250}
+        "/api/v1/warehouse/config/c1",
+        headers=_headers("ppic"),
+        json={"capacity_qty": 250, "uom": "Karton"},
     )
     assert res.status_code == 403
 

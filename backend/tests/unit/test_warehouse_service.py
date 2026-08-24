@@ -20,8 +20,8 @@ USER = "u1"
 OTHER = "u2"
 
 
-def _config(cid="c1", pid="p1", capacity=100):
-    return SimpleNamespace(id=cid, product_id=pid, capacity_qty=Decimal(capacity))
+def _config(cid="c1", pid="p1", capacity=100, uom="unit"):
+    return SimpleNamespace(id=cid, product_id=pid, capacity_qty=Decimal(capacity), uom=uom)
 
 
 def _result(pid, status="COMPLETED", values=None):
@@ -139,30 +139,32 @@ async def test_get_config_belum_ada_404():
 @pytest.mark.asyncio
 async def test_create_config():
     svc = _service()
-    config = await svc.create_config("p1", 500)
+    config = await svc.create_config("p1", 500, "Dus")
     assert float(config.capacity_qty) == 500
     assert str(config.product_id) == "p1"
+    assert config.uom == "Dus"
 
 
 @pytest.mark.asyncio
 async def test_create_config_produk_tidak_ada_404():
     svc = _service(products=[])
     with pytest.raises(ProductNotFoundError):
-        await svc.create_config("ghost", 500)
+        await svc.create_config("ghost", 500, "Dus")
 
 
 @pytest.mark.asyncio
 async def test_create_config_duplikat_409():
     svc = _service(configs=[_config(pid="p1")])
     with pytest.raises(WarehouseConfigExistsError):
-        await svc.create_config("p1", 500)
+        await svc.create_config("p1", 500, "Dus")
 
 
 @pytest.mark.asyncio
 async def test_update_config():
-    svc = _service(configs=[_config(cid="c1", pid="p1", capacity=100)])
-    updated = await svc.update_config("c1", 250)
+    svc = _service(configs=[_config(cid="c1", pid="p1", capacity=100, uom="Pcs")])
+    updated = await svc.update_config("c1", 250, "Karton")
     assert float(updated.capacity_qty) == 250
+    assert updated.uom == "Karton"
 
 
 @pytest.mark.asyncio
