@@ -48,7 +48,7 @@ export default function DashboardPage() {
               icon={AlertTriangle}
             />
             <StatTile
-              label="Akurasi (MASE rata-rata)"
+              label="Akurasi Forecast"
               value={run?.avg_mase != null ? formatNumber(run.avg_mase) : "—"}
               hint={run?.avg_mape != null ? `MAPE ${formatNumber(run.avg_mape)}%` : undefined}
               icon={Target}
