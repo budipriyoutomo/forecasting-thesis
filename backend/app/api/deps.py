@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.repositories.bom_repository import SqlBomRepository
+from app.repositories.cost_template_repository import SqlCostTemplateRepository
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
 from app.repositories.forecast_repository import SqlForecastRepository
 from app.repositories.inventory_metrics_repository import SqlInventoryMetricsRepository
@@ -25,6 +26,7 @@ from app.repositories.warehouse_repository import (
 from app.services.auth_service import AuthService
 from app.services.bom_service import BomService
 from app.services.cost_service import CostService
+from app.services.cost_template_service import CostTemplateService
 from app.services.dashboard_service import DashboardService
 from app.services.inventory_metrics_service import InventoryMetricsService
 from app.services.export_service import ExportService
@@ -126,6 +128,7 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         forecast_repo=SqlForecastRepository(session),
         boms=SqlBomRepository(session),
         materials=SqlMaterialRepository(session),
+        cost_templates=SqlCostTemplateRepository(session),
     )
 
 
@@ -152,6 +155,13 @@ def get_warehouse_service(session: AsyncSession = Depends(get_db)) -> WarehouseS
     )
 
 
+def get_cost_template_service(session: AsyncSession = Depends(get_db)) -> CostTemplateService:
+    return CostTemplateService(
+        repo=SqlCostTemplateRepository(session),
+        warehouse_configs=SqlWarehouseConfigRepository(session),
+    )
+
+
 def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
     return CostService(
         forecast_repo=SqlForecastRepository(session),
@@ -159,6 +169,8 @@ def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
         demand_repo=SqlDemandHistoryRepository(session),
         boms=SqlBomRepository(session),
         products=SqlProductRepository(session),
+        cost_templates=SqlCostTemplateRepository(session),
+        materials=SqlMaterialRepository(session),
     )
 
 

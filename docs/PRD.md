@@ -110,6 +110,9 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-2.2 Import master data material via Excel/CSV.
 - FR-2.3 **[NEW]** CRUD + import master data **produk** (SKU): kode unik, nama. Kode duplikat ditolak dengan `PRODUCT_CODE_EXISTS`.
 - FR-2.4 **[NEW]** CRUD + import **BOM**: relasi produk → material dengan qty per unit produk. Referensi produk/material yang tidak ada ditolak dengan `BOM_NOT_FOUND`.
+- FR-2.5 **[NEW 2 Okt 2026]** Harga (IDR, opsional, ≥ 0): material punya **harga beli per unit** (`unit_price`); produk punya **HPP** (`cost_price`) dan **harga jual** (`selling_price`). Halaman BOM menampilkan biaya material per unit produk (Σ qty × harga material) berdampingan dengan HPP sebagai pembanding.
+- FR-2.6 **[NEW 2 Okt 2026]** Seluruh master data dikelompokkan dalam satu menu **Master Data**: Produk, Material, BOM, Kapasitas Gudang, Template Biaya.
+- FR-2.7 **[NEW 2 Okt 2026]** **Master template biaya**: admin dapat membuat beberapa template, **tepat satu aktif**. Isi template: biaya pesan per pesanan (**S**), biaya simpan per unit per bulan (**H**, diisi manual), daftar **overhead** bulanan (listrik, dll), dan daftar **aset penyimpanan** (pallet, rak, alat handling) dengan harga beli, nilai sisa, umur ekonomis, dan jumlah. Sistem menghitung depresiasi bulanan (garis lurus) dan menampilkan **saran H** = (Σ depresiasi + Σ overhead) ÷ total kapasitas gudang (dus) sebagai referensi. Biaya pembelian material ditampilkan dari harga master material (informasi).
 
 ### FR-3 Comparative Selection Engine
 > **[CHANGED]** Seluruh FR-3 ditulis ulang. v2.0 memilih metode lewat klasifikasi kuadran + weighted scoring; v3.0 membandingkan langsung akurasi seluruh metode aktif. FR-3.1–3.4 dan FR-3.6 versi v2.0 **[DROPPED]**.
@@ -172,12 +175,14 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-10.3 Produk tanpa konfigurasi kapasitas, atau tanpa forecast COMPLETED di run itu, dilewati (tak bisa dibandingkan) — tidak menggagalkan validasi produk lain.
 - FR-10.4 Hasil validasi tampil sebagai **flag non-blocking**, per produk (muat / tidak muat) di halaman hasil forecast — sistem tidak menolak rekomendasi, hanya memberi peringatan agar planner bisa menyesuaikan. Flag agregat run = True hanya bila SEMUA produk yang dibandingkan muat.
 - FR-10.5 Belum ada konfigurasi kapasitas sama sekali menghasilkan `WAREHOUSE_CONFIG_NOT_FOUND`, bukan diam-diam memakai angka default.
+- FR-10.6 **[NEW 2 Okt 2026]** Kapasitas diinput dalam **pallet**, **dus**, atau **kombinasi** keduanya (`dus_per_pallet` per baris). Bila unit produk bukan dus/karton/box, planner mengisi `pcs_per_dus`. Sistem menghitung `capacity_qty` (unit produk) dari input tersebut; FR-10.2–10.4 tidak berubah. Ini menggantikan isian `capacity_qty`/`uom` bebas di FR-10.1.
 
 ### FR-11 Total Biaya & Evaluasi Kinerja Inventory **[NEW]**
 - FR-11.1 Sistem menghitung **TIC (Total Inventory Cost)** = ordering cost + holding cost, untuk dua skenario: **usulan ForecastIQ** (dari rekomendasi tersimpan) dan **baseline perusahaan** (dari seri `planning`, lewat jalur BOM → EOQ yang sama agar perbandingannya simetris).
 - FR-11.2 Sistem melaporkan **% penghematan** = (TIC baseline − TIC usulan) ÷ TIC baseline × 100.
 - FR-11.3 Sistem menghitung empat metrik kinerja inventory per skenario (`baseline` dan `forecastiq`): **service level** (α, berbasis siklus), **fill rate** (β), **stock out rate**, dan **inventory turnover**.
 - FR-11.4 Definisi rumus keempat metrik tidak tersedia di sumber thesis; definisi standar yang dipakai disepakati bersama user dan dicatat di `RECONCILIATION.md` §Fase 7 agar bisa dipertanggungjawabkan.
+- FR-11.5 **[NEW 2 Okt 2026]** S & H untuk EOQ/TIC diambil dari **template biaya aktif** (FR-2.7); bila belum ada template aktif, memakai nilai default env seperti sebelumnya. Ringkasan biaya menampilkan sumbernya (template/env) dan **biaya pembelian material** sebagai informasi — **tidak** dijumlahkan ke TIC.
 
 ## 6. Metode Forecasting yang Didukung
 

@@ -78,7 +78,8 @@ forecastiq/
 │   │   │   │   ├── products/           ← master data produk jadi
 │   │   │   │   ├── materials/          ← master data material/packaging
 │   │   │   │   ├── boms/               ← CRUD Bill of Materials
-│   │   │   │   ├── warehouse/          ← konfigurasi kapasitas gudang
+│   │   │   │   ├── warehouse/          ← master kapasitas gudang (pallet/dus/kombinasi)
+│   │   │   │   ├── cost-templates/     ← master template biaya (S, H, overhead, depresiasi aset)
 │   │   │   │   ├── forecast/new/       ← upload + konfigurasi
 │   │   │   │   ├── forecast/[id]/      ← hasil forecast per run (produk-only; reorder & validasi gudang menyusul)
 │   │   │   │   └── settings/
@@ -97,6 +98,7 @@ forecastiq/
 │   │   │   ├── materials/
 │   │   │   ├── boms/                   ← visual breakdown produk → material
 │   │   │   ├── warehouse/              ← indikator validasi kapasitas
+│   │   │   ├── cost-templates/         ← form & ringkasan template biaya
 │   │   │   ├── override/
 │   │   │   └── dashboard/
 │   │   ├── lib/{api.ts, auth.ts, download.ts, format.ts, navigation.ts, utils.ts}
@@ -125,6 +127,7 @@ forecastiq/
 │   │   │   ├── forecast.py
 │   │   │   ├── reorder.py
 │   │   │   ├── warehouse.py
+│   │   │   ├── cost_templates.py
 │   │   │   └── overrides.py
 │   │   ├── services/
 │   │   │   ├── forecasting/
@@ -150,6 +153,7 @@ forecastiq/
 │   │   │   ├── reorder_service.py          ← safety stock, buffer stock, reorder point, EOQ dinamis
 │   │   │   ├── warehouse_service.py        ← kapasitas gudang & validasi muat/tidak
 │   │   │   ├── cost_service.py             ← TIC (Ordering Cost + Holding Cost), % penghematan
+│   │   │   ├── cost_template_service.py    ← CRUD template biaya, template aktif (S/H), depresiasi & saran H
 │   │   │   ├── inventory_metrics_service.py ← service level, fill rate, stock out rate, inventory turnover
 │   │   │   ├── override_service.py
 │   │   │   ├── storage_service.py          ← object storage S3-compatible
@@ -188,7 +192,9 @@ forecastiq/
 | code | VARCHAR unique | kode SKU, mis. `KBYPL 200` — unik, `PRODUCT_CODE_EXISTS` jika duplikat saat create/import |
 | name | VARCHAR | mis. "KIN Yogurt Original 200ml" |
 | category | VARCHAR | mis. "RTD Yogurt" |
-| unit | VARCHAR | UOM, mis. "PCS" |
+| unit | VARCHAR | UOM, mis. "PCS" — juga menentukan konversi kapasitas gudang (unit dus-like vs lainnya, §6.7) |
+| cost_price | NUMERIC(18,4), nullable | HPP / harga pokok per unit, IDR (2 Okt 2026) |
+| selling_price | NUMERIC(18,4), nullable | harga jual per unit, IDR (2 Okt 2026) |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `materials`
@@ -203,6 +209,7 @@ forecastiq/
 | moq | NUMERIC | minimum order quantity |
 | dimension | JSONB | `{length, width, height}` — dimensi fisik material |
 | manual_safety_stock | NUMERIC, nullable | override manual |
+| unit_price | NUMERIC(18,4), nullable | harga beli per `unit`, IDR (2 Okt 2026) — dasar biaya pembelian (informasi) & biaya material per produk via BOM |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `boms` (baru — Bill of Materials)
@@ -213,6 +220,8 @@ forecastiq/
 | material_id | UUID FK → materials | |
 | qty_per_unit | NUMERIC | jumlah material dibutuhkan per 1 unit produk jadi |
 | created_at / updated_at | TIMESTAMPTZ | |
+
+> Biaya material per unit produk (read-only, tidak dipersist) = Σ `qty_per_unit × materials.unit_price` — ditampilkan berdampingan dengan `products.cost_price` sebagai pembanding (2 Okt 2026).
 
 > Satu `product` bisa punya banyak baris `boms` (banyak komponen material). Dipakai `bom_service.py` untuk menurunkan deret kebutuhan material yang jadi input reorder & cost (di memori, tidak dipersist), dan untuk hitung Standar Pemakaian Material (buffer stock, FR-4.2). **Hasil forecast sendiri tidak menyentuh BOM.**
 
@@ -295,7 +304,12 @@ forecastiq/
 
 > `current_stock` **bukan** kolom persisten di tabel ini — dikirim sebagai parameter request saat `POST /api/v1/reorder/recommendations` (lihat §5), karena stok aktual berubah-ubah dan sumber kebenarannya ada di luar ForecastIQ (belum ada integrasi ERP/WMS di MVP, lihat `PRD.md` §Out-of-scope).
 
-### `warehouse_config` (redesain 24 Agustus 2026 — kapasitas per PRODUK, angka bebas)
+### `warehouse_config` (redesain 24 Agustus 2026 — kapasitas per PRODUK; input pallet/dus sejak 2 Oktober 2026)
+> **Update 2 Oktober 2026:** input kapasitas kini lewat `capacity_mode`
+> (`PALLET`/`DUS`/`COMBINED`). `capacity_qty` dan `uom` **tetap ada** tapi jadi
+> kolom turunan yang dihitung server (§6.7) — validasi kapasitas tidak berubah.
+> Lihat `RECONCILIATION.md` §"Konsolidasi Master Data".
+
 > Sebelumnya satu baris global per kategori, kapasitas diturunkan dari luas gudang ÷
 > footprint palet. Sekarang satu baris per **produk**, `capacity_qty` diisi planner
 > langsung (unit sama dengan unit produk) — bukan turunan fisik apa pun. `uom`
@@ -306,8 +320,13 @@ forecastiq/
 |---|---|---|
 | id | UUID | PK |
 | product_id | UUID FK → products, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
-| capacity_qty | NUMERIC | kapasitas gudang untuk produk ini, isian bebas planner |
-| uom | VARCHAR(50) | satuan kapasitas, isian bebas teks planner — tanpa master UOM |
+| capacity_mode | VARCHAR(10) | `PALLET` / `DUS` / `COMBINED` |
+| pallet_qty | NUMERIC(18,4) | jumlah pallet (0 bila mode `DUS`) |
+| dus_qty | NUMERIC(18,4) | jumlah dus lepas (0 bila mode `PALLET`) |
+| dus_per_pallet | NUMERIC(18,4), nullable | wajib > 0 bila mode `PALLET`/`COMBINED` |
+| pcs_per_dus | NUMERIC(18,4), nullable | wajib > 0 bila `products.unit` bukan dus-like |
+| capacity_qty | NUMERIC | **turunan server**: kapasitas efektif dalam unit produk (§6.7) — tidak diterima dari client |
+| uom | VARCHAR(50) | **turunan server**: = `products.unit` |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `warehouse_validations` (baru — hasil validasi per run, redesain 24 Agustus 2026)
@@ -318,6 +337,33 @@ forecastiq/
 | is_within_capacity | BOOLEAN | True hanya bila SEMUA produk yang dikonfigurasi muat |
 | details | JSONB | `[{product_id, required_qty, capacity_qty, is_within_capacity}]` — satu entri per produk yang punya config DAN forecast COMPLETED di run ini |
 | created_at | TIMESTAMPTZ | |
+
+### `cost_templates` (baru — 2 Oktober 2026)
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | PK |
+| name | VARCHAR(100) unique | `COST_TEMPLATE_NAME_EXISTS` jika duplikat |
+| description | TEXT, nullable | |
+| ordering_cost | NUMERIC(18,4) | **S** — biaya per kali pesan (IDR), dipakai EOQ bila template aktif |
+| holding_cost | NUMERIC(18,4) | **H** — biaya simpan per unit per bulan (IDR), **isian manual** planner |
+| is_active | BOOLEAN | maksimal satu `true` (partial unique index `WHERE is_active`) |
+| created_at / updated_at | TIMESTAMPTZ | |
+
+### `cost_template_items` (baru — 2 Oktober 2026)
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | PK |
+| template_id | UUID FK → cost_templates, `ON DELETE CASCADE` | |
+| position | INTEGER | urutan tampil item sesuai input (PUT menulis ulang 0..n) |
+| item_type | VARCHAR(20) | `OVERHEAD` (listrik, air, keamanan, …) / `STORAGE_ASSET` (pallet, rak, alat handling, …) |
+| name | VARCHAR(100) | mis. "Listrik", "Rak selektif", "Hand pallet" |
+| monthly_amount | NUMERIC(18,4), nullable | wajib untuk `OVERHEAD` — biaya per bulan |
+| purchase_price | NUMERIC(18,4), nullable | wajib untuk `STORAGE_ASSET` — harga beli per unit aset |
+| salvage_value | NUMERIC(18,4), nullable | `STORAGE_ASSET`, default 0, ≤ `purchase_price` |
+| useful_life_months | INTEGER, nullable | wajib > 0 untuk `STORAGE_ASSET` |
+| qty | NUMERIC(18,4) | jumlah aset / pengali overhead (default 1) |
+
+> Overhead & depresiasi aset **hanya referensi** untuk *saran H* (§6.8) — EOQ tetap memakai `holding_cost` manual. Biaya pembelian material tidak disimpan di template; diturunkan dari `materials.unit_price`.
 
 ### `inventory_metrics` (baru — per run, per produk/material)
 | Kolom | Tipe | Keterangan |
@@ -389,6 +435,15 @@ PUT    /api/v1/warehouse/config/{id}                # ubah capacity_qty (admin)
 DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
+GET    /api/v1/cost-templates                      # daftar template biaya
+GET    /api/v1/cost-templates/active               # template aktif (404 COST_TEMPLATE_NOT_FOUND bila belum ada)
+GET    /api/v1/cost-templates/{id}                 # detail + items
+GET    /api/v1/cost-templates/{id}/summary         # Σ depresiasi/bln, Σ overhead/bln, saran H
+POST   /api/v1/cost-templates                      # buat (admin) — items nested, TIDAK otomatis aktif
+PUT    /api/v1/cost-templates/{id}                 # ubah (admin) — items replace-all
+POST   /api/v1/cost-templates/{id}/activate        # jadikan satu-satunya aktif (admin)
+DELETE /api/v1/cost-templates/{id}                 # hapus (admin); bila aktif → EOQ kembali ke fallback env
+
 GET    /api/v1/forecast/runs/{run_id}/inventory-metrics
 GET    /api/v1/forecast/runs/{run_id}/cost-summary          # TIC & % penghematan
 
@@ -397,6 +452,12 @@ GET    /api/v1/overrides?target_id=...
 
 GET    /api/v1/dashboard/summary
 ```
+
+> **Perubahan 2 Oktober 2026 (Konsolidasi Master Data):**
+> - `POST/PUT /warehouse/config` menerima `capacity_mode`, `pallet_qty`, `dus_qty`, `dus_per_pallet`, `pcs_per_dus`; `capacity_qty` & `uom` di response jadi turunan server (§6.7).
+> - `products` menerima/mengembalikan `cost_price`, `selling_price`; `materials` menerima/mengembalikan `unit_price` (nullable, ≥ 0; juga kolom opsional di import CSV).
+> - `GET /boms` menambah field read-only `line_cost` (= `qty_per_unit × unit_price`, null bila material tanpa harga).
+> - `GET /forecast/runs/{run_id}/cost-summary` menambah `purchase_cost`, `n_materials_without_price`, dan `cost_source` (`template` / `env`) — additive, TIC tidak berubah.
 
 > **Pola `POST` sebelum `GET` untuk resource yang di-generate** (bukan sekadar CRUD): `reorder_recommendations` di-generate dari hasil forecast + BOM + `current_stock` request-time, jadi wajib ada `POST` yang menghitung & menyimpan, baru `GET` yang memfilter/menampilkan hasil tersimpan. Ikuti pola yang sama bila menambah resource turunan baru di masa depan — lihat `AGENTS.md` §11.
 
@@ -424,8 +485,11 @@ SESSION_NOT_FOUND            SESSION_EXPIRED               INSUFFICIENT_DATA
 MODEL_SELECTION_FAILED       FORECAST_RUN_NOT_FOUND         BACKTEST_FAILED
 UNSUPPORTED_FORECAST_METHOD  WAREHOUSE_CONFIG_NOT_FOUND     WAREHOUSE_CAPACITY_EXCEEDED
 OVERRIDE_REASON_REQUIRED     OVERRIDE_TARGET_NOT_FOUND      STORAGE_UPLOAD_FAILED
-RATE_LIMIT_EXCEEDED
+RATE_LIMIT_EXCEEDED          WAREHOUSE_CONFIG_EXISTS        COST_TEMPLATE_NOT_FOUND
+COST_TEMPLATE_NAME_EXISTS    WAREHOUSE_CAPACITY_INVALID
 ```
+
+> **Tambahan 2 Oktober 2026:** `WAREHOUSE_CONFIG_EXISTS` (409, produk sudah punya baris kapasitas — sudah dipakai di kode sejak 24 Agustus 2026, baru didokumentasikan), `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409), `WAREHOUSE_CAPACITY_INVALID` (400 — field yang diwajibkan mode/unit produk kosong atau ≤ 0, qty negatif, atau kapasitas efektif 0). Lihat `RECONCILIATION.md` §"Konsolidasi Master Data".
 
 > `WAREHOUSE_CAPACITY_EXCEEDED` bukan hard-block (400) melainkan flag di response 200 (`warehouse_validations.is_within_capacity = false`) — keputusan akhir tetap di tangan planner via override, sesuai FR-6.4 di `PRD.md`. `BOM_NOT_FOUND` dipakai saat baris BOM yang dirujuk tidak ada (CRUD/import, atau saat reorder/cost butuh BOM produk). `AUTH_FORBIDDEN` (403) dipakai saat user terautentikasi tapi tidak berhak atas resource yang diminta (beda dengan `AUTH_INVALID_CREDENTIALS`/`AUTH_TOKEN_EXPIRED` yang 401). `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS` dipakai saat `code` duplikat pada create/import produk atau material. `OVERRIDE_TARGET_NOT_FOUND` dipakai saat `target_id` pada `POST /api/v1/overrides` tidak ditemukan di tabel yang dirujuk `target_type`. Empat code ini diwarisi dari implementasi v2.0 di git (lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1").
 
@@ -604,7 +668,8 @@ MAX_UPLOAD_SIZE_MB=10
 DEV_AUTH_ENABLED=false
 DEV_AUTH_PASSWORD=demo1234
 
-# EOQ & Cost
+# EOQ & Cost — FALLBACK saja sejak 2 Okt 2026: dipakai hanya bila tidak ada
+# cost_template aktif (sumber utama S & H = template aktif, §6.8)
 DEFAULT_ORDERING_COST=...
 DEFAULT_HOLDING_COST_RATE=...
 
@@ -656,6 +721,33 @@ def validate_capacity(
     )
 ```
 
+**Input pallet/dus (2 Oktober 2026).** `capacity_qty` di atas kini dihitung server saat
+create/update — `validate_capacity()` sendiri tidak berubah:
+
+```python
+DUS_LIKE_UNITS = {"DUS", "KARTON", "BOX", "CTN"}  # dibanding case-insensitive
+
+def compute_effective_capacity(
+    mode: str, pallet_qty: float, dus_qty: float,
+    dus_per_pallet: float | None, pcs_per_dus: float | None, product_unit: str,
+) -> tuple[float, float]:
+    """Return (capacity_dus, capacity_qty dalam unit produk)."""
+    pallets = pallet_qty if mode in ("PALLET", "COMBINED") else 0
+    loose = dus_qty if mode in ("DUS", "COMBINED") else 0
+    capacity_dus = pallets * (dus_per_pallet or 0) + loose  # dus_per_pallet wajib bila pallets dipakai
+    if product_unit.strip().upper() in DUS_LIKE_UNITS:
+        return capacity_dus, capacity_dus
+    return capacity_dus, capacity_dus * pcs_per_dus  # pcs_per_dus wajib untuk unit non-dus
+```
+
+Contoh: produk unit `PCS`, mode `COMBINED`, 10 pallet × 60 dus + 25 dus, 24 pcs/dus →
+`capacity_dus = 625`, `capacity_qty = 15.000` pcs. Input tidak valid → `400 WAREHOUSE_CAPACITY_INVALID`: field yang diwajibkan
+mode/unit kosong atau ≤ 0, `pallet_qty`/`dus_qty` negatif, atau kapasitas efektif 0.
+Field yang tidak relevan untuk mode dinormalisasi (mode `DUS` → `pallet_qty = 0`,
+`dus_per_pallet = null`; mode `PALLET` → `dus_qty = 0`; unit dus-like → `pcs_per_dus = null`).
+Response menambah `capacity_dus` (turunan, tidak dipersist). Catatan: bila `products.unit`
+diubah setelahnya, `capacity_qty` baru dihitung ulang saat baris kapasitas disimpan lagi.
+
 Agregat `is_within_capacity` True hanya bila **semua** produk yang dibandingkan muat —
 satu produk melebihi kapasitasnya sudah cukup membuat run itu ditandai melebihi,
 tapi `details` tetap menunjukkan produk mana saja yang bermasalah.
@@ -679,6 +771,39 @@ def round_to_moq(eoq_qty: float, moq: float) -> float:
 def compute_savings_pct(tic_actual: float, tic_proposed: float) -> float:
     return (tic_actual - tic_proposed) / tic_actual * 100
 ```
+
+**Sumber S & H (2 Oktober 2026).** `reorder_service` dan `cost_service` mengambil S & H
+dari **template biaya aktif**; bila tidak ada template aktif → fallback
+`DEFAULT_ORDERING_COST`/`DEFAULT_HOLDING_COST_RATE` (perilaku lama, angka simulasi
+thesis tetap reproducible). Rumus EOQ/TIC **tidak berubah**.
+
+```python
+def resolve_cost_params(active_template, settings) -> CostParams:
+    if active_template is not None:
+        return CostParams(active_template.ordering_cost, active_template.holding_cost, source="template")
+    return CostParams(settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE, source="env")
+
+def monthly_depreciation(purchase_price, salvage_value, useful_life_months, qty) -> float:
+    return (purchase_price - salvage_value) / useful_life_months * qty   # garis lurus
+
+def suggested_holding_cost(items, total_capacity_dus: float) -> float | None:
+    if total_capacity_dus <= 0:
+        return None
+    monthly = sum(monthly_depreciation(...) for i in items if i.item_type == "STORAGE_ASSET") \
+            + sum(i.monthly_amount for i in items if i.item_type == "OVERHEAD")
+    return monthly / total_capacity_dus   # IDR per dus per bulan — REFERENSI, tidak dipakai EOQ
+```
+
+`total_capacity_dus` = Σ `capacity_dus` seluruh baris `warehouse_config`. Saran H hanya
+ditampilkan di halaman template; planner yang memutuskan nilai `holding_cost`.
+
+`cost-summary` mengembalikan `cost_source` (`template`/`env`) & `cost_template_name`.
+Catatan: TIC usulan memakai S & H saat reorder di-generate, baseline memakai template
+aktif saat ringkasan diminta — generate ulang reorder setelah mengganti template aktif.
+
+**Biaya pembelian (informasi, 2 Oktober 2026):** `purchase_cost` di cost-summary =
+Σ kebutuhan material sepanjang horizon × `materials.unit_price` (material tanpa harga
+dilewati, dihitung di `n_materials_without_price`). **Tidak masuk TIC.**
 
 ### 6.9 Engine Legacy (Nonaktif Default — dari Arsitektur v2.0)
 
@@ -714,6 +839,9 @@ Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
 - User terautentikasi tapi tidak berhak atas resource → `AUTH_FORBIDDEN` (403), bukan `404` (hindari kebocoran informasi keberadaan resource tetap dipertimbangkan per kasus).
 - Kode (`code`) duplikat saat create/import produk atau material → `PRODUCT_CODE_EXISTS` / `MATERIAL_CODE_EXISTS` (400/422), bukan 500 dari constraint violation database yang bocor ke client.
 - `target_id` override tidak ditemukan di tabel yang dirujuk `target_type` → `OVERRIDE_TARGET_NOT_FOUND` (404).
+- Input kapasitas pallet/dus tidak lengkap/tidak valid untuk mode & unit produknya → `WAREHOUSE_CAPACITY_INVALID` (400) (Fase 10).
+- Template biaya tidak ada → `COST_TEMPLATE_NOT_FOUND` (404); nama duplikat → `COST_TEMPLATE_NAME_EXISTS` (409). **Tidak ada template aktif bukan error** — EOQ/TIC fallback ke `DEFAULT_*` env dan `cost-summary.cost_source = "env"` (Fase 10).
+- Nilai tidak valid di baris CSV import produk/material (mis. harga/MOQ negatif) → `UPLOAD_INVALID_FORMAT` per baris, bukan 500 dari `ValidationError` yang lolos (Fase 10).
 - Tidak ada stack trace / detail internal yang di-expose ke client; semua di-log server-side.
 
 ## 9. Testing & Coverage (ringkas — detail penuh di `AGENTS.md` §3)

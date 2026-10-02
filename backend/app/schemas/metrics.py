@@ -14,6 +14,11 @@ class CostSummaryOut(BaseModel):
     total_inventory_cost: Decimal  # usulan ForecastIQ
     baseline_inventory_cost: Decimal  # existing (planning)
     savings_pct: Decimal
+    # Fase 10 — additive
+    purchase_cost: Decimal  # Σ kebutuhan material forecast × harga beli — informasi, bukan bagian TIC
+    n_materials_without_price: int
+    cost_source: str  # "template" | "env" — sumber S & H
+    cost_template_name: str | None
 
 
 class InventoryMetricOut(BaseModel):

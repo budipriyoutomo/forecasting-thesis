@@ -14,8 +14,9 @@ describe("NAV_GROUPS", () => {
       "/products",
       "/materials",
       "/boms",
-      "/forecast/new",
       "/warehouse",
+      "/cost-templates",
+      "/forecast/new",
     ]);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
@@ -55,6 +56,17 @@ describe("breadcrumbsFor", () => {
     expect(breadcrumbsFor("/products")).toEqual([
       { label: "Master Data" },
       { label: "Produk", href: "/products" },
+    ]);
+  });
+
+  it("kapasitas gudang & template biaya berada di grup Master Data (Fase 10)", () => {
+    expect(breadcrumbsFor("/warehouse")).toEqual([
+      { label: "Master Data" },
+      { label: "Kapasitas Gudang", href: "/warehouse" },
+    ]);
+    expect(breadcrumbsFor("/cost-templates")).toEqual([
+      { label: "Master Data" },
+      { label: "Template Biaya", href: "/cost-templates" },
     ]);
   });
 

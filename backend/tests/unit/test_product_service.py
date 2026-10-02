@@ -1,5 +1,8 @@
 """Fase 2 v3.0 — unit test ProductService (CRUD + import), repository di-mock."""
+from decimal import Decimal
+
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.product import ProductCreate, ProductUpdate
 from app.services.product_service import ProductService
@@ -17,6 +20,8 @@ class FakeProduct:
         self.name = kw.get("name", "")
         self.category = kw.get("category")
         self.unit = kw.get("unit", "PCS")
+        self.cost_price = kw.get("cost_price")
+        self.selling_price = kw.get("selling_price")
 
 
 class FakeProductRepository:
@@ -101,3 +106,68 @@ async def test_import_duplikat_dalam_file():
     csv = b"code,name,unit\nDUP,A,PCS\nDUP,B,PCS\n"
     with pytest.raises(ProductCodeExistsError):
         await svc.import_csv(csv)
+
+
+# ── Harga produk (Fase 10, 2 Oktober 2026) ──
+
+
+@pytest.mark.asyncio
+async def test_create_produk_dengan_hpp_dan_harga_jual():
+    svc = _service()
+    p = await svc.create(
+        ProductCreate(code="A", name="A", unit="PCS", cost_price=Decimal("4500"), selling_price=Decimal("6000"))
+    )
+    assert p.cost_price == Decimal("4500")
+    assert p.selling_price == Decimal("6000")
+
+
+@pytest.mark.asyncio
+async def test_create_produk_tanpa_harga_tetap_valid():
+    svc = _service()
+    p = await svc.create(ProductCreate(code="A", name="A", unit="PCS"))
+    assert p.cost_price is None
+    assert p.selling_price is None
+
+
+def test_harga_produk_negatif_ditolak_schema():
+    with pytest.raises(ValidationError):
+        ProductCreate(code="A", name="A", unit="PCS", cost_price=Decimal("-1"))
+    with pytest.raises(ValidationError):
+        ProductUpdate(selling_price=Decimal("-1"))
+
+
+@pytest.mark.asyncio
+async def test_update_harga_produk():
+    svc = _service([FakeProduct(id="p1", code="A")])
+    p = await svc.update("p1", ProductUpdate(cost_price=Decimal("5000"), selling_price=Decimal("7500")))
+    assert p.cost_price == Decimal("5000")
+    assert p.selling_price == Decimal("7500")
+
+
+@pytest.mark.asyncio
+async def test_import_csv_kolom_harga_opsional():
+    svc = _service()
+    csv = (
+        b"code,name,category,unit,cost_price,selling_price\n"
+        b"A,Produk A,RTD,PCS,4500,6000\n"
+        b"B,Produk B,RTD,PCS,,\n"
+    )
+    assert (await svc.import_csv(csv))["imported"] == 2
+    a = await svc._repo.get_by_code("A")
+    b = await svc._repo.get_by_code("B")
+    assert a.cost_price == Decimal("4500") and a.selling_price == Decimal("6000")
+    assert b.cost_price is None and b.selling_price is None
+
+
+@pytest.mark.asyncio
+async def test_import_csv_harga_bukan_angka_invalid_format():
+    svc = _service()
+    with pytest.raises(UploadInvalidFormatError):
+        await svc.import_csv(b"code,name,unit,cost_price\nA,A,PCS,mahal\n")
+
+
+@pytest.mark.asyncio
+async def test_import_csv_harga_negatif_invalid_format_bukan_500():
+    svc = _service()
+    with pytest.raises(UploadInvalidFormatError):
+        await svc.import_csv(b"code,name,unit,selling_price\nA,A,PCS,-1\n")

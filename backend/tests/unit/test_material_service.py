@@ -4,6 +4,7 @@ Fase 2 — unit test MaterialService (CRUD + import), repository di-mock.
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.material import MaterialCreate, MaterialUpdate
 from app.services.material_service import MaterialService
@@ -24,6 +25,7 @@ class FakeMaterial:
         self.lead_time_days = kw.get("lead_time_days", 0)
         self.moq = kw.get("moq", Decimal(0))
         self.manual_safety_stock = kw.get("manual_safety_stock")
+        self.unit_price = kw.get("unit_price")
 
 
 class FakeMaterialRepository:
@@ -216,3 +218,62 @@ async def test_get_happy_path():
     material = await svc.get("m1")
 
     assert material.code == "RM-001"
+
+
+# ── Harga material (Fase 10, 2 Oktober 2026) ──
+
+
+@pytest.mark.asyncio
+async def test_create_material_dengan_harga():
+    svc = _service()
+    m = await svc.create(MaterialCreate(code="RM-1", name="Gula", unit="kg", unit_price=Decimal("14500")))
+    assert m.unit_price == Decimal("14500")
+
+
+@pytest.mark.asyncio
+async def test_create_material_tanpa_harga_tetap_valid():
+    svc = _service()
+    m = await svc.create(MaterialCreate(code="RM-1", name="Gula", unit="kg"))
+    assert m.unit_price is None
+
+
+def test_harga_material_negatif_ditolak_schema():
+    with pytest.raises(ValidationError):
+        MaterialCreate(code="RM-1", name="Gula", unit="kg", unit_price=Decimal("-1"))
+    with pytest.raises(ValidationError):
+        MaterialUpdate(unit_price=Decimal("-0.01"))
+
+
+@pytest.mark.asyncio
+async def test_update_harga_material():
+    svc = _service([FakeMaterial(id="m1", code="RM-1", name="Gula")])
+    m = await svc.update("m1", MaterialUpdate(unit_price=Decimal("15000")))
+    assert m.unit_price == Decimal("15000")
+
+
+@pytest.mark.asyncio
+async def test_import_csv_kolom_unit_price_opsional():
+    svc = _service()
+    csv = (
+        "code,name,category,unit,lead_time_days,moq,unit_price\n"
+        "RM-001,Tepung,Bahan,kg,7,100,12000\n"
+        "RM-002,Gula,Bahan,kg,5,50,\n"
+    ).encode("utf-8")
+    assert (await svc.import_csv(csv))["imported"] == 2
+    by_code = {m.code: m for m in await svc.list()}
+    assert by_code["RM-001"].unit_price == Decimal("12000")
+    assert by_code["RM-002"].unit_price is None
+
+
+@pytest.mark.asyncio
+async def test_import_csv_unit_price_bukan_angka_invalid_format():
+    svc = _service()
+    with pytest.raises(UploadInvalidFormatError):
+        await svc.import_csv(b"code,name,unit,unit_price\nRM-1,Gula,kg,abc\n")
+
+
+@pytest.mark.asyncio
+async def test_import_csv_unit_price_negatif_invalid_format_bukan_500():
+    svc = _service()
+    with pytest.raises(UploadInvalidFormatError):
+        await svc.import_csv(b"code,name,unit,unit_price\nRM-1,Gula,kg,-100\n")

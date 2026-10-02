@@ -42,6 +42,7 @@ from app.repositories.product_repository import SqlProductRepository
 from app.repositories.upload_session_repository import SqlUploadSessionRepository
 from app.repositories.user_repository import SqlUserRepository
 from app.repositories.warehouse_repository import SqlWarehouseConfigRepository
+from app.services.warehouse_service import CapacityInput, apply_capacity
 from app.scripts.seed_dev_users import DEMO_USERS
 from app.services.dev_auth import DEV_ENVIRONMENT
 
@@ -90,8 +91,14 @@ class DemoBomLine:
 
 @dataclass(frozen=True)
 class DemoWarehouseCapacity:
+    """Input pallet/dus (Fase 10) — capacity_qty (PCS) dihitung `apply_capacity`."""
+
     product_code: str
-    capacity_qty: int  # unit produk (PCS) — angka bebas, isian planner langsung
+    capacity_mode: str
+    pallet_qty: float = 0
+    dus_qty: float = 0
+    dus_per_pallet: float | None = None
+    pcs_per_dus: float | None = None
 
 
 DEMO_PRODUCTS: tuple[DemoProduct, ...] = (
@@ -168,17 +175,22 @@ DEMO_BOM: tuple[DemoBomLine, ...] = tuple(
     )
 )
 
-# Kapasitas gudang per SKU (input bebas planner, bukan turunan luas × palet).
+# Kapasitas gudang per SKU — input pallet/dus/kombinasi (Fase 10), total PCS sama
+# dengan angka sebelum Fase 10.
 # Angka cukup longgar untuk 6 SKU pertama; KBYMG sengaja diisi longgar-pas supaya
 # ada contoh yang gampang didorong ke "melebihi kapasitas" saat horizon dinaikkan.
 DEMO_WAREHOUSE_CAPACITY: tuple[DemoWarehouseCapacity, ...] = (
-    DemoWarehouseCapacity("KBYPL 200", 600_000),
-    DemoWarehouseCapacity("KBYST 200", 600_000),
-    DemoWarehouseCapacity("KBYBB 200", 500_000),
-    DemoWarehouseCapacity("KBYLY 200", 500_000),
-    DemoWarehouseCapacity("KBYBF 200", 400_000),
-    DemoWarehouseCapacity("KBYSR 200", 400_000),
-    DemoWarehouseCapacity("KBYMG 200", 350_000),
+    # (416 × 60 + 40) dus × 24 = 600.000 PCS
+    DemoWarehouseCapacity("KBYPL 200", "COMBINED", pallet_qty=416, dus_qty=40, dus_per_pallet=60, pcs_per_dus=24),
+    # 500 × 50 dus × 24 = 600.000 PCS
+    DemoWarehouseCapacity("KBYST 200", "PALLET", pallet_qty=500, dus_per_pallet=50, pcs_per_dus=24),
+    # 25.000 dus × 20 = 500.000 PCS
+    DemoWarehouseCapacity("KBYBB 200", "DUS", dus_qty=25_000, pcs_per_dus=20),
+    # sisanya mode DUS, 20 PCS/dus: 500.000 / 400.000 / 400.000 / 350.000 PCS
+    DemoWarehouseCapacity("KBYLY 200", "DUS", dus_qty=25_000, pcs_per_dus=20),
+    DemoWarehouseCapacity("KBYBF 200", "DUS", dus_qty=20_000, pcs_per_dus=20),
+    DemoWarehouseCapacity("KBYSR 200", "DUS", dus_qty=20_000, pcs_per_dus=20),
+    DemoWarehouseCapacity("KBYMG 200", "DUS", dus_qty=17_500, pcs_per_dus=20),
 )
 
 
@@ -409,9 +421,19 @@ async def seed_demo_data(
         product = product_by_code[spec.product_code]
         if await warehouse.get_by_product(str(product.id)) is not None:
             continue
-        await warehouse.add(
-            WarehouseConfig(product_id=product.id, capacity_qty=_dec(spec.capacity_qty))
+        config = WarehouseConfig(product_id=product.id)
+        apply_capacity(
+            config,
+            CapacityInput(
+                capacity_mode=spec.capacity_mode,
+                pallet_qty=spec.pallet_qty,
+                dus_qty=spec.dus_qty,
+                dus_per_pallet=spec.dus_per_pallet,
+                pcs_per_dus=spec.pcs_per_dus,
+            ),
+            product.unit,
         )
+        await warehouse.add(config)
         summary.warehouse_created += 1
 
     return summary

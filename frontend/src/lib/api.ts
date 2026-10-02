@@ -5,10 +5,16 @@ import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
 import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { CostSummary, InventoryMetric } from "@/types/metrics";
+import type {
+  CostTemplate,
+  CostTemplateInput,
+  CostTemplateSummary,
+} from "@/types/costTemplate";
 import type { Override, OverrideInput } from "@/types/override";
 import type { Product, ProductInput } from "@/types/product";
 import type {
   WarehouseConfig,
+  WarehouseCapacityInput,
   WarehouseConfigInput,
   WarehouseValidation,
 } from "@/types/warehouse";
@@ -104,6 +110,46 @@ export const api = {
       }),
   },
 
+  costTemplates: {
+    list: (token: string): Promise<ApiResponse<CostTemplate[]>> =>
+      request<CostTemplate[]>("/api/v1/cost-templates", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    summary: (id: string, token: string): Promise<ApiResponse<CostTemplateSummary>> =>
+      request<CostTemplateSummary>(`/api/v1/cost-templates/${id}/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    create: (input: CostTemplateInput, token: string): Promise<ApiResponse<CostTemplate>> =>
+      request<CostTemplate>("/api/v1/cost-templates", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    update: (id: string, input: CostTemplateInput, token: string): Promise<ApiResponse<CostTemplate>> =>
+      request<CostTemplate>(`/api/v1/cost-templates/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    activate: (id: string, token: string): Promise<ApiResponse<CostTemplate>> =>
+      request<CostTemplate>(`/api/v1/cost-templates/${id}/activate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+
+    remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/cost-templates/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
   materials: {
     list: (token: string): Promise<ApiResponse<Material[]>> =>
       request<Material[]>("/api/v1/materials", {
@@ -148,14 +194,13 @@ export const api = {
 
     update: (
       id: string,
-      capacityQty: number,
-      uom: string,
+      input: WarehouseCapacityInput,
       token: string,
     ): Promise<ApiResponse<WarehouseConfig>> =>
       request<WarehouseConfig>(`/api/v1/warehouse/config/${id}`, {
         method: "PUT",
         headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ capacity_qty: capacityQty, uom }),
+        body: JSON.stringify(input),
       }),
 
     remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>

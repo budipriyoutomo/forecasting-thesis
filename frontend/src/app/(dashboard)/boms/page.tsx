@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
+import { BomCostSummary } from "@/components/boms/BomCostSummary";
 import { BomForm } from "@/components/boms/BomForm";
 import { BomsTable } from "@/components/boms/BomsTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -92,12 +93,13 @@ export default function BomsPage() {
         </Select>
       </div>
 
-      {isPending && <TableSkeleton columns={4} />}
+      {isPending && <TableSkeleton columns={5} />}
       {isError && (
         <Alert variant="destructive">
           <AlertDescription>Gagal memuat data BOM.</AlertDescription>
         </Alert>
       )}
+      {boms && <BomCostSummary boms={boms} products={products ?? []} />}
       {boms && (
         <BomsTable
           boms={boms}

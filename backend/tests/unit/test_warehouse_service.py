@@ -1,5 +1,6 @@
 """
-Fase 6 v3.0, redesain 24 Agustus 2026 — kapasitas gudang per PRODUK, angka bebas.
+Fase 6 v3.0, redesain 24 Agustus 2026 — kapasitas gudang per PRODUK.
+Fase 10 (2 Oktober 2026) — input pallet/dus/kombinasi, `capacity_qty` turunan server.
 Angka diverifikasi manual (AGENTS.md §3).
 """
 from decimal import Decimal
@@ -7,11 +8,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.warehouse_service import WarehouseService, validate_capacity
+from app.services.warehouse_service import (
+    CapacityInput,
+    WarehouseService,
+    compute_effective_capacity,
+    validate_capacity,
+)
 from app.utils.exceptions import (
     ForbiddenRoleError,
     ForecastRunNotFoundError,
     ProductNotFoundError,
+    WarehouseCapacityInvalidError,
     WarehouseConfigExistsError,
     WarehouseConfigNotFoundError,
 )
@@ -20,8 +27,28 @@ USER = "u1"
 OTHER = "u2"
 
 
-def _config(cid="c1", pid="p1", capacity=100, uom="unit"):
-    return SimpleNamespace(id=cid, product_id=pid, capacity_qty=Decimal(capacity), uom=uom)
+def _config(cid="c1", pid="p1", capacity=100, uom="DUS"):
+    return SimpleNamespace(
+        id=cid,
+        product_id=pid,
+        capacity_mode="DUS",
+        pallet_qty=Decimal(0),
+        dus_qty=Decimal(capacity),
+        dus_per_pallet=None,
+        pcs_per_dus=None,
+        capacity_qty=Decimal(capacity),
+        uom=uom,
+    )
+
+
+def _input(mode="DUS", pallet_qty=0, dus_qty=0, dus_per_pallet=None, pcs_per_dus=None):
+    return CapacityInput(
+        capacity_mode=mode,
+        pallet_qty=pallet_qty,
+        dus_qty=dus_qty,
+        dus_per_pallet=dus_per_pallet,
+        pcs_per_dus=pcs_per_dus,
+    )
 
 
 def _result(pid, status="COMPLETED", values=None):
@@ -59,6 +86,71 @@ def test_validate_capacity_produk_tanpa_forecast_dilewati():
     res = validate_capacity(configs, {})
     assert res.details == []
     assert res.is_within_capacity is True  # tak ada yang dibandingkan → tak ada yang melebihi
+
+
+# ── Kapasitas efektif pallet/dus (Fase 10) ──
+
+
+def test_kapasitas_mode_dus_unit_dus():
+    # 500 dus, unit produk DUS → 500 dus = 500 unit produk
+    assert compute_effective_capacity(_input("DUS", dus_qty=500), "DUS") == (500, 500)
+
+
+def test_kapasitas_mode_pallet_unit_karton():
+    # 10 pallet × 60 dus/pallet = 600 dus; dus_qty diabaikan di mode PALLET
+    res = compute_effective_capacity(_input("PALLET", pallet_qty=10, dus_qty=99, dus_per_pallet=60), "Karton")
+    assert res == (600, 600)
+
+
+def test_kapasitas_mode_kombinasi_unit_pcs():
+    # (10 × 60) + 25 = 625 dus; × 24 pcs/dus = 15.000 pcs
+    res = compute_effective_capacity(
+        _input("COMBINED", pallet_qty=10, dus_qty=25, dus_per_pallet=60, pcs_per_dus=24), "PCS"
+    )
+    assert res == (625, 15000)
+
+
+def test_kapasitas_mode_dus_abaikan_pallet():
+    # mode DUS: pallet_qty & dus_per_pallet tidak ikut dihitung
+    res = compute_effective_capacity(_input("DUS", pallet_qty=10, dus_qty=40, dus_per_pallet=60), "dus")
+    assert res == (40, 40)
+
+
+def test_kapasitas_unit_dus_like_case_insensitive_dan_spasi():
+    assert compute_effective_capacity(_input("DUS", dus_qty=7), " box ") == (7, 7)
+    assert compute_effective_capacity(_input("DUS", dus_qty=7), "ctn") == (7, 7)
+
+
+def test_kapasitas_unit_dus_like_abaikan_pcs_per_dus():
+    assert compute_effective_capacity(_input("DUS", dus_qty=10, pcs_per_dus=24), "Karton") == (10, 10)
+
+
+def test_kapasitas_pecahan_tetap_presisi():
+    # 2,5 pallet × 40 = 100 dus + 0,5 dus = 100,5; × 12 = 1.206 pcs
+    res = compute_effective_capacity(
+        _input("COMBINED", pallet_qty=2.5, dus_qty=0.5, dus_per_pallet=40, pcs_per_dus=12), "PCS"
+    )
+    assert res == (pytest.approx(100.5), pytest.approx(1206))
+
+
+@pytest.mark.parametrize(
+    "inp, unit",
+    [
+        (_input("PALLET", pallet_qty=10), "DUS"),  # dus_per_pallet wajib
+        (_input("PALLET", pallet_qty=10, dus_per_pallet=0), "DUS"),  # dus_per_pallet > 0
+        (_input("COMBINED", pallet_qty=1, dus_qty=1), "DUS"),  # dus_per_pallet wajib
+        (_input("DUS", dus_qty=10), "PCS"),  # unit non-dus → pcs_per_dus wajib
+        (_input("DUS", dus_qty=10, pcs_per_dus=0), "PCS"),  # pcs_per_dus > 0
+        (_input("DUS", dus_qty=-1), "DUS"),  # qty negatif
+        (_input("COMBINED", pallet_qty=-1, dus_qty=5, dus_per_pallet=10), "DUS"),
+        (_input("DUS", dus_qty=0), "DUS"),  # kapasitas efektif 0
+        (_input("PALLET", pallet_qty=0, dus_per_pallet=60), "DUS"),
+        (_input("RAK", dus_qty=10), "DUS"),  # mode tak dikenal
+    ],
+)
+def test_kapasitas_input_tidak_valid(inp, unit):
+    with pytest.raises(WarehouseCapacityInvalidError):
+        compute_effective_capacity(inp, unit)
 
 
 # ── Orkestrasi ──
@@ -113,11 +205,14 @@ class FakeForecastRepo:
 
 
 class FakeProductRepo:
+    """`products`: list id (unit default DUS) atau dict {id: unit}."""
+
     def __init__(self, products=None):
-        self._by_id = {p: p for p in (products or [])}
+        units = products if isinstance(products, dict) else {p: "DUS" for p in (products or [])}
+        self._by_id = {pid: SimpleNamespace(id=pid, unit=unit) for pid, unit in units.items()}
 
     async def get_by_id(self, pid):
-        return pid if pid in self._by_id else None
+        return self._by_id.get(pid)
 
 
 def _service(run=None, results=None, configs=None, products=None):
@@ -137,34 +232,90 @@ async def test_get_config_belum_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_create_config():
+async def test_create_config_mode_dus():
     svc = _service()
-    config = await svc.create_config("p1", 500, "Dus")
-    assert float(config.capacity_qty) == 500
+    config = await svc.create_config("p1", _input("DUS", dus_qty=500))
     assert str(config.product_id) == "p1"
-    assert config.uom == "Dus"
+    assert config.capacity_mode == "DUS"
+    assert float(config.capacity_qty) == 500
+    assert config.uom == "DUS"  # uom turunan = products.unit
+
+
+@pytest.mark.asyncio
+async def test_create_config_kombinasi_unit_pcs_hitung_capacity_qty():
+    svc = _service(products={"p1": "PCS"})
+    config = await svc.create_config(
+        "p1", _input("COMBINED", pallet_qty=10, dus_qty=25, dus_per_pallet=60, pcs_per_dus=24)
+    )
+    assert float(config.capacity_qty) == 15000
+    assert config.uom == "PCS"
+    assert float(config.pallet_qty) == 10
+    assert float(config.dus_qty) == 25
+    assert float(config.dus_per_pallet) == 60
+    assert float(config.pcs_per_dus) == 24
+
+
+@pytest.mark.asyncio
+async def test_create_config_normalisasi_field_tak_relevan():
+    # mode PALLET → dus_qty disimpan 0; unit dus-like → pcs_per_dus None
+    svc = _service(products={"p1": "Karton"})
+    config = await svc.create_config(
+        "p1", _input("PALLET", pallet_qty=3, dus_qty=99, dus_per_pallet=50, pcs_per_dus=12)
+    )
+    assert float(config.dus_qty) == 0
+    assert config.pcs_per_dus is None
+    assert float(config.capacity_qty) == 150
+
+    svc = _service(products={"p2": "DUS"})
+    config = await svc.create_config("p2", _input("DUS", pallet_qty=3, dus_qty=20, dus_per_pallet=50))
+    assert float(config.pallet_qty) == 0
+    assert config.dus_per_pallet is None
+
+
+@pytest.mark.asyncio
+async def test_create_config_input_tidak_valid_400():
+    svc = _service(products={"p1": "PCS"})
+    with pytest.raises(WarehouseCapacityInvalidError):
+        await svc.create_config("p1", _input("DUS", dus_qty=10))  # pcs_per_dus wajib
 
 
 @pytest.mark.asyncio
 async def test_create_config_produk_tidak_ada_404():
     svc = _service(products=[])
     with pytest.raises(ProductNotFoundError):
-        await svc.create_config("ghost", 500, "Dus")
+        await svc.create_config("ghost", _input("DUS", dus_qty=500))
 
 
 @pytest.mark.asyncio
 async def test_create_config_duplikat_409():
     svc = _service(configs=[_config(pid="p1")])
     with pytest.raises(WarehouseConfigExistsError):
-        await svc.create_config("p1", 500, "Dus")
+        await svc.create_config("p1", _input("DUS", dus_qty=500))
 
 
 @pytest.mark.asyncio
-async def test_update_config():
-    svc = _service(configs=[_config(cid="c1", pid="p1", capacity=100, uom="Pcs")])
-    updated = await svc.update_config("c1", 250, "Karton")
-    assert float(updated.capacity_qty) == 250
-    assert updated.uom == "Karton"
+async def test_update_config_ganti_mode_hitung_ulang():
+    svc = _service(configs=[_config(cid="c1", pid="p1", capacity=100)], products={"p1": "PCS"})
+    updated = await svc.update_config(
+        "c1", _input("PALLET", pallet_qty=4, dus_per_pallet=50, pcs_per_dus=6)
+    )
+    assert updated.capacity_mode == "PALLET"
+    assert float(updated.capacity_qty) == 1200  # 4 × 50 × 6
+    assert updated.uom == "PCS"
+
+
+@pytest.mark.asyncio
+async def test_update_config_input_tidak_valid_400():
+    svc = _service(configs=[_config(cid="c1", pid="p1")])
+    with pytest.raises(WarehouseCapacityInvalidError):
+        await svc.update_config("c1", _input("PALLET", pallet_qty=4))
+
+
+@pytest.mark.asyncio
+async def test_update_config_tidak_ada_404():
+    svc = _service()
+    with pytest.raises(WarehouseConfigNotFoundError):
+        await svc.update_config("ghost", _input("DUS", dus_qty=5))
 
 
 @pytest.mark.asyncio

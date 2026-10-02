@@ -9,18 +9,19 @@ from fastapi.responses import JSONResponse
 
 from app.api.deps import get_bom_service, get_current_user, require_role
 from app.schemas.bom import BomCreate, BomResponse, BomUpdate
-from app.services.bom_service import BomService
+from app.services.bom_service import BomService, compute_line_cost
 
 router = APIRouter(prefix="/boms", tags=["boms"])
 
 
-def _to_response(bom) -> dict:
+def _to_response(bom, prices: dict) -> dict:
     return BomResponse.model_validate(
         {
             "id": str(bom.id),
             "product_id": str(bom.product_id),
             "material_id": str(bom.material_id),
             "qty_per_unit": bom.qty_per_unit,
+            "line_cost": compute_line_cost(bom.qty_per_unit, prices.get(str(bom.material_id))),
         }
     ).model_dump(mode="json")
 
@@ -28,25 +29,27 @@ def _to_response(bom) -> dict:
 @router.get("", dependencies=[Depends(get_current_user)])
 async def list_boms(product_id: str | None = None, service: BomService = Depends(get_bom_service)):
     boms = await service.list(product_id)
-    return {"success": True, "data": [_to_response(b) for b in boms]}
+    prices = await service.material_prices()
+    return {"success": True, "data": [_to_response(b, prices) for b in boms]}
 
 
 @router.get("/{bom_id}", dependencies=[Depends(get_current_user)])
 async def get_bom(bom_id: str, service: BomService = Depends(get_bom_service)):
     bom = await service.get(bom_id)
-    return {"success": True, "data": _to_response(bom)}
+    return {"success": True, "data": _to_response(bom, await service.material_prices())}
 
 
 @router.post("", dependencies=[Depends(require_role("admin"))])
 async def create_bom(payload: BomCreate, service: BomService = Depends(get_bom_service)):
     bom = await service.create(payload)
-    return JSONResponse(status_code=201, content={"success": True, "data": _to_response(bom)})
+    data = _to_response(bom, await service.material_prices())
+    return JSONResponse(status_code=201, content={"success": True, "data": data})
 
 
 @router.put("/{bom_id}", dependencies=[Depends(require_role("admin"))])
 async def update_bom(bom_id: str, payload: BomUpdate, service: BomService = Depends(get_bom_service)):
     bom = await service.update(bom_id, payload)
-    return {"success": True, "data": _to_response(bom)}
+    return {"success": True, "data": _to_response(bom, await service.material_prices())}
 
 
 @router.delete("/{bom_id}", dependencies=[Depends(require_role("admin"))])

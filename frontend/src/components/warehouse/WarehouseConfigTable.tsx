@@ -7,11 +7,21 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
+import { CAPACITY_MODE_LABELS, usesDus, usesPallet } from "@/lib/warehouse";
 import type { Product } from "@/types/product";
 import type { WarehouseConfig } from "@/types/warehouse";
 
 interface WarehouseConfigRow extends WarehouseConfig {
   productLabel: string;
+}
+
+// "10 pallet × 60 + 25 dus" / "10 pallet × 60" / "25 dus"
+function capacityBreakdown(c: WarehouseConfig): string {
+  const parts: string[] = [];
+  if (usesPallet(c.capacity_mode))
+    parts.push(`${formatNumber(c.pallet_qty)} pallet × ${formatNumber(c.dus_per_pallet)}`);
+  if (usesDus(c.capacity_mode)) parts.push(`${formatNumber(c.dus_qty)} dus`);
+  return parts.join(" + ");
 }
 
 export function WarehouseConfigTable({
@@ -41,15 +51,35 @@ export function WarehouseConfigTable({
         cell: ({ row }) => <span className="font-medium">{row.original.productLabel}</span>,
       },
       {
-        accessorKey: "capacity_qty",
-        header: "Kapasitas",
+        accessorKey: "capacity_mode",
+        header: "Mode",
+        cell: ({ row }) => CAPACITY_MODE_LABELS[row.original.capacity_mode],
+      },
+      {
+        id: "breakdown",
+        header: "Rincian",
+        enableSorting: false,
         cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.capacity_qty)}</span>
+          <span className="tabular-nums text-muted-foreground">
+            {capacityBreakdown(row.original)}
+          </span>
         ),
       },
       {
-        accessorKey: "uom",
-        header: "UOM",
+        accessorKey: "capacity_dus",
+        header: "Dalam dus",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatNumber(row.original.capacity_dus)} dus</span>
+        ),
+      },
+      {
+        accessorKey: "capacity_qty",
+        header: "Kapasitas",
+        cell: ({ row }) => (
+          <span className="tabular-nums font-medium">
+            {formatNumber(row.original.capacity_qty)} {row.original.uom}
+          </span>
+        ),
       },
       {
         id: "actions",

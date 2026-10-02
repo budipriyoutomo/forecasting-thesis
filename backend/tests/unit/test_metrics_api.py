@@ -83,6 +83,11 @@ async def test_cost_summary_ok(client):
     assert Decimal(data["total_inventory_cost"]) == Decimal("80")
     assert Decimal(data["baseline_inventory_cost"]) == Decimal("100")
     assert Decimal(data["savings_pct"]) == Decimal("20")
+    # Fase 10.6 — field tambahan (additive)
+    assert data["cost_source"] == "env"
+    assert data["cost_template_name"] is None
+    assert Decimal(data["purchase_cost"]) == Decimal("0")
+    assert data["n_materials_without_price"] == 0
 
 
 @pytest.mark.asyncio

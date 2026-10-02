@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { WarehouseConfig, WarehouseConfigInput, WarehouseValidation } from "@/types/warehouse";
+import type {
+  WarehouseCapacityInput,
+  WarehouseConfig,
+  WarehouseConfigInput,
+  WarehouseValidation,
+} from "@/types/warehouse";
 
 const KEY = ["warehouse-config"];
 
@@ -35,9 +40,9 @@ export function useCreateWarehouseConfig() {
 
 export function useUpdateWarehouseConfig() {
   const qc = useQueryClient();
-  return useMutation<WarehouseConfig, Error, { id: string; capacity_qty: number; uom: string }>({
-    mutationFn: async ({ id, capacity_qty, uom }) => {
-      const res = await api.warehouse.update(id, capacity_qty, uom, getToken() as string);
+  return useMutation<WarehouseConfig, Error, { id: string; input: WarehouseCapacityInput }>({
+    mutationFn: async ({ id, input }) => {
+      const res = await api.warehouse.update(id, input, getToken() as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },

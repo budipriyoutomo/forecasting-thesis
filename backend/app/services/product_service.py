@@ -6,7 +6,10 @@ dari logika bisnis untuk test). `code` unik → ProductCodeExistsError.
 """
 import csv as csv_module
 import io
+from decimal import Decimal, InvalidOperation
 from typing import Callable, Protocol
+
+from pydantic import ValidationError
 
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate
@@ -93,14 +96,28 @@ class ProductService:
         return {"imported": len(rows)}
 
     def _parse_row(self, row: dict, line: int) -> ProductCreate:
+        def num(key: str) -> Decimal | None:
+            raw = (row.get(key) or "").strip()
+            if raw == "":
+                return None
+            try:
+                return Decimal(raw)
+            except InvalidOperation as exc:
+                raise UploadInvalidFormatError(f"Baris {line}: '{key}' bukan angka valid.") from exc
+
         code = (row.get("code") or "").strip()
         name = (row.get("name") or "").strip()
         unit = (row.get("unit") or "").strip()
         if not code or not name or not unit:
             raise UploadInvalidFormatError(f"Baris {line}: code/name/unit tidak boleh kosong.")
-        return ProductCreate(
-            code=code,
-            name=name,
-            category=(row.get("category") or "").strip() or None,
-            unit=unit,
-        )
+        try:
+            return ProductCreate(
+                code=code,
+                name=name,
+                category=(row.get("category") or "").strip() or None,
+                unit=unit,
+                cost_price=num("cost_price"),
+                selling_price=num("selling_price"),
+            )
+        except ValidationError as exc:
+            raise UploadInvalidFormatError(f"Baris {line}: nilai tidak valid (harga tidak boleh negatif).") from exc

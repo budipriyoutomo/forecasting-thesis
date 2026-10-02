@@ -23,6 +23,7 @@ import numpy as np
 from app.config import get_settings
 from app.models.reorder_recommendation import ReorderRecommendation
 from app.services.bom_service import BomLine, breakdown_requirements_series
+from app.services.cost_template_service import load_cost_params
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
 
@@ -146,17 +147,20 @@ class ReorderService:
     safety stock, dan sebagai demand EOQ.
     """
 
-    def __init__(self, reorder_repo, forecast_repo, boms, materials):
+    def __init__(self, reorder_repo, forecast_repo, boms, materials, cost_templates=None):
         self._repo = reorder_repo
         self._forecast = forecast_repo
         self._boms = boms
         self._materials = materials
+        # Fase 10: S & H dari template biaya aktif; None/tanpa template aktif → env.
+        self._cost_templates = cost_templates
 
     async def generate_for_run(self, user_id: str, run_id: str, current_stock: dict | None = None):
         run = await self._require_run(user_id, run_id)
         current_stock = current_stock or {}
         settings = get_settings()
         z = settings.SERVICE_LEVEL_Z
+        cost = await load_cost_params(self._cost_templates, settings)
 
         # Deret forecast per produk (hanya yang COMPLETED & punya data).
         product_series: dict[str, list[float]] = {}
@@ -194,9 +198,9 @@ class ReorderService:
                 current_stock=float(current_stock.get(material_id, 0)),
             )
 
-            eoq = compute_eoq(series, settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE)
+            eoq = compute_eoq(series, cost.ordering_cost, cost.holding_cost)
             eoq_qty = round_to_moq(float(eoq.eoq_qty), float(material.moq))
-            ordering_total = eoq.n * settings.DEFAULT_ORDERING_COST
+            ordering_total = eoq.n * cost.ordering_cost
             holding_total = float(eoq.total_cost) - ordering_total
 
             recommendations.append(

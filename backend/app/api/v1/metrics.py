@@ -33,6 +33,10 @@ async def cost_summary(
             total_holding_cost=summary.total_holding_cost,
             total_inventory_cost=summary.total_inventory_cost,
             baseline_inventory_cost=summary.baseline_inventory_cost,
+            purchase_cost=summary.purchase_cost,
+            n_materials_without_price=summary.n_materials_without_price,
+            cost_source=summary.cost_source,
+            cost_template_name=summary.cost_template_name,
             savings_pct=summary.savings_pct,
         ).model_dump(mode="json"),
     }

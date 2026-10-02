@@ -116,3 +116,41 @@ async def test_import_boms_admin(client):
     )
     assert res.status_code == 200
     assert res.json()["data"]["imported"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_bom_menyertakan_line_cost(client):
+    app.dependency_overrides[get_bom_service] = lambda: BomService(
+        repo=FakeBomRepository(
+            [
+                FakeBom(id="b1", product_id="p1", material_id="m1", qty_per_unit=Decimal("0.0125")),
+                FakeBom(id="b2", product_id="p1", material_id="m2", qty_per_unit=Decimal("1")),
+            ]
+        ),
+        products=FakeProductRepository([FakeProduct(id="p1", code="P1", name="P", unit="PCS")]),
+        materials=FakeMaterialRepository(
+            [
+                FakeMaterial(id="m1", code="M1", name="Gula", unit="kg", unit_price=Decimal("14500")),
+                FakeMaterial(id="m2", code="M2", name="Botol", unit="pcs"),
+            ]
+        ),
+        model_factory=FakeBom,
+    )
+    res = await client.get("/api/v1/boms?product_id=p1", headers=_headers("viewer"))
+    assert res.status_code == 200
+    by_id = {b["id"]: b for b in res.json()["data"]}
+    assert float(by_id["b1"]["line_cost"]) == pytest.approx(181.25)  # 0,0125 × 14.500
+    assert by_id["b2"]["line_cost"] is None  # material tanpa harga
+
+
+@pytest.mark.asyncio
+async def test_create_bom_response_menyertakan_line_cost(client):
+    _override()
+    res = await client.post(
+        "/api/v1/boms",
+        headers=_headers("admin"),
+        json={"product_id": "p1", "material_id": "m1", "qty_per_unit": 2},
+    )
+    assert res.status_code == 201
+    assert "line_cost" in res.json()["data"]
+    assert res.json()["data"]["line_cost"] is None  # m1 di fixture default tanpa harga

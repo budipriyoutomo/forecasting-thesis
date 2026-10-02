@@ -26,6 +26,7 @@ def _to_response(material) -> dict:
             "moq": material.moq,
             "manual_safety_stock": material.manual_safety_stock,
             "dimension": getattr(material, "dimension", None),
+            "unit_price": getattr(material, "unit_price", None),
         }
     ).model_dump(mode="json")
 

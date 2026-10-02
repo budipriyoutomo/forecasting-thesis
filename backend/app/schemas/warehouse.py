@@ -1,22 +1,29 @@
 """
 Pydantic schemas endpoint warehouse (v3.0 Fase 6, redesain 24 Agustus 2026) —
-docs/ARCHITECTURE.md §4/§5. Konfigurasi kapasitas kini per PRODUK, angka bebas
-(bukan luas gudang × dimensi palet). `uom` free input teks, tanpa master UOM.
+docs/ARCHITECTURE.md §4/§5. Konfigurasi kapasitas per PRODUK.
+
+Fase 10 (2 Oktober 2026): request berisi input pallet/dus; `capacity_qty`, `uom`, dan
+`capacity_dus` hanya ada di response (turunan server). Validasi silang mode × unit
+produk dilakukan service (`WAREHOUSE_CAPACITY_INVALID`), bukan di sini.
 """
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class WarehouseConfigCreate(BaseModel):
-    product_id: str = Field(min_length=1)
-    capacity_qty: Decimal = Field(gt=0)
-    uom: str = Field(min_length=1, max_length=50)
+CapacityMode = Literal["PALLET", "DUS", "COMBINED"]
 
 
 class WarehouseConfigUpdate(BaseModel):
-    capacity_qty: Decimal = Field(gt=0)
-    uom: str = Field(min_length=1, max_length=50)
+    capacity_mode: CapacityMode
+    pallet_qty: Decimal = Decimal(0)
+    dus_qty: Decimal = Decimal(0)
+    dus_per_pallet: Decimal | None = None
+    pcs_per_dus: Decimal | None = None
+
+
+class WarehouseConfigCreate(WarehouseConfigUpdate):
+    product_id: str = Field(min_length=1)
 
 
 class WarehouseConfigOut(BaseModel):
@@ -24,6 +31,12 @@ class WarehouseConfigOut(BaseModel):
 
     id: str
     product_id: str
+    capacity_mode: CapacityMode
+    pallet_qty: Decimal
+    dus_qty: Decimal
+    dus_per_pallet: Decimal | None
+    pcs_per_dus: Decimal | None
+    capacity_dus: Decimal
     capacity_qty: Decimal
     uom: str
 

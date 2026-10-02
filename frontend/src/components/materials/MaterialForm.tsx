@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { optionalPriceField, parsePrice, priceDefault } from "@/lib/price";
 import type { Material, MaterialInput } from "@/types/material";
 
 const schema = z.object({
@@ -25,6 +26,7 @@ const schema = z.object({
   unit: z.string().min(1, "Satuan wajib diisi"),
   lead_time_days: z.coerce.number().int().min(0, "Tidak boleh negatif"),
   moq: z.coerce.number().min(0, "Tidak boleh negatif"),
+  unit_price: optionalPriceField,
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -49,11 +51,16 @@ export function MaterialForm({
       unit: initial?.unit ?? "",
       lead_time_days: initial?.lead_time_days ?? 0,
       moq: initial ? Number(initial.moq) : 0,
+      unit_price: priceDefault(initial?.unit_price),
     },
   });
 
   const submit = form.handleSubmit((v) =>
-    onSubmit({ ...v, category: v.category?.trim() ? v.category : null }),
+    onSubmit({
+      ...v,
+      category: v.category?.trim() ? v.category : null,
+      unit_price: parsePrice(v.unit_price),
+    }),
   );
 
   return (
@@ -132,6 +139,23 @@ export function MaterialForm({
             )}
           />
         </div>
+
+        <FormField
+          control={form.control}
+          name="unit_price"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Harga beli (Rp / satuan)</FormLabel>
+              <FormControl>
+                <Input type="number" step="any" min={0} {...field} />
+              </FormControl>
+              <FormDescription>
+                Dipakai untuk biaya material per produk (BOM) dan biaya pembelian.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormError message={error} />
 

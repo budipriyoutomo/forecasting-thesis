@@ -28,11 +28,12 @@ export function formatPercent(value: Numeric, maximumFractionDigits = 2): string
   return `${n.toLocaleString("id-ID", { maximumFractionDigits })}%`;
 }
 
-export function formatMoney(value: Numeric): string {
+export function formatMoney(value: Numeric, maximumFractionDigits = 0): string {
   const n = toNumber(value);
   if (n === null) return EMPTY;
-  // Rupiah tidak lazim ditulis sampai sen untuk angka sebesar biaya persediaan.
-  return `Rp ${n.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`;
+  // Rupiah tidak lazim ditulis sampai sen untuk angka sebesar biaya persediaan;
+  // biaya per unit (mis. baris BOM) boleh minta desimal.
+  return `Rp ${n.toLocaleString("id-ID", { maximumFractionDigits })}`;
 }
 
 export function formatDate(value: string | null | undefined): string {

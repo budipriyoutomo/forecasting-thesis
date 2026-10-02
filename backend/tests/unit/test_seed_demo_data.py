@@ -128,8 +128,20 @@ def test_material_dimensi_fisik_valid():
 def test_kapasitas_gudang_per_produk_valid():
     product_codes = {p.code for p in DEMO_PRODUCTS}
     assert {c.product_code for c in DEMO_WAREHOUSE_CAPACITY} == product_codes
-    for c in DEMO_WAREHOUSE_CAPACITY:
-        assert c.capacity_qty > 0
+    # Fase 10: demo memakai ketiga mode input pallet/dus
+    assert {c.capacity_mode for c in DEMO_WAREHOUSE_CAPACITY} == {"PALLET", "DUS", "COMBINED"}
+
+
+@pytest.mark.asyncio
+async def test_seed_kapasitas_gudang_dihitung_dari_pallet_dus():
+    repos = make_repos()
+    await seed_demo_data(user_id="user-1", **repos)
+    expected = {"KBYPL 200": 600_000, "KBYST 200": 600_000, "KBYBB 200": 500_000}  # PCS
+    for code, qty in expected.items():
+        product = await repos["products"].get_by_code(code)
+        config = repos["warehouse"].configs_by_product[product.id]
+        assert float(config.capacity_qty) == qty
+        assert config.uom == "PCS"
 
 
 # ── Deret demand ─────────────────────────────────────────────────────────

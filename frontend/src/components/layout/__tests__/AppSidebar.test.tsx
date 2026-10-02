@@ -20,7 +20,15 @@ describe("AppSidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     renderSidebar();
 
-    for (const label of ["Dashboard", "Produk", "Material", "BOM", "Forecast", "Gudang"]) {
+    for (const label of [
+      "Dashboard",
+      "Produk",
+      "Material",
+      "BOM",
+      "Kapasitas Gudang",
+      "Template Biaya",
+      "Forecast",
+    ]) {
       expect(screen.getByRole("link", { name: label })).toBeDefined();
     }
   });

@@ -107,6 +107,23 @@ class WarehouseConfigExistsError(AppError):
     code = "WAREHOUSE_CONFIG_EXISTS"
 
 
+class WarehouseCapacityInvalidError(AppError):
+    """Input pallet/dus tidak lengkap/tidak valid untuk mode & unit produknya (Fase 10)."""
+
+    status_code = 400
+    code = "WAREHOUSE_CAPACITY_INVALID"
+
+
+class CostTemplateNotFoundError(AppError):
+    status_code = 404
+    code = "COST_TEMPLATE_NOT_FOUND"
+
+
+class CostTemplateNameExistsError(AppError):
+    status_code = 409
+    code = "COST_TEMPLATE_NAME_EXISTS"
+
+
 # Catatan: WAREHOUSE_CAPACITY_EXCEEDED BUKAN HTTP error — dipakai sebagai flag
 # `is_within_capacity=false` di response 200 (docs/ARCHITECTURE.md §5, larangan #17),
 # jadi tidak ada exception class untuk itu (keputusan tetap di tangan planner).

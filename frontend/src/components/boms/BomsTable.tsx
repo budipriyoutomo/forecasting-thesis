@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import type { Bom } from "@/types/bom";
 import type { Material } from "@/types/material";
 import type { Product } from "@/types/product";
@@ -59,6 +59,13 @@ export function BomsTable({
         header: "Qty / unit",
         cell: ({ row }) => (
           <span className="tabular-nums">{formatNumber(row.original.qty_per_unit, 4)}</span>
+        ),
+      },
+      {
+        accessorKey: "line_cost",
+        header: "Biaya / unit produk",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatMoney(row.original.line_cost ?? null, 2)}</span>
         ),
       },
       {

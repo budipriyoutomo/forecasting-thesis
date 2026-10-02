@@ -1,6 +1,7 @@
 """
 Fase 6 v3.0, redesain 24 Agustus 2026 — endpoint /warehouse/config (CRUD per
 produk) & warehouse-validation. RBAC: POST/PUT/DELETE admin, GET semua role.
+Fase 10 (2 Oktober 2026) — payload pallet/dus, `capacity_qty`/`uom` turunan server.
 """
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -60,12 +61,71 @@ async def test_post_config_admin_lalu_list(client):
     res = await client.post(
         "/api/v1/warehouse/config",
         headers=_headers("admin"),
-        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
+        json={"product_id": "p1", "capacity_mode": "DUS", "dus_qty": 500},
     )
     assert res.status_code == 201
-    assert float(res.json()["data"]["capacity_qty"]) == 500
-    assert res.json()["data"]["product_id"] == "p1"
-    assert res.json()["data"]["uom"] == "Dus"
+    data = res.json()["data"]
+    assert data["product_id"] == "p1"
+    assert data["capacity_mode"] == "DUS"
+    assert float(data["capacity_qty"]) == 500
+    assert float(data["capacity_dus"]) == 500
+    assert data["uom"] == "DUS"
+
+
+@pytest.mark.asyncio
+async def test_post_config_kombinasi_unit_pcs(client):
+    _override(products={"p1": "PCS"})
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={
+            "product_id": "p1",
+            "capacity_mode": "COMBINED",
+            "pallet_qty": 10,
+            "dus_qty": 25,
+            "dus_per_pallet": 60,
+            "pcs_per_dus": 24,
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()["data"]
+    assert float(data["capacity_dus"]) == 625  # 10 × 60 + 25
+    assert float(data["capacity_qty"]) == 15000  # 625 × 24
+    assert data["uom"] == "PCS"
+
+
+@pytest.mark.asyncio
+async def test_post_config_pcs_per_dus_kosong_400(client):
+    _override(products={"p1": "PCS"})
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"product_id": "p1", "capacity_mode": "DUS", "dus_qty": 10},
+    )
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "WAREHOUSE_CAPACITY_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_post_config_pallet_tanpa_dus_per_pallet_400(client):
+    _override()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"product_id": "p1", "capacity_mode": "PALLET", "pallet_qty": 10},
+    )
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "WAREHOUSE_CAPACITY_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_post_config_tanpa_token_401(client):
+    _override()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        json={"product_id": "p1", "capacity_mode": "DUS", "dus_qty": 500},
+    )
+    assert res.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -74,7 +134,7 @@ async def test_post_config_non_admin_403(client):
     res = await client.post(
         "/api/v1/warehouse/config",
         headers=_headers("ppic"),
-        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
+        json={"product_id": "p1", "capacity_mode": "DUS", "dus_qty": 500},
     )
     assert res.status_code == 403
 
@@ -85,7 +145,7 @@ async def test_post_config_produk_tidak_ada_404(client):
     res = await client.post(
         "/api/v1/warehouse/config",
         headers=_headers("admin"),
-        json={"product_id": "ghost", "capacity_qty": 500, "uom": "Dus"},
+        json={"product_id": "ghost", "capacity_mode": "DUS", "dus_qty": 500},
     )
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
@@ -97,7 +157,7 @@ async def test_post_config_duplikat_409(client):
     res = await client.post(
         "/api/v1/warehouse/config",
         headers=_headers("admin"),
-        json={"product_id": "p1", "capacity_qty": 500, "uom": "Dus"},
+        json={"product_id": "p1", "capacity_mode": "DUS", "dus_qty": 500},
     )
     assert res.status_code == 409
     assert res.json()["error"]["code"] == "WAREHOUSE_CONFIG_EXISTS"
@@ -109,11 +169,27 @@ async def test_put_config_admin(client):
     res = await client.put(
         "/api/v1/warehouse/config/c1",
         headers=_headers("admin"),
-        json={"capacity_qty": 250, "uom": "Karton"},
+        json={"capacity_mode": "PALLET", "pallet_qty": 5, "dus_per_pallet": 50},
     )
     assert res.status_code == 200
-    assert float(res.json()["data"]["capacity_qty"]) == 250
-    assert res.json()["data"]["uom"] == "Karton"
+    data = res.json()["data"]
+    assert data["capacity_mode"] == "PALLET"
+    assert float(data["pallet_qty"]) == 5
+    assert float(data["dus_per_pallet"]) == 50
+    assert float(data["capacity_qty"]) == 250  # 5 × 50
+    assert data["uom"] == "DUS"
+
+
+@pytest.mark.asyncio
+async def test_put_config_tidak_ada_404(client):
+    _override()
+    res = await client.put(
+        "/api/v1/warehouse/config/ghost",
+        headers=_headers("admin"),
+        json={"capacity_mode": "DUS", "dus_qty": 5},
+    )
+    assert res.status_code == 404
+    assert res.json()["error"]["code"] == "WAREHOUSE_CONFIG_NOT_FOUND"
 
 
 @pytest.mark.asyncio
@@ -122,7 +198,7 @@ async def test_put_config_non_admin_403(client):
     res = await client.put(
         "/api/v1/warehouse/config/c1",
         headers=_headers("ppic"),
-        json={"capacity_qty": 250, "uom": "Karton"},
+        json={"capacity_mode": "PALLET", "pallet_qty": 5, "dus_per_pallet": 50},
     )
     assert res.status_code == 403
 

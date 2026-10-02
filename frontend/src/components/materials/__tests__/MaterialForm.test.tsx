@@ -39,7 +39,21 @@ describe("MaterialForm", () => {
       unit: "kg",
       lead_time_days: 7,
       moq: 100,
+      unit_price: null,
     });
+  });
+
+  it("mengirim harga beli per unit (Rupiah)", async () => {
+    const onSubmit = vi.fn();
+    render(<MaterialForm onSubmit={onSubmit} />);
+
+    await userEvent.type(screen.getByLabelText(/^kode$/i), "RM-001");
+    await userEvent.type(screen.getByLabelText(/^nama$/i), "Gula");
+    await userEvent.type(screen.getByLabelText(/^satuan$/i), "kg");
+    await userEvent.type(screen.getByLabelText(/harga beli/i), "14500");
+    await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ unit_price: 14500 }));
   });
 
   it("mengisi nilai awal saat mode edit", () => {
@@ -52,8 +66,11 @@ describe("MaterialForm", () => {
       lead_time_days: 5,
       moq: "50",
       manual_safety_stock: null,
+      unit_price: "14500.0000",
     };
     render(<MaterialForm initial={material} onSubmit={vi.fn()} />);
+
+    expect((screen.getByLabelText(/harga beli/i) as HTMLInputElement).value).toBe("14500");
 
     expect((screen.getByLabelText(/^kode$/i) as HTMLInputElement).value).toBe("RM-009");
     expect((screen.getByLabelText(/^nama$/i) as HTMLInputElement).value).toBe("Gula");

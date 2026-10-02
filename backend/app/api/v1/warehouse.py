@@ -5,7 +5,7 @@ PRODUK & validasi, docs §5/§6.7.
 GET    /warehouse/config                                → daftar konfigurasi (semua produk)
 GET    /warehouse/config/{id}                            → satu baris
 POST   /warehouse/config                                 → tambah (admin)
-PUT    /warehouse/config/{id}                             → ubah kapasitas (admin)
+PUT    /warehouse/config/{id}                             → ubah kapasitas pallet/dus (admin)
 DELETE /warehouse/config/{id}                             → hapus (admin)
 GET    /forecast/runs/{run_id}/warehouse-validation       → validasi run (flag, non-blocking)
 
@@ -22,7 +22,7 @@ from app.schemas.warehouse import (
     WarehouseConfigUpdate,
     WarehouseValidationOut,
 )
-from app.services.warehouse_service import WarehouseService
+from app.services.warehouse_service import CapacityInput, WarehouseService, capacity_dus_of
 
 router = APIRouter(tags=["warehouse"])
 
@@ -32,10 +32,26 @@ def _config_out(config) -> dict:
         {
             "id": str(config.id),
             "product_id": str(config.product_id),
+            "capacity_mode": config.capacity_mode,
+            "pallet_qty": config.pallet_qty,
+            "dus_qty": config.dus_qty,
+            "dus_per_pallet": config.dus_per_pallet,
+            "pcs_per_dus": config.pcs_per_dus,
+            "capacity_dus": round(capacity_dus_of(config), 4),
             "capacity_qty": config.capacity_qty,
             "uom": config.uom,
         }
     ).model_dump(mode="json")
+
+
+def _capacity_input(payload) -> CapacityInput:
+    return CapacityInput(
+        capacity_mode=payload.capacity_mode,
+        pallet_qty=payload.pallet_qty,
+        dus_qty=payload.dus_qty,
+        dus_per_pallet=payload.dus_per_pallet,
+        pcs_per_dus=payload.pcs_per_dus,
+    )
 
 
 @router.get("/warehouse/config", dependencies=[Depends(get_current_user)])
@@ -56,7 +72,7 @@ async def get_warehouse_config(
 async def create_warehouse_config(
     payload: WarehouseConfigCreate, service: WarehouseService = Depends(get_warehouse_service)
 ):
-    config = await service.create_config(payload.product_id, payload.capacity_qty, payload.uom)
+    config = await service.create_config(payload.product_id, _capacity_input(payload))
     return JSONResponse(status_code=201, content={"success": True, "data": _config_out(config)})
 
 
@@ -66,7 +82,7 @@ async def update_warehouse_config(
     payload: WarehouseConfigUpdate,
     service: WarehouseService = Depends(get_warehouse_service),
 ):
-    config = await service.update_config(config_id, payload.capacity_qty, payload.uom)
+    config = await service.update_config(config_id, _capacity_input(payload))
     return {"success": True, "data": _config_out(config)}
 
 

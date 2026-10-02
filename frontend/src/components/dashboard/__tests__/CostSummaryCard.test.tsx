@@ -26,3 +26,36 @@ describe("CostSummaryCard", () => {
     expect(value.className).toContain("text-destructive");
   });
 });
+
+describe("CostSummaryCard — template biaya & biaya pembelian (Fase 10)", () => {
+  it("menyebut template biaya aktif sebagai sumber S & H", () => {
+    render(
+      <CostSummaryCard
+        summary={{ ...summary, cost_source: "template", cost_template_name: "Template 2026" }}
+      />,
+    );
+    expect(screen.getByText(/template biaya: template 2026/i)).toBeDefined();
+  });
+
+  it("menyebut biaya default sistem bila tanpa template aktif", () => {
+    render(<CostSummaryCard summary={{ ...summary, cost_source: "env", cost_template_name: null }} />);
+    expect(screen.getByText(/biaya default sistem/i)).toBeDefined();
+  });
+
+  it("biaya pembelian tampil sebagai informasi di luar TIC + peringatan material tanpa harga", () => {
+    render(
+      <CostSummaryCard
+        summary={{ ...summary, purchase_cost: "60000", n_materials_without_price: 2, cost_source: "env" }}
+      />,
+    );
+    expect(screen.getByText(/biaya pembelian material/i)).toBeDefined();
+    expect(screen.getByText("Rp 60.000")).toBeDefined();
+    expect(screen.getByText(/tidak termasuk tic/i)).toBeDefined();
+    expect(screen.getByText(/2 material belum punya harga/i)).toBeDefined();
+  });
+
+  it("tanpa field Fase 10 (respons lama) kartu tetap tampil seperti semula", () => {
+    render(<CostSummaryCard summary={summary} />);
+    expect(screen.queryByText(/biaya pembelian material/i)).toBeNull();
+  });
+});

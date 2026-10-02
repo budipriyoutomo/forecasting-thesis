@@ -40,16 +40,17 @@ export default function WarehousePage() {
 
   const onSubmit = (input: WarehouseConfigInput) => {
     const opts = { onSuccess: () => setOpen(false) };
-    if (editing)
-      update.mutate({ id: editing.id, capacity_qty: input.capacity_qty, uom: input.uom }, opts);
-    else create.mutate(input, opts);
+    if (editing) {
+      const { product_id: _productId, ...capacity } = input;
+      update.mutate({ id: editing.id, input: capacity }, opts);
+    } else create.mutate(input, opts);
   };
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Kapasitas Gudang"
-        description="Kapasitas per produk, angka bebas — isi langsung sesuai kondisi gudang. Dipakai untuk memvalidasi apakah forecast produk muat."
+        description="Kapasitas per produk dalam pallet, dus, atau kombinasi keduanya. Sistem mengonversinya ke unit produk untuk memvalidasi apakah forecast muat."
         actions={
           <Button
             onClick={() => {
@@ -63,7 +64,7 @@ export default function WarehousePage() {
         }
       />
 
-      {isPending && <TableSkeleton columns={3} />}
+      {isPending && <TableSkeleton columns={5} />}
       {isError && (
         <Alert variant="destructive">
           <AlertDescription>Gagal memuat konfigurasi gudang.</AlertDescription>
@@ -86,9 +87,9 @@ export default function WarehousePage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Ubah kapasitas" : "Tambah kapasitas"}</DialogTitle>
             <DialogDescription>
-              Kapasitas adalah angka bebas (unit produk) — isikan langsung sesuai kondisi
-              gudang, tidak dihitung dari luas gudang atau dimensi palet. UOM juga isian
-              bebas, tanpa master UOM.
+              Isi kapasitas dalam pallet, dus, atau kombinasi. Bila unit produk bukan
+              dus/karton/box, isi juga jumlah pcs per dus agar bisa dibandingkan dengan
+              forecast.
             </DialogDescription>
           </DialogHeader>
           <WarehouseConfigForm

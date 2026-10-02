@@ -53,6 +53,10 @@ describe("formatMoney", () => {
   it("mengembalikan em dash untuk nilai kosong", () => {
     expect(formatMoney(null)).toBe("—");
   });
+
+  it("bisa menampilkan desimal untuk biaya per unit kecil", () => {
+    expect(formatMoney("181.2500", 2)).toBe("Rp 181,25");
+  });
 });
 
 describe("formatDate", () => {

@@ -2,11 +2,12 @@
 ORM model kapasitas gudang (v3.0 Fase 6, redesain 24 Agustus 2026) —
 docs/ARCHITECTURE.md §4/§6.7.
 
-`warehouse_config`  : kapasitas per PRODUK, angka bebas (unit produk, bukan palet).
-                      Input planner langsung — tidak diturunkan dari luas gudang ×
-                      dimensi palet lagi (keputusan user: free input). `uom` juga
-                      free input teks (mis. "Dus", "Pcs", "Karton") — TIDAK ada
-                      tabel master UOM (redesain 24 Agustus 2026).
+`warehouse_config`  : kapasitas per PRODUK. Sejak Fase 10 (2 Oktober 2026) input
+                      planner = pallet / dus / kombinasi (`capacity_mode`,
+                      `pallet_qty`, `dus_qty`, `dus_per_pallet`, `pcs_per_dus`).
+                      `capacity_qty` (unit produk) & `uom` (= products.unit) adalah
+                      TURUNAN yang dihitung server (warehouse_service.compute_effective_capacity),
+                      jadi validasi kapasitas di bawah tidak berubah.
 `warehouse_validations` : hasil validasi per run — per produk, apakah forecast qty
 muat kapasitasnya. Melebihi kapasitas BUKAN error, hanya flag `is_within_capacity`
 (keputusan tetap di planner, AGENTS.md larangan #17).
@@ -31,6 +32,11 @@ class WarehouseConfig(Base):
     product_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id"), unique=True, nullable=False, index=True
     )
+    capacity_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="DUS")
+    pallet_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    dus_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    dus_per_pallet: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    pcs_per_dus: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     capacity_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     uom: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

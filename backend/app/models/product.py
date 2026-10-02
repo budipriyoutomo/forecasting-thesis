@@ -6,8 +6,9 @@ diturunkan lewat BOM (lihat `bom.py`). `code` unik (mis. `KBYPL 200`).
 """
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +25,9 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Fase 10 (2 Okt 2026) — harga per unit, IDR, opsional
+    cost_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)  # HPP
+    selling_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

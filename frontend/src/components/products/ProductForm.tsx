@@ -15,6 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { optionalPriceField, parsePrice, priceDefault } from "@/lib/price";
 import type { Product, ProductInput } from "@/types/product";
 
 const schema = z.object({
@@ -22,6 +23,8 @@ const schema = z.object({
   name: z.string().min(1, "Nama wajib diisi"),
   category: z.string().optional(),
   unit: z.string().min(1, "Satuan wajib diisi"),
+  cost_price: optionalPriceField,
+  selling_price: optionalPriceField,
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -44,11 +47,18 @@ export function ProductForm({
       name: initial?.name ?? "",
       category: initial?.category ?? "",
       unit: initial?.unit ?? "",
+      cost_price: priceDefault(initial?.cost_price),
+      selling_price: priceDefault(initial?.selling_price),
     },
   });
 
   const submit = form.handleSubmit((v) =>
-    onSubmit({ ...v, category: v.category?.trim() ? v.category : null }),
+    onSubmit({
+      ...v,
+      category: v.category?.trim() ? v.category : null,
+      cost_price: parsePrice(v.cost_price),
+      selling_price: parsePrice(v.selling_price),
+    }),
   );
 
   return (
@@ -109,6 +119,36 @@ export function ProductForm({
             </FormItem>
           )}
         />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="cost_price"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>HPP (Rp / unit)</FormLabel>
+                <FormControl>
+                  <Input type="number" step="any" min={0} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="selling_price"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Harga jual (Rp / unit)</FormLabel>
+                <FormControl>
+                  <Input type="number" step="any" min={0} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormError message={error} />
 

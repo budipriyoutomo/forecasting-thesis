@@ -25,3 +25,5 @@ class BomResponse(BaseModel):
     product_id: str
     material_id: str
     qty_per_unit: Decimal
+    # Fase 10 — read-only: qty_per_unit × materials.unit_price (null bila tanpa harga)
+    line_cost: Decimal | None = None

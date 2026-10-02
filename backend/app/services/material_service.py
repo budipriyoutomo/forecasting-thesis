@@ -9,6 +9,8 @@ import io
 from decimal import Decimal, InvalidOperation
 from typing import Callable, Protocol
 
+from pydantic import ValidationError
+
 from app.models.material import Material
 from app.schemas.material import MaterialCreate, MaterialUpdate
 from app.utils.exceptions import (
@@ -126,13 +128,17 @@ class MaterialService:
             {k: float(v) for k, v in dims.items()} if all(v is not None for v in dims.values()) else None
         )
 
-        return MaterialCreate(
-            code=code,
-            name=name,
-            category=(row.get("category") or "").strip() or None,
-            unit=unit,
-            lead_time_days=lead_days,
-            moq=num("moq") or Decimal(0),
-            manual_safety_stock=num("manual_safety_stock"),
-            dimension=dimension,
-        )
+        try:
+            return MaterialCreate(
+                code=code,
+                name=name,
+                category=(row.get("category") or "").strip() or None,
+                unit=unit,
+                lead_time_days=lead_days,
+                moq=num("moq") or Decimal(0),
+                manual_safety_stock=num("manual_safety_stock"),
+                dimension=dimension,
+                unit_price=num("unit_price"),
+            )
+        except ValidationError as exc:
+            raise UploadInvalidFormatError(f"Baris {line}: nilai tidak valid (angka tidak boleh negatif).") from exc

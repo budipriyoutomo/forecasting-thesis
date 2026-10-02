@@ -194,3 +194,34 @@ async def test_import_csv_non_admin_403(client):
     )
 
     assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_material_dengan_harga_201(client):
+    _override([])
+    res = await client.post(
+        "/api/v1/materials",
+        headers=_headers("admin"),
+        json={"code": "RM-020", "name": "Gula", "unit": "kg", "unit_price": 14500},
+    )
+    assert res.status_code == 201
+    assert float(res.json()["data"]["unit_price"]) == 14500
+
+
+@pytest.mark.asyncio
+async def test_update_harga_material_admin(client):
+    _override([FakeMaterial(id="m1", code="RM-001", name="Tepung", unit="kg")])
+    res = await client.put("/api/v1/materials/m1", headers=_headers("admin"), json={"unit_price": 12000})
+    assert res.status_code == 200
+    assert float(res.json()["data"]["unit_price"]) == 12000
+
+
+@pytest.mark.asyncio
+async def test_create_material_harga_negatif_ditolak(client):
+    _override([])
+    res = await client.post(
+        "/api/v1/materials",
+        headers=_headers("admin"),
+        json={"code": "RM-020", "name": "Gula", "unit": "kg", "unit_price": -5},
+    )
+    assert res.status_code == 422

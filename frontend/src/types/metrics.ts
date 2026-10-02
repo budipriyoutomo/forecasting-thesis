@@ -8,6 +8,11 @@ export interface CostSummary {
   total_inventory_cost: string; // usulan ForecastIQ
   baseline_inventory_cost: string; // existing (planning perusahaan)
   savings_pct: string;
+  // Fase 10 (2 Okt 2026) — additive; opsional supaya respons lama tetap valid
+  purchase_cost?: string; // Σ kebutuhan material × harga beli — informasi, bukan TIC
+  n_materials_without_price?: number;
+  cost_source?: "template" | "env"; // sumber S & H
+  cost_template_name?: string | null;
 }
 
 export type MetricScope = "baseline" | "forecastiq";

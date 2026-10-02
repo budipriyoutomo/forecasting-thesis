@@ -135,3 +135,91 @@ async def test_run_milik_user_lain_403():
     svc = _service(run=run)
     with pytest.raises(ForbiddenRoleError):
         await svc.get_cost_summary(USER, "r1")
+
+
+# ── Template biaya aktif & biaya pembelian (Fase 10.6) ──
+
+
+class FakeCostTemplateRepo:
+    def __init__(self, active=None):
+        self._active = active
+
+    async def get_active(self):
+        return self._active
+
+
+class FakeMaterialRepo:
+    def __init__(self, materials):
+        self._by_id = {str(m.id): m for m in materials}
+
+    async def get_by_id(self, mid):
+        return self._by_id.get(str(mid))
+
+
+def _service_v10(template=None, materials=None, forecast_values=(10, 10)):
+    run = SimpleNamespace(id="r1", user_id=USER)
+    fdata = [{"value": v} for v in forecast_values]
+    return CostService(
+        forecast_repo=FakeForecastRepo(run, [SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=fdata)]),
+        reorder_repo=FakeReorderRepo([_rec("M1", 80, 0, 80)]),
+        demand_repo=FakeDemandRepo({"P1": [_demand_row("SKU1", f"2026-0{i}-01", 10) for i in (1, 2, 3)]}),
+        boms=FakeBomRepo(
+            {
+                "P1": [
+                    SimpleNamespace(product_id="P1", material_id="M1", qty_per_unit=2),
+                    SimpleNamespace(product_id="P1", material_id="M2", qty_per_unit=1),
+                ]
+            }
+        ),
+        products=FakeProductRepo([SimpleNamespace(id="P1", code="SKU1")]),
+        ordering_cost=999,  # fallback (env) — harus kalah oleh template aktif
+        holding_cost=0,
+        cost_templates=FakeCostTemplateRepo(template),
+        materials=FakeMaterialRepo(materials or []),
+    )
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_baseline_pakai_s_template_aktif():
+    tpl = SimpleNamespace(name="Template 2026", ordering_cost=Decimal("100"), holding_cost=Decimal("0"))
+    out = await _service_v10(template=tpl).get_cost_summary(USER, "r1")
+    # baseline: 2 material × 1 pesanan × S=100 (H=0) = 200
+    assert out.baseline_inventory_cost == Decimal("200")
+    assert out.cost_source == "template"
+    assert out.cost_template_name == "Template 2026"
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_tanpa_template_fallback_ke_biaya_default():
+    out = await _service_v10(template=None).get_cost_summary(USER, "r1")
+    assert out.baseline_inventory_cost == Decimal("1998")  # 2 material × S=999
+    assert out.cost_source == "env"
+    assert out.cost_template_name is None
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_biaya_pembelian_informasi():
+    # forecast P1 [10, 10] → M1 (qty 2) = 40 unit × Rp1.500 = Rp60.000; M2 tanpa harga
+    materials = [
+        SimpleNamespace(id="M1", unit_price=Decimal("1500")),
+        SimpleNamespace(id="M2", unit_price=None),
+    ]
+    out = await _service_v10(materials=materials).get_cost_summary(USER, "r1")
+    assert out.purchase_cost == Decimal("60000")
+    assert out.n_materials_without_price == 1
+    assert out.total_inventory_cost == Decimal("80")  # TIC tidak ikut biaya pembelian
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_tanpa_repo_material_semua_dianggap_tanpa_harga():
+    run = SimpleNamespace(id="r1", user_id=USER)
+    svc = _service(
+        run=run,
+        results=[SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=[{"value": 5}])],
+        boms={"P1": [SimpleNamespace(product_id="P1", material_id="M1", qty_per_unit=1)]},
+        products=[SimpleNamespace(id="P1", code="SKU1")],
+    )
+    out = await svc.get_cost_summary(USER, "r1")
+    assert out.purchase_cost == Decimal("0")
+    assert out.n_materials_without_price == 1
+    assert out.cost_source == "env"

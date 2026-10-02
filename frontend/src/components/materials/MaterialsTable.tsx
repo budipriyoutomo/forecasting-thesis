@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import type { Material } from "@/types/material";
 
 export function MaterialsTable({
@@ -37,6 +37,13 @@ export function MaterialsTable({
         header: "MOQ",
         cell: ({ row }) => (
           <span className="tabular-nums">{formatNumber(row.original.moq)}</span>
+        ),
+      },
+      {
+        accessorKey: "unit_price",
+        header: "Harga beli",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatMoney(row.original.unit_price ?? null)}</span>
         ),
       },
       {

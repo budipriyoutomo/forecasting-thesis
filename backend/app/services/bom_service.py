@@ -25,6 +25,16 @@ from app.utils.exceptions import (
 REQUIRED_IMPORT_COLUMNS = {"product_code", "material_code", "qty_per_unit"}
 
 
+# ── Biaya material per unit produk (Fase 10) — read-only, tidak dipersist ──
+
+
+def compute_line_cost(qty_per_unit, unit_price) -> Decimal | None:
+    """Biaya satu baris BOM = qty_per_unit × harga material; None bila material tanpa harga."""
+    if unit_price is None:
+        return None
+    return (Decimal(str(qty_per_unit)) * Decimal(str(unit_price))).quantize(Decimal("0.0001"))
+
+
 # ── Breakdown deret & buffer stock — fungsi murni, dipakai reorder & cost ──
 
 
@@ -92,6 +102,10 @@ class BomService:
 
     async def list(self, product_id: str | None = None):
         return await self._repo.list(product_id)
+
+    async def material_prices(self) -> dict[str, Decimal | None]:
+        """{material_id: unit_price} — satu query untuk menghitung line_cost banyak baris."""
+        return {str(m.id): getattr(m, "unit_price", None) for m in await self._materials.list()}
 
     async def get(self, bom_id: str):
         bom = await self._repo.get_by_id(bom_id)

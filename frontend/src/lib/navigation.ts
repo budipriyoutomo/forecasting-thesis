@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Calculator,
   LayoutDashboard,
   LineChart,
   Network,
@@ -10,7 +11,8 @@ import {
 
 // Sumber tunggal struktur navigasi: dipakai sidebar sekaligus breadcrumb, supaya
 // keduanya tidak bisa saling tidak sinkron. Urutan grup mengikuti alur kerja PPIC —
-// master data (produk → material → BOM) dulu, baru operasional (forecast → gudang).
+// master data (produk → material → BOM → kapasitas gudang → template biaya) dulu,
+// baru operasional (forecast). Gudang & template biaya masuk Master Data sejak Fase 10.
 
 export interface NavItem {
   href: string;
@@ -34,14 +36,13 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/products", label: "Produk", icon: Package },
       { href: "/materials", label: "Material", icon: Boxes },
       { href: "/boms", label: "BOM", icon: Network },
+      { href: "/warehouse", label: "Kapasitas Gudang", icon: Warehouse },
+      { href: "/cost-templates", label: "Template Biaya", icon: Calculator },
     ],
   },
   {
     label: "Operasional",
-    items: [
-      { href: "/forecast/new", label: "Forecast", icon: LineChart },
-      { href: "/warehouse", label: "Gudang", icon: Warehouse },
-    ],
+    items: [{ href: "/forecast/new", label: "Forecast", icon: LineChart }],
   },
 ];
 

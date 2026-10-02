@@ -2,11 +2,13 @@
 Swap v3.0 — ReorderService per MATERIAL dari breakdown BOM atas forecast produk.
 Repo/forecast/BOM/material di-mock.
 """
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
-from app.services.reorder_service import ReorderService
+from app.config import get_settings
+from app.services.reorder_service import ReorderService, compute_eoq
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
 USER = "u1"
@@ -158,3 +160,49 @@ async def test_list_filter_status():
     assert all(r.status == "urgent" for r in urgent)
     assert all(r.status == "overstock" for r in overstock)
     assert len(urgent) >= 1 and len(overstock) >= 1
+
+
+# ── S & H dari template biaya aktif (Fase 10.6) ──
+
+
+class FakeCostTemplateRepo:
+    def __init__(self, active=None):
+        self._active = active
+
+    async def get_active(self):
+        return self._active
+
+
+def _template(S, H):
+    return SimpleNamespace(name="Template 2026", ordering_cost=S, holding_cost=H, is_active=True)
+
+
+@pytest.mark.asyncio
+async def test_generate_pakai_s_dan_h_template_aktif():
+    # H = 0 → EOQ memilih n = 1 pesanan; ordering = 1 × S template = 1.000.000
+    svc = ReorderService(
+        reorder_repo=FakeReorderRepo(),
+        forecast_repo=FakeForecastRepo(_run(), [_result("p1", [10, 12, 11, 9])]),
+        boms=FakeBomRepo({"p1": [_bom("p1", "M1", 1)]}),
+        materials=FakeMaterialRepo([_material("M1", "RM-001")]),
+        cost_templates=FakeCostTemplateRepo(_template(Decimal("1000000"), Decimal("0"))),
+    )
+    r = (await svc.generate_for_run(USER, "r1", current_stock={"M1": 0}))[0]
+    assert float(r.ordering_cost) == 1_000_000
+    assert float(r.holding_cost) == 0
+    assert float(r.total_inventory_cost) == 1_000_000
+
+
+@pytest.mark.asyncio
+async def test_generate_tanpa_template_aktif_fallback_env():
+    settings = get_settings()
+    svc = ReorderService(
+        reorder_repo=FakeReorderRepo(),
+        forecast_repo=FakeForecastRepo(_run(), [_result("p1", [10, 12, 11, 9])]),
+        boms=FakeBomRepo({"p1": [_bom("p1", "M1", 1)]}),
+        materials=FakeMaterialRepo([_material("M1", "RM-001")]),
+        cost_templates=FakeCostTemplateRepo(None),
+    )
+    r = (await svc.generate_for_run(USER, "r1", current_stock={"M1": 0}))[0]
+    expected = compute_eoq([10, 12, 11, 9], settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE)
+    assert float(r.total_inventory_cost) == pytest.approx(float(expected.total_cost))

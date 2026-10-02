@@ -456,3 +456,98 @@ sekali.
 
 ### Guard regresi
 Backend: `test_warehouse_service.py` & `test_warehouse_api.py` ditulis ulang total (CRUD + validasi per produk), `test_dashboard_service.py` & `test_seed_demo_data.py` disesuaikan. Frontend: `WarehouseConfigForm.test.tsx`, `WarehouseConfigTable.test.tsx`, `WarehouseCapacityBadge.test.tsx` ditulis ulang. 369 test backend PASSED, 143 test frontend PASSED, `tsc --noEmit`, `next lint`, dan `next build` bersih.
+
+## Konsolidasi Master Data: Kapasitas Pallet/Dus, Harga, Template Biaya (2 Oktober 2026)
+
+**Trigger:** user minta satu kelompok **Master Data** berisi master kapasitas gudang
+(pallet, dus, atau kombinasi), master barang/material beserta harga, master BOM, dan
+master template biaya (biaya pembelian material, overhead seperti listrik, biaya
+penyimpanan = depresiasi aset pallet/rak/alat handling). Keputusan di bawah dijawab
+user satu per satu (Fase 0 todo, 2 Oktober 2026).
+
+### Keputusan user
+| # | Pertanyaan | Keputusan |
+|---|---|---|
+| Q1 | Di mana faktor konversi pallet → dus? | Di **baris kapasitas** (`warehouse_config.dus_per_pallet`), bukan di master produk |
+| Q1b | Satuan pembanding forecast? | Ikut `products.unit`: unit "dus-like" (`DUS`/`KARTON`/`BOX`/`CTN`, case-insensitive) → kapasitas efektif dalam dus dibandingkan langsung; unit lain (mis. `PCS`) → wajib `pcs_per_dus`, kapasitas efektif dikali `pcs_per_dus` |
+| Q2 | Harga ditambahkan ke mana? | Material (`unit_price`) **dan** produk jadi (`cost_price` = HPP, `selling_price` = harga jual) |
+| Q2c | Mata uang? | **IDR saja**, tanpa kolom currency |
+| Q3 | Cakupan template biaya? | Boleh banyak template, **tepat satu aktif global** dipakai semua material |
+| Q3b | Hubungan dengan env? | Template aktif jadi sumber utama S & H; **env `DEFAULT_ORDERING_COST`/`DEFAULT_HOLDING_COST_RATE` jadi fallback** bila tidak ada template aktif |
+| Q4a | Depresiasi → H? | **H diisi manual** oleh planner di template |
+| Q4b/e | Overhead masuk mana? | Overhead & depresiasi **hanya referensi**: sistem menampilkan *saran H* = (Σ depresiasi/bln + Σ overhead/bln) ÷ total kapasitas efektif gudang (dus). Yang dipakai EOQ tetap H manual |
+| Q4c | Biaya pembelian di TIC? | **Informasi saja** — TIC tetap `ordering + holding` (sesuai thesis), biaya pembelian tampil sebagai angka terpisah |
+| Q4d | S (biaya pesan) dari mana? | Satu field `ordering_cost` di template aktif |
+
+### Keputusan teknis turunan (diambil assistant, dicatat agar bisa dikoreksi)
+1. **`warehouse_config.capacity_qty` dipertahankan** sebagai kapasitas efektif dalam
+   unit produk, **dihitung ulang server-side** setiap create/update dari
+   `pallet_qty`/`dus_qty`/`dus_per_pallet`/`pcs_per_dus`. Akibatnya `validate_capacity()`,
+   `warehouse_validations.details`, `WarehouseCapacityBadge`, dan `dashboard/summary`
+   **tidak berubah** — perubahan hanya di sisi input. `capacity_qty` tidak lagi boleh
+   dikirim client (diabaikan/ditolak di schema request baru).
+2. **`uom` jadi turunan**, bukan isian bebas lagi: diisi otomatis = `products.unit`
+   (karena `capacity_qty` sekarang selalu dalam unit produk). Kolom tetap ada → response
+   tetap punya `uom` (backward-compatible untuk pembaca).
+3. **Migrasi data lama** (non-destruktif): baris existing → `capacity_mode = 'DUS'`,
+   `dus_qty = capacity_qty`, `pallet_qty = 0`; bila unit produk bukan dus-like,
+   `pcs_per_dus = 1` → `capacity_qty` hasil hitung ulang **sama persis** dengan nilai
+   lama. Planner disarankan merapikan angka ini dari halaman Kapasitas Gudang.
+4. Rumus kapasitas efektif:
+   `dus_total = pallet_qty × dus_per_pallet + dus_qty` (mode `PALLET` → `dus_qty = 0`,
+   mode `DUS` → `pallet_qty = 0`, mode `COMBINED` → keduanya);
+   `capacity_qty = dus_total` (unit dus-like) atau `dus_total × pcs_per_dus` (unit lain).
+5. **Depresiasi garis lurus per bulan**: `(purchase_price − salvage_value) ÷ useful_life_months × qty`.
+   Satuan periode template = **bulan** (sama dengan periode demand thesis).
+6. **Saran H** dibagi Σ kapasitas efektif dalam **dus** (sebelum dikali `pcs_per_dus`)
+   seluruh baris `warehouse_config` → saran H per dus per bulan. Bila belum ada
+   kapasitas terkonfigurasi, saran H = `null`.
+7. **Biaya pembelian** (informasi) di `cost-summary`: `purchase_cost` = Σ kebutuhan
+   material sepanjang horizon (hasil `breakdown_requirements_series`) × `unit_price`.
+   Material tanpa harga dilewati dan dihitung di `n_materials_without_price`.
+8. **Biaya material per unit produk via BOM** (read-only): Σ `qty_per_unit × unit_price`
+   — ditampilkan berdampingan dengan HPP produk sebagai pembanding, tidak menimpa HPP.
+9. Item template disimpan nested: `PUT /cost-templates/{id}` mengganti seluruh daftar
+   item (replace-all), bukan endpoint terpisah per item.
+10. Error code baru: `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409),
+    `WAREHOUSE_CAPACITY_INVALID` (400 — ditambah saat implementasi 10.2: kewajiban
+    `pcs_per_dus` bergantung `products.unit` yang hanya diketahui di service, jadi tidak
+    bisa divalidasi Pydantic saja).
+    Sekaligus mendokumentasikan `WAREHOUSE_CONFIG_EXISTS` (409) yang **sudah dipakai di
+    kode sejak 24 Agustus 2026** (`utils/exceptions.py`) tapi belum pernah masuk daftar
+    `AGENTS.md` §4 — drift yang diperbaiki di sini.
+11. Hak akses: tulis template biaya & kapasitas = `admin` (pola `/warehouse/config`);
+    baca = semua role terautentikasi.
+12. Template baru **tidak otomatis aktif** — aktivasi selalu eksplisit
+    (`POST /cost-templates/{id}/activate`) supaya S & H EOQ tidak berubah diam-diam saat
+    admin sekadar menyusun draf template. Aktivasi = dua UPDATE (matikan yang lain, lalu
+    aktifkan) agar partial unique index tidak pernah sempat dilanggar.
+13. Validasi item template (field wajib per `item_type`, nilai sisa ≤ harga beli) di
+    schema → 422, mengikuti konvensi validasi field lain di repo (bukan error code baru).
+14. **Efek samping backfill pada saran H:** baris kapasitas lama untuk produk non-dus
+    di-backfill `pcs_per_dus = 1`, sehingga `capacity_dus`-nya = angka PCS lama dan ikut
+    membesarkan Σ kapasitas dus → saran H terlalu kecil sampai planner merapikan baris
+    itu (isi pcs/dus sebenarnya). Saran H hanya referensi, EOQ tidak terdampak.
+15. **Ganti template setelah reorder dibuat → perbandingan TIC sementara asimetris.**
+    TIC usulan dibaca dari `reorder_recommendations` tersimpan (S & H saat reorder
+    di-generate), sedangkan TIC baseline dihitung ulang saat `cost-summary` diminta
+    dengan template yang aktif *sekarang*. Setelah mengaktifkan template lain, generate
+    ulang reorder agar keduanya memakai S & H yang sama. Tidak diselesaikan dengan
+    menyimpan S & H per run (perubahan skema) — dicatat sebagai batasan yang disadari.
+16. Integrasi bersifat opsional di konstruktor (`cost_templates=None`, `materials=None`)
+    sehingga `ReorderService`/`CostService` lama & seluruh test-nya tetap valid tanpa
+    perubahan; argumen `ordering_cost`/`holding_cost` `CostService` kini berperan
+    sebagai fallback setara env.
+
+### Yang TIDAK berubah
+- Rumus `compute_eoq`, `compute_tic`, `compute_savings_pct` — hanya **sumber** nilai S & H
+  yang berubah. Angka simulasi thesis tetap reproducible (tanpa template aktif = perilaku lama).
+- `warehouse_validations` & response `GET /forecast/runs/{run_id}/warehouse-validation`.
+- Struktur tabel `boms`.
+
+### Breaking change (disadari)
+- Request `POST`/`PUT /warehouse/config` berubah: `capacity_qty` & `uom` diganti
+  `capacity_mode` + `pallet_qty`/`dus_qty`/`dus_per_pallet`/`pcs_per_dus`. Response
+  **tetap** memuat `capacity_qty` & `uom` (ditambah field baru).
+- Menu **Gudang** pindah dari grup "Operasional" ke "Master Data" dengan label
+  "Kapasitas Gudang" (URL `/warehouse` tetap).

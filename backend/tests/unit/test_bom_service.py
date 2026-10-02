@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from app.schemas.bom import BomCreate, BomUpdate
-from app.services.bom_service import BomService
+from app.services.bom_service import BomService, compute_line_cost
 from app.utils.exceptions import (
     BomNotFoundError,
     MaterialNotFoundError,
@@ -128,3 +128,26 @@ async def test_import_kolom_wajib_hilang():
     svc = _service()
     with pytest.raises(UploadInvalidFormatError):
         await svc.import_csv(b"product_code,material_code\nP1,M1\n")
+
+
+# ── Biaya material per unit produk (Fase 10, 2 Oktober 2026) ──
+
+def test_line_cost_qty_kali_harga():
+    # 0,0125 kg gula × Rp14.500/kg = Rp181,25
+    assert compute_line_cost(Decimal("0.0125"), Decimal("14500")) == Decimal("181.2500")
+
+
+def test_line_cost_null_bila_material_tanpa_harga():
+    assert compute_line_cost(Decimal("2"), None) is None
+
+
+@pytest.mark.asyncio
+async def test_material_prices_map_id_ke_harga():
+    svc = _service(
+        materials=[
+            FakeMaterial(id="m1", code="M1", name="Gula", unit="kg", unit_price=Decimal("14500")),
+            FakeMaterial(id="m2", code="M2", name="Botol", unit="pcs"),
+        ]
+    )
+    prices = await svc.material_prices()
+    assert prices == {"m1": Decimal("14500"), "m2": None}

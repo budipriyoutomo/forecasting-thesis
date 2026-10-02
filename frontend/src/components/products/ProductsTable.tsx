@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
+import { formatMoney } from "@/lib/format";
 import type { Product } from "@/types/product";
 
 export function ProductsTable({
@@ -31,6 +32,20 @@ export function ProductsTable({
         cell: ({ row }) => row.original.category ?? "—",
       },
       { accessorKey: "unit", header: "Satuan" },
+      {
+        accessorKey: "cost_price",
+        header: "HPP",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatMoney(row.original.cost_price ?? null)}</span>
+        ),
+      },
+      {
+        accessorKey: "selling_price",
+        header: "Harga jual",
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatMoney(row.original.selling_price ?? null)}</span>
+        ),
+      },
       {
         id: "actions",
         enableHiding: false,

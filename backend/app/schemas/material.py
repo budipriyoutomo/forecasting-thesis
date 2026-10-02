@@ -23,6 +23,8 @@ class MaterialCreate(BaseModel):
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
     # v3.0 — kapasitas gudang (docs §6.7)
     dimension: Dimension | None = Field(default=None)
+    # Fase 10 — harga beli per unit, IDR, opsional
+    unit_price: Decimal | None = Field(default=None, ge=0)
 
 
 class MaterialUpdate(BaseModel):
@@ -35,6 +37,7 @@ class MaterialUpdate(BaseModel):
     moq: Decimal | None = Field(default=None, ge=0)
     manual_safety_stock: Decimal | None = Field(default=None, ge=0)
     dimension: Dimension | None = Field(default=None)
+    unit_price: Decimal | None = Field(default=None, ge=0)
 
 
 class MaterialResponse(BaseModel):
@@ -49,3 +52,4 @@ class MaterialResponse(BaseModel):
     moq: Decimal
     manual_safety_stock: Decimal | None
     dimension: dict | None = None
+    unit_price: Decimal | None = None

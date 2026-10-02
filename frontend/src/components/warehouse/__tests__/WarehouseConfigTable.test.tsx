@@ -10,7 +10,18 @@ const products: Product[] = [
 ];
 
 const configs: WarehouseConfig[] = [
-  { id: "c1", product_id: "p1", capacity_qty: "600000", uom: "Dus" },
+  {
+    id: "c1",
+    product_id: "p1",
+    capacity_mode: "COMBINED",
+    pallet_qty: "10",
+    dus_qty: "25",
+    dus_per_pallet: "60",
+    pcs_per_dus: "24",
+    capacity_dus: "625",
+    capacity_qty: "15000",
+    uom: "PCS",
+  },
 ];
 
 describe("WarehouseConfigTable", () => {
@@ -20,10 +31,13 @@ describe("WarehouseConfigTable", () => {
     expect(screen.getByText("KBYPL 200 — KIN Yogurt 200ml")).toBeDefined();
   });
 
-  it("menampilkan UOM free input", () => {
+  it("menampilkan mode, rincian pallet/dus, dan kapasitas efektif dalam unit produk", () => {
     render(<WarehouseConfigTable configs={configs} products={products} />);
 
-    expect(screen.getByText("Dus")).toBeDefined();
+    expect(screen.getByText("Kombinasi")).toBeDefined();
+    expect(screen.getByText("10 pallet × 60 + 25 dus")).toBeDefined();
+    expect(screen.getByText("625 dus")).toBeDefined();
+    expect(screen.getByText("15.000 PCS")).toBeDefined();
   });
 
   it("jatuh ke product_id saat produk tidak ada di master data", () => {

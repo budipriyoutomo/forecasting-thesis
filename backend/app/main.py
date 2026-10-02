@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import (
     auth,
     boms,
+    cost_templates,
     dashboard,
     forecast,
     materials,
@@ -47,6 +48,7 @@ app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(forecast.router, prefix="/api/v1")
 app.include_router(reorder.router, prefix="/api/v1")
 app.include_router(warehouse.router, prefix="/api/v1")
+app.include_router(cost_templates.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
 app.include_router(overrides.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")

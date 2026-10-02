@@ -108,8 +108,10 @@ SESSION_NOT_FOUND              SESSION_EXPIRED                 INSUFFICIENT_DATA
 MODEL_SELECTION_FAILED         FORECAST_RUN_NOT_FOUND          BACKTEST_FAILED
 UNSUPPORTED_FORECAST_METHOD    WAREHOUSE_CONFIG_NOT_FOUND      WAREHOUSE_CAPACITY_EXCEEDED
 OVERRIDE_REASON_REQUIRED       OVERRIDE_TARGET_NOT_FOUND       STORAGE_UPLOAD_FAILED
-RATE_LIMIT_EXCEEDED
+RATE_LIMIT_EXCEEDED            WAREHOUSE_CONFIG_EXISTS         COST_TEMPLATE_NOT_FOUND
+COST_TEMPLATE_NAME_EXISTS      WAREHOUSE_CAPACITY_INVALID
 ```
+> **Tambahan 2 Oktober 2026** (`RECONCILIATION.md` §"Konsolidasi Master Data"): `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409), `WAREHOUSE_CAPACITY_INVALID` (400, input pallet/dus tidak lengkap/tidak valid untuk mode & unit produknya), dan `WAREHOUSE_CONFIG_EXISTS` (409) — yang terakhir sudah dipakai kode sejak 24 Agustus 2026 tapi baru didaftarkan di sini.
 > Daftar ini final hasil v3.1 (v3.0 + 4 code yang diwarisi dari implementasi v2.0 di git: `AUTH_FORBIDDEN`, `PRODUCT_CODE_EXISTS`, `MATERIAL_CODE_EXISTS`, `OVERRIDE_TARGET_NOT_FOUND` — lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1"). Jangan tambah error code sepihak — kalau butuh code baru, tambahkan di sini dulu (dan di `ARCHITECTURE.md` §5) sebelum dipakai di kode. `WAREHOUSE_CAPACITY_EXCEEDED` dipakai sebagai *flag* di data response (200), **bukan** status error HTTP — lihat `ARCHITECTURE.md` §5.
 
 ### HTTP Status Code
@@ -191,8 +193,8 @@ LSTM_ENGINE_TIMEOUT_SECONDS=120
 FORECAST_TIMEOUT_SECONDS=180
 MAX_UPLOAD_SIZE_MB=10
 
-DEFAULT_ORDERING_COST=...
-DEFAULT_HOLDING_COST_RATE=...
+DEFAULT_ORDERING_COST=...              # fallback bila tidak ada cost_template aktif
+DEFAULT_HOLDING_COST_RATE=...          # fallback bila tidak ada cost_template aktif
 WAREHOUSE_PALLET_NO_RACKING=true
 
 DATABASE_URL=postgresql://...
