@@ -2,6 +2,8 @@
 Repository variabel eksternal (Fase 11.2b) — master + nilai per periode.
 `upsert_values` menimpa nilai dengan kunci (variable, product, period) yang sama.
 """
+from __future__ import annotations
+
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

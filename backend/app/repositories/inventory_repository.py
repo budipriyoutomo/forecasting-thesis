@@ -1,4 +1,6 @@
 """Repository stok ERP & kedatangan material (Fase 11.5)."""
+from __future__ import annotations
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
