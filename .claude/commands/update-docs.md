@@ -28,7 +28,7 @@ Dari diff, cari perubahan yang mengubah kontrak/perilaku yang terdokumentasi —
 - **Error code baru** — harus konsisten di tiga tempat: kode, `AGENTS.md` §4, `docs/ARCHITECTURE.md` §5.
 - **Engine forecasting baru atau berubah** — nama metode, kuadran yang didukung, minimum data, posisinya di `registry.py`.
 - **Perubahan mekanisme seleksi model** — rumus/bobot scoring, guardrail, metrik backtest, aturan fallback & mode manual.
-- **Env var / config baru** (`FORECAST_ENGINES_ENABLED`, `SCORING_WEIGHT_*`, `BACKTEST_MIN_PERIODS`, dst) — cek `backend/.env.example` juga sinkron.
+- **Env var / config baru** (`SCORING_WEIGHT_*`, `SERVICE_LEVEL_PCT`, `BACKTEST_MIN_PERIODS`, dst) — cek `backend/.env.example` juga sinkron.
 - Flow user baru atau berubah (upload → validasi → forecast run → override → export).
 - Aturan storage/lifecycle file R2 (§7) yang berubah.
 - Fase di `docs/TASK_BREAKDOWN.md` yang sudah selesai tapi belum ditandai.

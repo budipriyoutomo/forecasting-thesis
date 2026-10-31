@@ -62,6 +62,26 @@ export function CostTemplateSummaryPanel({
         )}
       </div>
 
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Biaya simpan / tahun" value={formatMoney(summary.total_annual ?? null)} />
+        <StatTile
+          label="Rata-rata nilai persediaan"
+          value={formatMoney(summary.avg_inventory_value ?? null)}
+          hint="Dari snapshot stok ERP × harga material"
+        />
+        <StatTile
+          label="Saran i (%) / tahun"
+          value={summary.suggested_holding_rate_pct != null ? `${Number(summary.suggested_holding_rate_pct).toFixed(2)}%` : "—"}
+          hint={
+            template.holding_cost_rate_pct != null
+              ? `${Number(template.holding_cost_rate_pct).toFixed(2)}% dipakai EOQ klasik`
+              : summary.suggested_holding_rate_pct == null
+                ? "Upload stok ERP & isi harga material agar saran i bisa dihitung."
+                : "Isi i (%) di template agar EOQ klasik dipakai."
+          }
+        />
+      </div>
+
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-medium">Biaya pembelian material</h4>
         <p className="text-xs text-muted-foreground">

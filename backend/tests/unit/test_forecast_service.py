@@ -11,7 +11,7 @@ _ACTIVE = {"moving_average", "exponential_smoothing", "random_forest", "xgboost"
 
 
 def test_auto_mode_membandingkan_semua_metode(smooth_df):
-    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None, ranking_metric="mape")
 
     assert record.status == "COMPLETED"
     assert record.selection_mode == "auto"
@@ -20,7 +20,7 @@ def test_auto_mode_membandingkan_semua_metode(smooth_df):
     # candidates_evaluated menyimpan SEMUA kandidat yang berhasil (transparansi)
     methods = {c["method"] for c in record.candidates_evaluated}
     assert methods == _ACTIVE
-    # pemenang = MAPE terendah (default FORECAST_RANKING_METRIC)
+    # pemenang = MAPE terendah (metrik ranking eksplisit)
     best = min(record.candidates_evaluated, key=lambda c: c["mape"])
     assert record.method_used == best["method"]
 
@@ -69,7 +69,7 @@ def test_auto_mode_explanation_menyebut_dasar_perbandingan(smooth_df):
     """Mode otomatis harus menjelaskan MENGAPA pemenang menang, bukan cuma
     menyalin penjelasan engine — `candidates_evaluated` disimpan justru untuk
     transparansi ini (docs/ARCHITECTURE.md §4 kolom candidates_evaluated)."""
-    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None, ranking_metric="mape")
 
     assert record.explanation
     exp = record.explanation.lower()
@@ -87,3 +87,94 @@ def test_manual_mode_explanation_tidak_mengaku_membandingkan(smooth_df):
 
     assert record.explanation
     assert "dibandingkan" not in record.explanation.lower()
+
+
+# ── Metrik ranking dari master data + 3 kolom peringkat (Fase 11.2a, Keputusan #6) ──
+
+
+def test_auto_mode_default_ranking_mad(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    best = min(record.candidates_evaluated, key=lambda c: c["mad"])
+    assert record.method_used == best["method"]
+    assert "mad" in record.explanation.lower()
+
+
+@pytest.mark.parametrize("metric,key", [("mad", "rank_mad"), ("mape", "rank_mape"), ("mfe_abs", "rank_mfe")])
+def test_auto_mode_pemenang_peringkat_1_di_kolom_metrik_aktif(smooth_df, metric, key):
+    record = run_forecast_for_product(smooth_df, horizon=7, ranking_metric=metric)
+
+    winner = next(c for c in record.candidates_evaluated if c["method"] == record.method_used)
+    assert winner[key] == 1
+
+
+def test_auto_mode_kandidat_punya_tiga_kolom_peringkat(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    for c in record.candidates_evaluated:
+        assert {"rank_mad", "rank_mfe", "rank_mape"} <= set(c)
+
+
+def test_manual_mode_tanpa_peringkat(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method="moving_average")
+
+    assert "rank_mad" not in record.candidates_evaluated[0]  # tak ada yang dibandingkan
+
+
+# ── Metode aktif dari master data (Fase 11.2a) ──
+
+
+def test_auto_mode_hanya_metode_aktif(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7, enabled_methods={"moving_average", "xgboost"})
+
+    assert {c["method"] for c in record.candidates_evaluated} == {"moving_average", "xgboost"}
+
+
+def test_manual_mode_metode_nonaktif_ditolak(smooth_df):
+    with pytest.raises(UnsupportedForecastMethodError):
+        run_forecast_for_product(
+            smooth_df, horizon=7, requested_method="xgboost", enabled_methods={"moving_average"}
+        )
+
+
+# ── Opsi engine, feature importance, label MAPE (Fase 11.2) ──
+
+
+def _monthly(values):
+    import pandas as pd
+
+    dates = pd.date_range("2024-01-01", periods=len(values), freq="MS")
+    return pd.DataFrame({"date": dates.astype(str), "quantity": values})
+
+
+def test_opsi_engine_diteruskan_ke_engine():
+    from app.services.forecasting.types import EngineOptions
+
+    record = run_forecast_for_product(
+        _monthly([10 + (i % 4) for i in range(20)]),
+        horizon=3,
+        requested_method="exponential_smoothing",
+        options=EngineOptions(es_alpha_grid=(0.8,)),
+    )
+    assert record.hyperparameters["alpha"] == 0.8
+
+
+def test_feature_importance_pemenang_ml_tersimpan():
+    record = run_forecast_for_product(
+        _monthly([10 + (i % 4) * 3 for i in range(24)]), horizon=3, requested_method="random_forest"
+    )
+    assert "lag_1" in record.feature_importance
+    assert record.hyperparameters["grid_search"] is False
+
+
+def test_kandidat_otomatis_membawa_feature_importance():
+    record = run_forecast_for_product(_monthly([10 + (i % 4) * 3 for i in range(24)]), horizon=3)
+    rf = next(c for c in record.candidates_evaluated if c["method"] == "random_forest")
+    ma = next(c for c in record.candidates_evaluated if c["method"] == "moving_average")
+    assert rf["feature_importance"]
+    assert ma["feature_importance"] is None
+
+
+def test_explanation_menyertakan_interpretasi_mape():
+    record = run_forecast_for_product(_monthly([10 + (i % 4) for i in range(20)]), horizon=3)
+    assert "interpretasi mape" in record.explanation.lower()

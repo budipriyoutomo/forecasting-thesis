@@ -4,7 +4,7 @@ PRODUK & validasi, docs §5/§6.7.
 
 GET    /warehouse/config                                → daftar konfigurasi (semua produk)
 GET    /warehouse/config/{id}                            → satu baris
-POST   /warehouse/config                                 → tambah (admin)
+POST   /warehouse/config                                 → tambah (admin); item_type product|material (Fase 11.6)
 PUT    /warehouse/config/{id}                             → ubah kapasitas pallet/dus (admin)
 DELETE /warehouse/config/{id}                             → hapus (admin)
 GET    /forecast/runs/{run_id}/warehouse-validation       → validasi run (flag, non-blocking)
@@ -31,7 +31,9 @@ def _config_out(config) -> dict:
     return WarehouseConfigOut.model_validate(
         {
             "id": str(config.id),
-            "product_id": str(config.product_id),
+            "item_type": getattr(config, "item_type", None) or "product",
+            "product_id": str(config.product_id) if config.product_id else None,
+            "material_id": str(config.material_id) if getattr(config, "material_id", None) else None,
             "capacity_mode": config.capacity_mode,
             "pallet_qty": config.pallet_qty,
             "dus_qty": config.dus_qty,
@@ -72,7 +74,10 @@ async def get_warehouse_config(
 async def create_warehouse_config(
     payload: WarehouseConfigCreate, service: WarehouseService = Depends(get_warehouse_service)
 ):
-    config = await service.create_config(payload.product_id, _capacity_input(payload))
+    if payload.item_type == "material":
+        config = await service.create_material_config(payload.material_id, _capacity_input(payload))
+    else:
+        config = await service.create_config(payload.product_id, _capacity_input(payload))
     return JSONResponse(status_code=201, content={"success": True, "data": _config_out(config)})
 
 

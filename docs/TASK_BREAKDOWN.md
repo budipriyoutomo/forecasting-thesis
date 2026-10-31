@@ -26,7 +26,7 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 2. **Non-destructive first**: engine v2.0 (`ets_engine.py`, `arima_engine.py`, `lightgbm_engine.py`, `croston_engine.py`) dan `classification.py`/`scoring_engine.py` **dipindah** ke `engines/legacy/` dan **di-comment dari `MODEL_REGISTRY` aktif** — bukan dihapus (lihat `ARCHITECTURE.md` §6.9, `AGENTS.md` larangan #16). Ini membuat rollback trivial (uncomment) selama migrasi berlangsung.
 3. **Migration DB additive dulu**: setiap migration Alembic baru (`products`, `boms`, `warehouse_config`, dst.) bersifat *additive* (tabel baru / kolom nullable baru) — jangan drop kolom/tabel v2.0 lama (`consumption_history`, dst.) sampai fase cutover (§9) selesai dan diverifikasi di lingkungan mendekati production.
 4. **Parallel testing**: selama migrasi, test suite v2.0 lama (`test_forecast_api.py`, `test_material_api.py`, dst.) **tetap harus PASSED** — jangan dihapus sampai fitur yang digantikannya sudah punya test v3.0 yang setara. Jalankan `pytest` penuh (bukan cuma modul yang diubah) di tiap PR migrasi.
-5. **Feature flag via env, bukan branch kode**: `FORECAST_ENGINES_ENABLED` menentukan engine mana yang aktif (lihat `ARCHITECTURE.md` §6.5). Ini dipakai juga sebagai *kill switch* selama masa transisi — kalau engine baru bermasalah di staging, kembalikan `FORECAST_ENGINES_ENABLED` ke daftar lama tanpa deploy ulang kode.
+5. **Feature flag via konfigurasi, bukan branch kode**: `FORECAST_ENGINES_ENABLED` (sejak Fase 11.2a: master data Pengaturan Forecast) menentukan engine mana yang aktif (lihat `ARCHITECTURE.md` §6.5). Ini dipakai juga sebagai *kill switch* selama masa transisi — kalau engine baru bermasalah di staging, kembalikan `FORECAST_ENGINES_ENABLED` ke daftar lama tanpa deploy ulang kode.
 6. **Cutover terakhir, bukan pertama**: fase 9 (di bawah) adalah titik keputusan final — setelah seluruh fase migrasi lain selesai & diverifikasi, baru drop kolom/tabel v2.0 yang benar-benar tidak terpakai lagi dan merge `migration/v3-thesis` → `main`.
 
 ---
@@ -184,6 +184,24 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 - [x] **10.8 Penutup** — ✅ 2 Okt 2026: 487 test backend (coverage total 93%; seluruh file Fase 10 ≥ 92%), 182 test frontend, `tsc`, lint, `next build` bersih; pre-push: error code terdaftar semua, satu Alembic head (`d5e6f7a8b9c0`), downgrade terisi, tanpa secret/dependency/env baru. Migrasi belum dijalankan di DB lokal user (DB tertinggal di `c9d0e1f2a3b4`, termasuk migrasi destruktif lama `e1f2a3b4c5d6` → backup dulu). Rencana awal: `pytest --cov` (service ≥ 85%, route ≥ 90%), vitest, `tsc --noEmit`, `next lint`; `/pre-push`.
 
 **Selesai jika:** semua master data ada dalam satu grup menu; kapasitas bisa diinput pallet/dus/kombinasi tanpa mengubah hasil validasi untuk data lama; template biaya aktif mengendalikan S & H EOQ/TIC dengan fallback env; seluruh rumus baru terverifikasi manual di test.
+
+---
+
+## 12. Fase 11 — Sinkronisasi Alur Sistem Thesis v3.2 (REVISI_V2) — ✅ SELESAI (30 Okt 2026), belum di-commit
+
+> Spesifikasi & 8 keputusan blocking: `docs/REVISI_V2.md`. Fase 11.1–11.8 menunggu keputusan §6.
+
+- [x] **11.0 Fix satuan SS/ROP + `SERVICE_LEVEL_PCT`** — ✅ 29 Okt 2026: fungsi murni `period_to_daily`, `days_in_period`, `z_from_service_level`; `generate_for_run` mengonversi μ/σ periode → harian; test wajib bulanan LT 7 hari (ROP ≈ μ·7/30 + SS). 501 test backend hijau. RECONCILIATION §"Rekonsiliasi v3.2 — Fase 11.0".
+- [x] 11.1 Buffer stock — ✅ waste factor + buffer di ROP, `material_usage_history`, import, halaman Persediaan Material
+- [x] **11.2a Pengaturan Forecast (master data) + 3 kolom ranking** — ✅ 29–30 Okt 2026: + daftar metode aktif (`enabled_methods`, env `FORECAST_ENGINES_ENABLED` dihapus, checkbox di halaman Pengaturan Forecast, `/forecast/methods` baca master data; 549 test backend + 192 test frontend hijau). tabel `forecast_settings` + `forecast_runs.ranking_metric` (migration `e6f7a8b9c0d1`), `GET/PUT /forecast-settings`, `rank_candidates`, env `FORECAST_RANKING_METRIC` dihapus, default `mad`; FE halaman Pengaturan Forecast + kolom Rank MAD/|MFE|/MAPE di tabel kandidat. 532 test backend + 189 test frontend hijau.
+- [x] 11.2 Forecasting — ✅ α grid thesis by MAD, label MAPE, feature importance, grid search, cap outlier (master data)
+- [x] 11.2b Variabel eksternal — ✅ master dinamis + toggle + import nilai + fitur RF/XGB
+- [x] 11.3 BOM multi-level — ✅ `material_components`, `BOM_CYCLE_DETECTED`, tree di halaman BOM
+- [x] 11.4 EOQ klasik — ✅ √(2AS/iC), i (%) + saran, MAINTENANCE/basis tahunan, service level & metode EOQ di master data
+- [x] 11.5 Stok & kedatangan — ✅ snapshot ERP, kedatangan manual/import, stok reorder dari snapshot
+- [x] 11.6 Kapasitas material + proyeksi — ✅ `warehouse_config` polimorfik, `stock_projections`, 2 skenario
+- [x] 11.7 Evaluasi material — ✅ inventory days, shortage cost, metrik material
+- [x] 11.8 Pipeline — ✅ `POST /plan` + UI. Export xlsx/pdf proyeksi stok & metrik. 754 test backend (cov 94%), 233 test frontend, build bersih.
 
 ---
 

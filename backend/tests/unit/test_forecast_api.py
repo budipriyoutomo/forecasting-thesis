@@ -6,9 +6,11 @@ Engine forecasting ASLI dipakai dengan fixture dense.
 """
 import pytest
 
-from app.api.deps import get_forecast_run_service
+from app.api.deps import get_forecast_run_service, get_forecast_settings_service
 from app.main import app
 from app.services.forecast_run_service import ForecastRunService
+from app.services.forecast_settings_service import ForecastSettingsService
+from tests.unit.test_forecast_settings_service import FakeSettingsRepo, _factory
 from tests.unit.test_forecast_run_service import (
     FakeDemandRepo,
     FakeForecastRepo,
@@ -32,16 +34,32 @@ def _override(products, rows_by_product):
 def _clear():
     yield
     app.dependency_overrides.pop(get_forecast_run_service, None)
+    app.dependency_overrides.pop(get_forecast_settings_service, None)
+
+
+def _override_settings(row=None):
+    app.dependency_overrides[get_forecast_settings_service] = lambda: ForecastSettingsService(
+        FakeSettingsRepo(row), factory=_factory
+    )
 
 
 @pytest.mark.asyncio
 async def test_list_methods(client, auth_headers):
+    _override_settings()
     res = await client.get("/api/v1/forecast/methods", headers=auth_headers)
 
     assert res.status_code == 200
     methods = res.json()["data"]["methods"]
     assert "moving_average" in methods and "xgboost" in methods  # metode aktif v3.0
     assert "ets" not in methods  # legacy, nonaktif default (docs §6.9)
+
+
+@pytest.mark.asyncio
+async def test_list_methods_dari_master_data(client, auth_headers):
+    _override_settings(_factory(ranking_metric="mad", enabled_methods=["xgboost", "moving_average"]))
+    res = await client.get("/api/v1/forecast/methods", headers=auth_headers)
+
+    assert res.json()["data"]["methods"] == ["moving_average", "xgboost"]
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,9 @@ class CostSummaryOut(BaseModel):
     n_materials_without_price: int
     cost_source: str  # "template" | "env" — sumber S & H
     cost_template_name: str | None
+    eoq_method: str = "classic"  # Fase 11.4
+    shortage_cost: Decimal | None = None  # Fase 11.7 — Σ material scope forecastiq
+    baseline_shortage_cost: Decimal | None = None  # Σ material scope baseline
 
 
 class InventoryMetricOut(BaseModel):
@@ -29,3 +32,5 @@ class InventoryMetricOut(BaseModel):
     fill_rate: Decimal
     stock_out_rate: Decimal
     inventory_turnover: Decimal
+    inventory_days: Decimal | None = None  # Fase 11.7 — turnover dalam hari (thesis)
+    shortage_cost: Decimal | None = None  # Fase 11.7 — qty tak terpenuhi × harga jual

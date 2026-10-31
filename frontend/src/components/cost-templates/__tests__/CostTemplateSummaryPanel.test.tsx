@@ -37,4 +37,17 @@ describe("CostTemplateSummaryPanel", () => {
     expect(screen.getByText("Rp 14.500 / kg")).toBeDefined();
     expect(screen.getByText(/1 material belum punya harga/i)).toBeDefined();
   });
+
+  it("saran i (%) dari rata-rata nilai persediaan stok ERP (Keputusan #5)", () => {
+    render(
+      <CostTemplateSummaryPanel
+        template={{ ...TEMPLATE, holding_cost_rate_pct: "18" }}
+        summary={{ ...SUMMARY, total_annual: "48000000", avg_inventory_value: "240000000", suggested_holding_rate_pct: "20" }}
+        materials={MATERIALS}
+      />,
+    );
+    expect(screen.getByText(/saran i \(%\)/i)).toBeDefined();
+    expect(screen.getByText("20.00%")).toBeDefined();
+    expect(screen.getByText(/18\.00% dipakai eoq/i)).toBeDefined();
+  });
 });

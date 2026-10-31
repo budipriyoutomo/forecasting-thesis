@@ -38,7 +38,8 @@ const requiredMoney = (label: string) =>
     .refine((v) => v.trim() === "" || (isNum(v) && Number(v) >= 0), "Harus angka ≥ 0");
 
 const itemSchema = z.object({
-  item_type: z.enum(["OVERHEAD", "STORAGE_ASSET"]),
+  item_type: z.enum(["OVERHEAD", "STORAGE_ASSET", "MAINTENANCE"]),
+  period_basis: z.enum(["monthly", "annual"]),
   name: z.string().min(1, "Nama wajib diisi"),
   monthly_amount: z.string(),
   purchase_price: z.string(),
@@ -53,6 +54,12 @@ const schema = z
     description: z.string(),
     ordering_cost: requiredMoney("Biaya pesan"),
     holding_cost: requiredMoney("Biaya simpan"),
+    holding_cost_rate_pct: z
+      .string()
+      .refine(
+        (v) => v.trim() === "" || (isNum(v) && Number(v) > 0 && Number(v) <= 100),
+        "i (%) harus antara 0 dan 100",
+      ),
     items: z.array(itemSchema),
   })
   .superRefine((v, ctx) => {
@@ -60,9 +67,9 @@ const schema = z
       const issue = (field: keyof typeof item, message: string) =>
         ctx.addIssue({ code: "custom", path: ["items", i, field], message });
       if (!isNum(item.qty) || Number(item.qty) <= 0) issue("qty", "Jumlah harus > 0");
-      if (item.item_type === "OVERHEAD") {
+      if (item.item_type !== "STORAGE_ASSET") {
         if (!isNum(item.monthly_amount) || Number(item.monthly_amount) < 0)
-          issue("monthly_amount", "Biaya per bulan wajib diisi (≥ 0)");
+          issue("monthly_amount", "Nominal biaya wajib diisi (≥ 0)");
         return;
       }
       if (!isNum(item.purchase_price) || Number(item.purchase_price) < 0)
@@ -92,6 +99,7 @@ function itemDefaults(item_type: CostItemType, initial?: CostTemplateItem): Item
     salvage_value: str(initial?.salvage_value),
     useful_life_months: str(initial?.useful_life_months),
     qty: initial ? str(initial.qty) : "1",
+    period_basis: initial?.period_basis ?? "monthly",
   };
 }
 
@@ -101,8 +109,9 @@ function toInput(v: FormValues): CostTemplateInput {
     description: v.description.trim() || null,
     ordering_cost: Number(v.ordering_cost),
     holding_cost: Number(v.holding_cost),
+    holding_cost_rate_pct: num(v.holding_cost_rate_pct),
     items: v.items.map((item) => {
-      const overhead = item.item_type === "OVERHEAD";
+      const overhead = item.item_type !== "STORAGE_ASSET"; // overhead & perawatan
       return {
         item_type: item.item_type,
         name: item.name.trim(),
@@ -111,6 +120,7 @@ function toInput(v: FormValues): CostTemplateInput {
         salvage_value: overhead ? null : (num(item.salvage_value) ?? 0),
         useful_life_months: overhead ? null : num(item.useful_life_months),
         qty: Number(item.qty),
+        period_basis: overhead ? item.period_basis : "monthly",
       };
     }),
   };
@@ -123,7 +133,7 @@ function NumberField({
   description,
 }: {
   control: Control<FormValues>;
-  name: `items.${number}.${keyof ItemValues}` | "ordering_cost" | "holding_cost";
+  name: `items.${number}.${keyof ItemValues}` | "ordering_cost" | "holding_cost" | "holding_cost_rate_pct";
   label: string;
   description?: string;
 }) {
@@ -165,6 +175,7 @@ export function CostTemplateForm({
       description: initial?.description ?? "",
       ordering_cost: str(initial?.ordering_cost),
       holding_cost: str(initial?.holding_cost),
+      holding_cost_rate_pct: str(initial?.holding_cost_rate_pct),
       items: (initial?.items ?? []).map((i) => itemDefaults(i.item_type, i)),
     },
   });
@@ -199,6 +210,7 @@ export function CostTemplateForm({
             salvage_value: num(item.salvage_value),
             useful_life_months: num(item.useful_life_months),
             qty: Number(item.qty) || 0,
+            period_basis: item.period_basis,
           });
           return (
             <div
@@ -217,7 +229,13 @@ export function CostTemplateForm({
                         <FormLabel>Nama</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder={type === "OVERHEAD" ? "Listrik, air, keamanan…" : "Pallet, rak, forklift…"}
+                            placeholder={
+                              type === "OVERHEAD"
+                                ? "Listrik, TK langsung, keamanan…"
+                                : type === "MAINTENANCE"
+                                  ? "Perawatan forklift, rak…"
+                                  : "Pallet, rak, forklift…"
+                            }
                             {...field}
                           />
                         </FormControl>
@@ -237,10 +255,35 @@ export function CostTemplateForm({
                   <Trash2 />
                 </Button>
               </div>
-              {type === "OVERHEAD" ? (
+              {type !== "STORAGE_ASSET" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <NumberField control={form.control} name={`items.${index}.monthly_amount`} label="Biaya per bulan (Rp)" />
+                  <NumberField control={form.control} name={`items.${index}.monthly_amount`} label={item.period_basis === "annual" ? "Biaya per tahun (Rp)" : "Biaya per bulan (Rp)"} />
                   <NumberField control={form.control} name={`items.${index}.qty`} label="Jumlah" />
+                  <FormField
+                    control={form.control}
+                    name={`items.${index}.period_basis`}
+                    render={({ field }) => (
+                      <fieldset className="flex gap-4 text-sm sm:col-span-2">
+                        <legend className="sr-only">Basis biaya</legend>
+                        {(
+                          [
+                            ["monthly", "Per bulan"],
+                            ["annual", "Per tahun"],
+                          ] as const
+                        ).map(([value, text]) => (
+                          <label key={value} className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`basis-${fields[index].id}`}
+                              checked={field.value === value}
+                              onChange={() => field.onChange(value)}
+                            />
+                            {text}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                  />
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -308,9 +351,16 @@ export function CostTemplateForm({
             label="Biaya simpan / unit / bulan (H, Rp)"
             description="Isian manual — lihat saran H di ringkasan."
           />
+          <NumberField
+            control={form.control}
+            name="holding_cost_rate_pct"
+            label="i (%) per tahun — EOQ klasik"
+            description="Untuk EOQ klasik √(2AS/iC) — lihat saran i (%) di ringkasan."
+          />
         </div>
 
-        {section("OVERHEAD", "Biaya overhead", "Overhead", "Biaya rutin per bulan: listrik, air, keamanan, dll.")}
+        {section("OVERHEAD", "Biaya overhead", "Overhead", "Biaya rutin: listrik, utility, tenaga kerja langsung gudang, keamanan — per bulan atau per tahun.")}
+        {section("MAINTENANCE", "Biaya perawatan", "Perawatan", "Perawatan forklift, rak, handpallet — per bulan atau per tahun.")}
         {section(
           "STORAGE_ASSET",
           "Biaya penyimpanan (depresiasi aset)",

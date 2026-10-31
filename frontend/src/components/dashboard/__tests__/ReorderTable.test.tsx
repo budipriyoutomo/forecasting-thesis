@@ -38,3 +38,31 @@ describe("ReorderTable", () => {
     expect(screen.getByText(/Tidak ada rekomendasi/i)).toBeDefined();
   });
 });
+
+describe("ReorderTable — Fase 11 (buffer, EOQ, status data)", () => {
+  it("menampilkan buffer stock, EOQ + metode, dan peringatan data kurang", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { ReorderTable } = await import("@/components/dashboard/ReorderTable");
+    render(
+      <ReorderTable
+        recommendations={[
+          {
+            material_id: "m1", safety_stock: "47.8", reorder_point: "126.8", recommended_order_qty: "200",
+            status: "urgent", buffer_stock: "9", waste_factor: "1.03", eoq_qty: "4473", eoq_method: "classic",
+            item_status: "COMPLETED", stock_source: "snapshot", current_stock_used: "0",
+          },
+          {
+            material_id: "m2", safety_stock: "1", reorder_point: "2", recommended_order_qty: "0",
+            status: "safe", buffer_stock: "0", eoq_qty: "100", eoq_method: "dynamic",
+            item_status: "MISSING_UNIT_PRICE", stock_source: "request", current_stock_used: "10",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /buffer/i })).toBeDefined();
+    expect(screen.getByText(/waste 3\.0%/i)).toBeDefined();
+    expect(screen.getByText(/klasik/i)).toBeDefined();
+    expect(screen.getByText(/harga material belum diisi/i)).toBeDefined();
+    expect(screen.getByText(/stok erp/i)).toBeDefined();
+  });
+});

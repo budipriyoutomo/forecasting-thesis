@@ -13,6 +13,10 @@ export interface CostSummary {
   n_materials_without_price?: number;
   cost_source?: "template" | "env"; // sumber S & H
   cost_template_name?: string | null;
+  // Fase 11.4/11.7
+  eoq_method?: "classic" | "dynamic";
+  shortage_cost?: string | null; // Σ biaya kekurangan material, skenario ForecastIQ
+  baseline_shortage_cost?: string | null;
 }
 
 export type MetricScope = "baseline" | "forecastiq";
@@ -25,4 +29,6 @@ export interface InventoryMetric {
   fill_rate: string;
   stock_out_rate: string;
   inventory_turnover: string;
+  inventory_days?: string | null; // Fase 11.7 — rata-rata persediaan ÷ pemakaian per hari
+  shortage_cost?: string | null; // qty tak terpenuhi × harga jual (Rp)
 }

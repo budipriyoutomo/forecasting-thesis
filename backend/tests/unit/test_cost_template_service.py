@@ -365,3 +365,74 @@ def test_resolve_cost_params_fallback_env_tanpa_template():
     settings = SimpleNamespace(DEFAULT_ORDERING_COST=1.0, DEFAULT_HOLDING_COST_RATE=2.0)
     p = resolve_cost_params(None, settings)
     assert (p.ordering_cost, p.holding_cost, p.source, p.template_name) == (1.0, 2.0, "env", None)
+
+
+# ── Fase 11.4: MAINTENANCE, basis tahunan, total tahunan, saran i (%) ──
+
+
+def _maint(name, amount, basis="monthly"):
+    return SimpleNamespace(
+        item_type="MAINTENANCE", name=name, monthly_amount=Decimal(amount), purchase_price=None,
+        salvage_value=None, useful_life_months=None, qty=Decimal(1), period_basis=basis,
+    )
+
+
+def test_item_basis_tahunan_dibagi_12():
+    tk = SimpleNamespace(**{**vars(_overhead("TK langsung", "95332848")), "period_basis": "annual"})
+    assert item_monthly_cost(tk) == Decimal("7944404.0000")  # 95.332.848 ÷ 12
+
+
+def test_maintenance_dihitung_seperti_overhead():
+    assert item_monthly_cost(_maint("Perawatan forklift", "1200000", "annual")) == Decimal("100000.0000")
+
+
+def test_summary_total_tahunan_dan_saran_rate():
+    items = [_overhead("Listrik", "3000000"), _maint("Perawatan", "1000000")]
+    s = summarize_template(items, Decimal(100), avg_inventory_value=Decimal("240000000"))
+
+    assert s.total_maintenance_monthly == Decimal("1000000.0000")
+    assert s.total_annual == Decimal("48000000.0000")  # (3jt + 1jt) × 12
+    assert s.suggested_holding_rate_pct == Decimal("20.0000")  # 48jt ÷ 240jt
+
+
+def test_summary_tanpa_nilai_persediaan_tanpa_saran_rate():
+    s = summarize_template([_overhead("Listrik", "3000000")], Decimal(100))
+    assert s.suggested_holding_rate_pct is None
+
+
+def test_resolve_cost_params_membawa_holding_rate():
+    tpl = _tpl()
+    tpl.holding_cost_rate_pct = Decimal("20")
+    params = resolve_cost_params(tpl, SimpleNamespace(DEFAULT_ORDERING_COST=0, DEFAULT_HOLDING_COST_RATE=0))
+    assert params.holding_rate_pct == 20.0
+    env = resolve_cost_params(None, SimpleNamespace(DEFAULT_ORDERING_COST=0, DEFAULT_HOLDING_COST_RATE=0))
+    assert env.holding_rate_pct is None
+
+
+def test_schema_item_maintenance_dan_rate():
+    item = CostTemplateItemIn(item_type="MAINTENANCE", name="Perawatan", monthly_amount=100, period_basis="annual")
+    assert item.period_basis == "annual"
+    with pytest.raises(ValueError):
+        CostTemplateItemIn(item_type="MAINTENANCE", name="x")
+    body = CostTemplateCreate(name="T", ordering_cost=1, holding_cost=1, holding_cost_rate_pct=20)
+    assert body.holding_cost_rate_pct == 20
+    with pytest.raises(ValueError):
+        CostTemplateCreate(name="T", ordering_cost=1, holding_cost=1, holding_cost_rate_pct=0)
+
+
+class FakeStockValue:
+    async def average_inventory_value(self):
+        return 240_000_000.0
+
+
+@pytest.mark.asyncio
+async def test_summary_service_pakai_nilai_persediaan_snapshot():
+    svc = CostTemplateService(
+        repo=FakeTemplateRepo([_tpl(items=[_overhead("Listrik", "3000000"), _overhead("Lain", "1000000")])]),
+        warehouse_configs=FakeWarehouseConfigRepo(),
+        template_factory=_template_factory,
+        item_factory=_item_factory,
+        stock=FakeStockValue(),
+    )
+    s = await svc.summary("t1")
+    assert s.suggested_holding_rate_pct == Decimal("20.0000")

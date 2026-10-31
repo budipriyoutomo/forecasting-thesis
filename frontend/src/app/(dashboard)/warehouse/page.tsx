@@ -9,6 +9,7 @@ import { WarehouseConfigForm } from "@/components/warehouse/WarehouseConfigForm"
 import { WarehouseConfigTable } from "@/components/warehouse/WarehouseConfigTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -22,12 +23,17 @@ import {
   useUpdateWarehouseConfig,
   useWarehouseConfigs,
 } from "@/hooks/useWarehouse";
+import { useMaterials } from "@/hooks/useMaterials";
 import { useProducts } from "@/hooks/useProducts";
-import type { WarehouseConfig, WarehouseConfigInput } from "@/types/warehouse";
+import type { WarehouseConfig, WarehouseConfigInput, WarehouseTarget } from "@/types/warehouse";
 
 export default function WarehousePage() {
   const { data: configs, isPending, isError } = useWarehouseConfigs();
   const { data: products } = useProducts();
+  const { data: materials } = useMaterials();
+  // Fase 11.6 (Keputusan #1): gudang produk jadi & gudang material dikelola terpisah.
+  const [target, setTarget] = useState<WarehouseTarget>("material");
+  const shown = (configs ?? []).filter((c) => (c.item_type ?? "product") === target);
   const create = useCreateWarehouseConfig();
   const update = useUpdateWarehouseConfig();
   const remove = useDeleteWarehouseConfig();
@@ -41,7 +47,7 @@ export default function WarehousePage() {
   const onSubmit = (input: WarehouseConfigInput) => {
     const opts = { onSuccess: () => setOpen(false) };
     if (editing) {
-      const { product_id: _productId, ...capacity } = input;
+      const { product_id: _productId, material_id: _materialId, item_type: _itemType, ...capacity } = input;
       update.mutate({ id: editing.id, input: capacity }, opts);
     } else create.mutate(input, opts);
   };
@@ -50,7 +56,7 @@ export default function WarehousePage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Kapasitas Gudang"
-        description="Kapasitas per produk dalam pallet, dus, atau kombinasi keduanya. Sistem mengonversinya ke unit produk untuk memvalidasi apakah forecast muat."
+        description="Kapasitas gudang material (pallet → CTN → pcs, dipakai proyeksi stok & utilisasi thesis) dan gudang produk jadi (pallet/dus, validasi forecast produk)."
         actions={
           <Button
             onClick={() => {
@@ -64,6 +70,13 @@ export default function WarehousePage() {
         }
       />
 
+      <Tabs value={target} onValueChange={(v) => setTarget(v as WarehouseTarget)}>
+        <TabsList>
+          <TabsTrigger value="material">Material</TabsTrigger>
+          <TabsTrigger value="product">Produk jadi</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {isPending && <TableSkeleton columns={5} />}
       {isError && (
         <Alert variant="destructive">
@@ -72,8 +85,10 @@ export default function WarehousePage() {
       )}
       {configs && (
         <WarehouseConfigTable
-          configs={configs}
+          configs={shown}
           products={products ?? []}
+          materials={materials ?? []}
+          targetType={target}
           onEdit={(c) => {
             setEditing(c);
             setOpen(true);
@@ -87,14 +102,16 @@ export default function WarehousePage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Ubah kapasitas" : "Tambah kapasitas"}</DialogTitle>
             <DialogDescription>
-              Isi kapasitas dalam pallet, dus, atau kombinasi. Bila unit produk bukan
-              dus/karton/box, isi juga jumlah pcs per dus agar bisa dibandingkan dengan
-              forecast.
+              {target === "material"
+                ? "Isi kapasitas dalam pallet, CTN, atau kombinasi. Bila unit material bukan CTN/dus, isi juga pcs per CTN agar bisa dibandingkan dengan proyeksi stok."
+                : "Isi kapasitas dalam pallet, dus, atau kombinasi. Bila unit produk bukan dus/karton/box, isi juga jumlah pcs per dus agar bisa dibandingkan dengan forecast."}
             </DialogDescription>
           </DialogHeader>
           <WarehouseConfigForm
-            key={editing?.id ?? "baru"}
+            key={`${target}:${editing?.id ?? "baru"}`}
             products={products ?? []}
+            materials={materials ?? []}
+            targetType={target}
             initial={editing ?? undefined}
             onSubmit={onSubmit}
             submitting={active}

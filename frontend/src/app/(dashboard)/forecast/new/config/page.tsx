@@ -9,6 +9,8 @@ import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
+import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
+import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
 import { FormError } from "@/components/common/FormError";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import { useCreateForecastRun } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
+import { useReorderList, useRunPlanning, useStockProjection } from "@/hooks/usePlanning";
 import { useGenerateReorder } from "@/hooks/useReorder";
 import { useWarehouseValidation } from "@/hooks/useWarehouse";
 
@@ -35,8 +38,15 @@ export default function ForecastConfigPage() {
   const exporter = useExport();
   const runId = run.data?.run.run_id;
 
+  // Fase 11.8: pipeline tahap 2→4 (reorder → proyeksi stok → evaluasi → biaya) sekali klik.
+  const planning = useRunPlanning();
+  const planned = Boolean(planning.data) && Boolean(runId);
+  const projection = useStockProjection(planned ? (runId as string) : null);
+  const reorderList = useReorderList(planned ? (runId as string) : null);
+  const recommendations = reorder.data ?? reorderList.data;
+
   // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
-  const metricsRunId = reorder.data && runId ? runId : null;
+  const metricsRunId = (reorder.data || planned) && runId ? runId : null;
   const cost = useCostSummary(metricsRunId);
   const inventoryMetrics = useInventoryMetrics(metricsRunId);
 
@@ -148,6 +158,42 @@ export default function ForecastConfigPage() {
 
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-medium">Perencanaan Persediaan</h2>
+                <p className="text-sm text-muted-foreground">
+                  MRP (safety stock, buffer, EOQ) → proyeksi stok & utilisasi gudang material → evaluasi inventory.
+                  Stok awal diambil dari snapshot ERP terakhir (menu Persediaan Material).
+                </p>
+              </div>
+              <Button disabled={planning.isPending} onClick={() => planning.mutate({ runId: runId as string })}>
+                {planning.isPending ? "Menjalankan…" : "Jalankan perencanaan"}
+              </Button>
+            </div>
+            <FormError message={planning.isError ? planning.error.message : null} />
+            {planning.data && <PlanningSummaryCard summary={planning.data} />}
+            {projection.data && projection.data.length > 0 && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {(["xlsx", "pdf"] as const).map((format) => (
+                    <Button
+                      key={format}
+                      variant="outline"
+                      size="sm"
+                      disabled={exporter.isPending}
+                      onClick={() => exporter.mutate({ kind: "stockProjection", runId, format })}
+                    >
+                      <Download />
+                      Proyeksi stok ({format === "xlsx" ? "Excel" : "PDF"})
+                    </Button>
+                  ))}
+                </div>
+                <StockProjectionTable rows={projection.data} materials={materials ?? []} />
+              </>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -158,7 +204,7 @@ export default function ForecastConfigPage() {
                 >
                   {reorder.isPending ? "Menghitung…" : "Hitung reorder"}
                 </Button>
-                {reorder.data && (
+                {recommendations && (
                   <>
                     <Button
                       variant="outline"
@@ -184,15 +230,15 @@ export default function ForecastConfigPage() {
             </div>
             <FormError message={reorder.isError ? reorder.error.message : null} />
             <FormError message={exporter.isError ? exporter.error.message : null} />
-            {reorder.data && (
-              <ReorderTable recommendations={reorder.data} materials={materials ?? []} />
+            {recommendations && (
+              <ReorderTable recommendations={recommendations} materials={materials ?? []} />
             )}
           </section>
 
-          {reorder.data && (
+          {recommendations && (
             <section className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-medium">Kapasitas Gudang</h2>
+                <h2 className="text-lg font-medium">Kapasitas Gudang Produk Jadi</h2>
                 <Button
                   variant="outline"
                   size="sm"
@@ -209,11 +255,35 @@ export default function ForecastConfigPage() {
             </section>
           )}
 
-          {reorder.data && (cost.data || inventoryMetrics.data) && (
+          {recommendations && (cost.data || inventoryMetrics.data) && (
             <section className="flex flex-col gap-4">
-              <h2 className="text-lg font-medium">Biaya &amp; Kinerja Inventory</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-medium">Biaya &amp; Kinerja Inventory</h2>
+                {inventoryMetrics.data && (
+                  <div className="flex flex-wrap gap-2">
+                    {(["xlsx", "pdf"] as const).map((format) => (
+                      <Button
+                        key={format}
+                        variant="outline"
+                        size="sm"
+                        disabled={exporter.isPending}
+                        onClick={() => exporter.mutate({ kind: "metrics", runId, format })}
+                      >
+                        <Download />
+                        Metrik ({format === "xlsx" ? "Excel" : "PDF"})
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {cost.data && <CostSummaryCard summary={cost.data} />}
-              {inventoryMetrics.data && <InventoryMetricsTable metrics={inventoryMetrics.data} />}
+              {inventoryMetrics.data && (
+                <InventoryMetricsTable
+                  metrics={inventoryMetrics.data}
+                  materials={materials ?? []}
+                  products={products ?? []}
+                />
+              )}
             </section>
           )}
         </>

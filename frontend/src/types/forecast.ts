@@ -1,3 +1,5 @@
+import type { RankingMetric } from "@/types/forecastSettings";
+
 // Cocok dengan backend/app/schemas/forecast.py
 export interface ForecastPoint {
   date: string;
@@ -15,6 +17,10 @@ export interface ForecastCandidate {
   mse: number | null;
   mape: number | null;
   mase: number | null;
+  // Fase 11.2a: peringkat 1 = terbaik; null = metrik tak terdefinisi. Absen di run lama/manual.
+  rank_mad?: number | null;
+  rank_mfe?: number | null;
+  rank_mape?: number | null;
 }
 
 export interface ForecastResult {
@@ -31,6 +37,8 @@ export interface ForecastResult {
   explanation: string | null;
   forecast: ForecastPoint[];
   metrics: Record<string, unknown> | null;
+  feature_importance?: Record<string, number> | null;
+  hyperparameters?: Record<string, unknown> | null;
 }
 
 export interface ForecastRunSummary {
@@ -38,6 +46,7 @@ export interface ForecastRunSummary {
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
   horizon: number;
   horizon_unit: string;
+  ranking_metric?: RankingMetric | null;
   n_products: number;
   n_completed: number;
   n_failed: number;

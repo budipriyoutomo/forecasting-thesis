@@ -263,6 +263,7 @@ forecastiq/
 | horizon | INTEGER | |
 | horizon_unit | VARCHAR(10) | days / weeks / months |
 | status | VARCHAR(20) | PENDING / PROCESSING / COMPLETED / FAILED |
+| ranking_metric | VARCHAR(10), nullable | snapshot `forecast_settings.ranking_metric` saat run dibuat (mode otomatis). NULL = mode manual / run sebelum Fase 11.2a |
 | created_at / completed_at | TIMESTAMPTZ | |
 | error_message | TEXT, nullable | |
 
@@ -293,7 +294,7 @@ forecastiq/
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
 | material_id | UUID FK → materials | |
-| safety_stock | NUMERIC | SS = Z × STD × √L |
+| safety_stock | NUMERIC | SS = Z × σ_harian × √L (L hari). μ/σ deret forecast per periode dikonversi: μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast (Fase 11.0). Z = Φ⁻¹(`SERVICE_LEVEL_PCT`/100) |
 | buffer_stock | NUMERIC, nullable | Standar Pemakaian − Aktual Pemakaian (`bom_service.compute_buffer_stock`), dihitung di memori — tabel `material_requirements` sudah dihapus |
 | reorder_point | NUMERIC | |
 | eoq_qty | NUMERIC | hasil EOQ dinamis, dibulatkan ke kelipatan MOQ |
@@ -348,6 +349,19 @@ forecastiq/
 | holding_cost | NUMERIC(18,4) | **H** — biaya simpan per unit per bulan (IDR), **isian manual** planner |
 | is_active | BOOLEAN | maksimal satu `true` (partial unique index `WHERE is_active`) |
 | created_at / updated_at | TIMESTAMPTZ | |
+
+### `forecast_settings` (baru — Fase 11.2a, 29 Oktober 2026)
+Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanpa baris → default di kode.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | SMALLINT | PK, selalu 1 |
+| ranking_metric | VARCHAR(10) | `mad` \| `mfe_abs` \| `mape` (CHECK), default `mad` — metrik penentu pemenang Comparative Selection |
+| enabled_methods | VARCHAR(50)[], nullable | metode aktif (kunci `MODEL_REGISTRY`, terurut). NULL = seluruh metode terdaftar; array kosong ditolak CHECK. Pengganti env `FORECAST_ENGINES_ENABLED` |
+| updated_by | UUID, nullable | admin terakhir yang mengubah |
+| updated_at | TIMESTAMPTZ | |
+
+> `candidates_evaluated` mode otomatis kini membawa `rank_mad`, `rank_mfe` (berdasarkan \|MFE\|), `rank_mape` (1 = terbaik, seri → peringkat sama, metrik tak terdefinisi → null). Mode manual tanpa peringkat.
 
 ### `cost_template_items` (baru — 2 Oktober 2026)
 | Kolom | Tipe | Keterangan |
@@ -435,6 +449,8 @@ PUT    /api/v1/warehouse/config/{id}                # ubah capacity_qty (admin)
 DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
+GET    /api/v1/forecast-settings                   # pengaturan forecast + available_methods (semua role; default mad & semua metode bila belum disimpan)
+PUT    /api/v1/forecast-settings                   # ubah ranking_metric & enabled_methods (admin) — berlaku untuk run berikutnya; metrik di luar mad|mfe_abs|mape atau enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; enabled_methods absen = tidak diubah
 GET    /api/v1/cost-templates                      # daftar template biaya
 GET    /api/v1/cost-templates/active               # template aktif (404 COST_TEMPLATE_NOT_FOUND bila belum ada)
 GET    /api/v1/cost-templates/{id}                 # detail + items
@@ -558,8 +574,10 @@ def run_forecast_for_product(df: pd.DataFrame, horizon: int, requested_method: s
     if not candidates_evaluated:
         return ForecastResultRecord(status="MODEL_SELECTION_FAILED")
 
-    # Pilih berdasarkan metrik primer yang dikonfigurasi (default: MAPE, terendah menang)
-    ranking_metric = settings.FORECAST_RANKING_METRIC  # "mape" | "mad" | "mse" | "mfe_abs"
+    # Pilih berdasarkan metrik dari master data Pengaturan Forecast (default: MAD, terendah
+    # menang) — diteruskan ForecastRunService sebagai argumen, bukan dibaca dari env.
+    # Kandidat diberi rank_mad / rank_mfe (|MFE|) / rank_mape lewat rank_candidates().
+    # ranking_metric: "mad" | "mfe_abs" | "mape"
     method_name, result = min(candidates_evaluated, key=lambda x: getattr(x[1], ranking_metric))
     return ForecastResultRecord(
         status="COMPLETED", method_used=method_name, selection_mode="auto",
@@ -617,9 +635,12 @@ MODEL_REGISTRY: dict[str, Callable[[pd.DataFrame, int], EngineResult]] = {
     # "croston": forecast_croston,     # nonaktif default
 }
 
-def get_enabled_methods() -> set[str]:
-    enabled = set(settings.FORECAST_ENGINES_ENABLED.split(","))
-    return enabled & MODEL_REGISTRY.keys()
+def get_enabled_methods(enabled: Iterable[str] | None = None) -> set[str]:
+    # `enabled` = forecast_settings.enabled_methods (master data, Fase 11.2a — bukan env).
+    # None = belum diatur → seluruh metode terdaftar.
+    if enabled is None:
+        return set(MODEL_REGISTRY)
+    return set(enabled) & MODEL_REGISTRY.keys()
 ```
 
 ### 6.4 Kontrak per Metode (`engines/*.py`)
@@ -637,8 +658,8 @@ Setiap fungsi **self-contained**: melakukan holdout backtest (untuk MAD/MFE/MSE/
 ### 6.5 Environment Variables
 
 ```env
-FORECAST_ENGINES_ENABLED=moving_average,exponential_smoothing,random_forest,xgboost,lstm
-FORECAST_RANKING_METRIC=mape          # mape | mad | mse | mfe_abs
+# Metode aktif: master data forecast_settings.enabled_methods (Fase 11.2a) — bukan env
+# Metrik ranking pemenang BUKAN env lagi — master data forecast_settings (Fase 11.2a)
 COMPUTE_MASE=true                     # hitung & simpan MASE tambahan (tidak dipakai ranking)
 BACKTEST_MIN_PERIODS=12
 LSTM_MIN_PERIODS=24
@@ -667,6 +688,9 @@ MAX_UPLOAD_SIZE_MB=10
 # Akun demo per role dibuat oleh `python -m app.scripts.seed_dev_users`.
 DEV_AUTH_ENABLED=false
 DEV_AUTH_PASSWORD=demo1234
+
+# Safety stock: target service level (%) → Z = Φ⁻¹(pct/100). Menggantikan SERVICE_LEVEL_Z (Fase 11.0)
+SERVICE_LEVEL_PCT=95
 
 # EOQ & Cost — FALLBACK saja sejak 2 Okt 2026: dipakai hanya bila tidak ada
 # cost_template aktif (sumber utama S & H = template aktif, §6.8)
@@ -807,7 +831,49 @@ dilewati, dihitung di `n_materials_without_price`). **Tidak masuk TIC.**
 
 ### 6.9 Engine Legacy (Nonaktif Default — dari Arsitektur v2.0)
 
-ETS, ARIMA, LightGBM, dan Croston/SBA **tidak dihapus** dari codebase — dipindah ke `engines/legacy/` dan tidak didaftarkan ke `MODEL_REGISTRY` aktif secara default (di-comment, lihat §6.3). Rasionalnya ada di `RECONCILIATION.md` §Keputusan Terbuka v3.0 poin 2: metode-metode ini (khususnya Croston untuk demand intermittent/lumpy) tetap relevan untuk kasus forecasting **raw material langsung** di luar konteks produk jadi RTD yang jadi objek thesis. Mengaktifkan kembali cukup uncomment import + tambah ke `FORECAST_ENGINES_ENABLED`, tanpa ubah `forecast_service.py`.
+ETS, ARIMA, LightGBM, dan Croston/SBA **tidak dihapus** dari codebase — dipindah ke `engines/legacy/` dan tidak didaftarkan ke `MODEL_REGISTRY` aktif secara default (di-comment, lihat §6.3). Rasionalnya ada di `RECONCILIATION.md` §Keputusan Terbuka v3.0 poin 2: metode-metode ini (khususnya Croston untuk demand intermittent/lumpy) tetap relevan untuk kasus forecasting **raw material langsung** di luar konteks produk jadi RTD yang jadi objek thesis. Mengaktifkan kembali cukup uncomment import + daftarkan di `MODEL_REGISTRY`, lalu centang di Master Data → Pengaturan Forecast, tanpa ubah `forecast_service.py`.
+
+## 6.10 Alur Perencanaan Thesis v3.2 (Fase 11, 29–30 Oktober 2026)
+
+Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsiliasi v3.2".
+
+### Tabel baru / berubah
+| Tabel | Isi | Migration |
+|---|---|---|
+| `forecast_settings` (1 baris, `id = 1`) | `ranking_metric`, `enabled_methods[]`, `es_alpha_grid[]`, `es_alpha_metric`, `ml_grid_search`, `ml_winsorize`, `service_level_pct`, `eoq_method` | `e6f7a8b9c0d1`, `c0d1e2f3a4b5` |
+| `forecast_runs.ranking_metric`, `forecast_results.feature_importance/hyperparameters` | snapshot metrik & hasil engine | `e6f7a8b9c0d1` |
+| `external_variables`, `external_variable_values` | variabel eksternal dinamis + nilai per periode (product_id NULL = global) | `f7a8b9c0d1e2` |
+| `material_usage_history` + `reorder_recommendations.waste_factor` | pemakaian aktual vs standar → buffer | `a8b9c0d1e2f3` |
+| `material_components` | BOM level 2+ (informasi), CHECK bukan self-loop | `b9c0d1e2f3a4` |
+| `cost_templates.holding_cost_rate_pct`, `cost_template_items.period_basis` + tipe `MAINTENANCE`; `reorder_recommendations.eoq_method/item_status/annual_demand/unit_price_used/holding_rate_used` | EOQ klasik | `c0d1e2f3a4b5` |
+| `stock_snapshots`, `material_receipts` + `reorder_recommendations.current_stock_used/stock_source` | stok ERP & kedatangan | `d1e2f3a4b5c6` |
+| `warehouse_config.item_type/material_id` (product_id nullable, partial unique per target, CHECK tepat satu) + `stock_projections` | kapasitas material & proyeksi | `e2f3a4b5c6d7` |
+| `inventory_metrics.inventory_days/shortage_cost` | evaluasi material | `f3a4b5c6d7e8` |
+
+### Endpoint baru
+```
+GET/PUT /forecast-settings
+GET/POST /external-variables · PUT/DELETE /external-variables/{id}
+POST /external-variables/values/import · GET/DELETE /external-variables/{id}/values
+POST /material-usage/import · GET /material-usage · GET /material-usage/waste-factors
+GET/POST /materials/{id}/components · DELETE /material-components/{id} · GET /boms/tree?product_id=
+POST /stock-snapshots/import · GET /stock-snapshots · GET /stock-snapshots/latest
+GET/POST /material-receipts · POST /material-receipts/import · PUT/DELETE /material-receipts/{id}
+POST/GET /forecast/runs/{id}/stock-projection
+GET  /forecast/runs/{id}/stock-projection/export?format=xlsx|pdf&scenario=proposed|baseline
+GET  /forecast/runs/{id}/inventory-metrics/export?format=xlsx|pdf&target_type=product|material
+POST /forecast/runs/{id}/plan                      # tahap 2→4 berurutan
+GET  /forecast/runs/{id}/inventory-metrics?target_type=material
+POST/PUT /warehouse/config                         # + item_type, material_id
+```
+
+### Rumus inti
+- SS = Z·σ_d·√L, ROP = μ_d·L + SS + buffer; μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast; Z = Φ⁻¹(service level).
+- Buffer = max(0, Σaktual/Σstandar − 1) × μ_p.
+- EOQ klasik = √(2AS/iC), TC = (A/Q)S + (Q/2)iC, A = rata-rata kebutuhan periode × periode/tahun (bulanan 12). Baseline TIC memakai aturan `choose_eoq` yang sama per material.
+- Proyeksi: pre = opening + receipt − usage; order = n·EOQ bila pre < SS + buffer; ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
+- Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga jual (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
+- Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
 
 ## 7. Storage Flow — Object Storage (S3-compatible)
 
@@ -913,7 +979,7 @@ Cron pembersih file temp (§7) dijadwalkan di crontab VPS:
 - **Migrasi jalan di entrypoint backend**, dan `set -e` membuat container gagal start kalau migrasi gagal — disengaja, supaya aplikasi tidak pernah hidup di atas skema yang salah. Bisa dimatikan lewat `RUN_MIGRATIONS=false`.
 - **Firewall VPS**: buka 22, 80, 443 saja. Postgres tidak di-publish ke host oleh compose production.
 - CI: lint + test + coverage gate sebelum merge (GitHub Actions) — belum ada deploy otomatis, deploy masih manual lewat SSH.
-- **LSTM**: `tensorflow` masih di-comment di `requirements.txt`, jadi engine `lstm` di-exclude otomatis (§6.4). `.env.prod.example` sengaja tidak mencantumkan `lstm` di `FORECAST_ENGINES_ENABLED` supaya perilakunya eksplisit, bukan gagal diam-diam. Untuk mengaktifkan: uncomment `tensorflow>=2.16` (image Python 3.11 mendukung), perhatikan ukuran image (+±1 GB) dan waktu build.
+- **LSTM**: `tensorflow` masih di-comment di `requirements.txt`, jadi engine `lstm` di-exclude otomatis (§6.4). Sejak Fase 11.2a daftar metode aktif ada di master data Pengaturan Forecast: di production admin **menonaktifkan LSTM** di sana supaya perilakunya eksplisit (tanpa baris pengaturan, seluruh metode — termasuk LSTM — dianggap aktif; di mode otomatis LSTM tetap di-exclude karena gagal, tapi di mode manual akan muncul di dropdown dan gagal). Untuk mengaktifkan: uncomment `tensorflow>=2.16` (image Python 3.11 mendukung), perhatikan ukuran image (+±1 GB) dan waktu build.
 
 ---
 *Lihat `RECONCILIATION.md` §"Rekonsiliasi v3.0" dan §"Rekonsiliasi v3.1" untuk daftar lengkap perubahan dari v2.0 dan alasannya.*

@@ -223,3 +223,58 @@ async def test_cost_summary_tanpa_repo_material_semua_dianggap_tanpa_harga():
     assert out.purchase_cost == Decimal("0")
     assert out.n_materials_without_price == 1
     assert out.cost_source == "env"
+
+
+# ── Fase 11.4: baseline memakai metode EOQ yang sama dengan usulan (klasik bila bisa) ──
+
+
+class FakePlanningSettings:
+    def __init__(self, method):
+        self._m = method
+
+    async def eoq_method(self):
+        return self._m
+
+
+@pytest.mark.asyncio
+async def test_baseline_eoq_klasik_tahunan():
+    import math
+
+    tpl = SimpleNamespace(name="T", ordering_cost=Decimal("250000"), holding_cost=Decimal("0"),
+                          holding_cost_rate_pct=Decimal("20"))
+    material = SimpleNamespace(id="M1", unit_price=Decimal("1500"))
+    run = SimpleNamespace(id="r1", user_id=USER)
+    svc = CostService(
+        forecast_repo=FakeForecastRepo(run, [SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=[])]),
+        reorder_repo=FakeReorderRepo([]),
+        demand_repo=FakeDemandRepo({"P1": [_demand_row("SKU1", f"2026-0{i}-01", v) for i, v in ((1, 900), (2, 1000), (3, 1100))]}),
+        boms=FakeBomRepo({"P1": [SimpleNamespace(product_id="P1", material_id="M1", qty_per_unit=1)]}),
+        products=FakeProductRepo([SimpleNamespace(id="P1", code="SKU1")]),
+        cost_templates=FakeCostTemplateRepo(tpl),
+        materials=FakeMaterialRepo([material]),
+        settings=FakePlanningSettings("classic"),
+    )
+    summary = await svc.get_cost_summary(USER, "r1")
+
+    q = math.sqrt(2 * 12_000 * 250_000 / (0.2 * 1500))  # A planning = 1000/bulan × 12
+    assert float(summary.baseline_inventory_cost) == pytest.approx(2 * 12_000 / q * 250_000, rel=1e-4)
+    assert summary.eoq_method == "classic"
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_shortage_cost_dari_metrik_material():
+    class Metrics:
+        async def list_by_run(self, run_id):
+            return [
+                SimpleNamespace(target_type="material", scope="forecastiq", shortage_cost=Decimal("700000")),
+                SimpleNamespace(target_type="material", scope="baseline", shortage_cost=Decimal("2100000")),
+                SimpleNamespace(target_type="product", scope="forecastiq", shortage_cost=Decimal("1")),
+            ]
+
+    run = SimpleNamespace(id="r1", user_id=USER)
+    svc = CostService(
+        forecast_repo=FakeForecastRepo(run, []), reorder_repo=FakeReorderRepo([]), demand_repo=FakeDemandRepo({}),
+        boms=FakeBomRepo({}), products=FakeProductRepo([]), ordering_cost=0, holding_cost=0, metrics_repo=Metrics(),
+    )
+    s = await svc.get_cost_summary(USER, "r1")
+    assert float(s.shortage_cost) == 700000 and float(s.baseline_shortage_cost) == 2100000

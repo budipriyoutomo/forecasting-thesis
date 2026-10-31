@@ -50,6 +50,7 @@ describe("CostTemplateForm", () => {
         description: null,
         ordering_cost: 250000,
         holding_cost: 800,
+        holding_cost_rate_pct: null, // Fase 11.4 — i (%) kosong
         items: [
           {
             item_type: "OVERHEAD",
@@ -59,6 +60,7 @@ describe("CostTemplateForm", () => {
             salvage_value: null,
             useful_life_months: null,
             qty: 1,
+            period_basis: "monthly",
           },
           {
             item_type: "STORAGE_ASSET",
@@ -68,6 +70,7 @@ describe("CostTemplateForm", () => {
             salvage_value: 5000000,
             useful_life_months: 60,
             qty: 10,
+            period_basis: "monthly",
           },
         ],
       }),
@@ -105,5 +108,49 @@ describe("CostTemplateForm", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const items = onSubmit.mock.calls[0][0].items;
     expect(items.map((i: { name: string }) => i.name)).toEqual(["Rak"]);
+  });
+
+  it("i (%) EOQ klasik + item perawatan basis tahunan (Fase 11.4)", async () => {
+    const onSubmit = vi.fn();
+    render(<CostTemplateForm onSubmit={onSubmit} />);
+
+    await userEvent.type(screen.getByLabelText(/^nama template$/i), "Template thesis");
+    await userEvent.type(screen.getByLabelText(/biaya pesan/i), "250000");
+    await userEvent.type(screen.getByLabelText(/biaya simpan \/ unit/i), "0");
+    await userEvent.type(screen.getByLabelText(/i \(%\)/i), "20");
+
+    await userEvent.click(screen.getByRole("button", { name: /tambah perawatan/i }));
+    const m = screen.getByRole("group", { name: /perawatan 1/i });
+    await userEvent.type(within(m).getByLabelText(/^nama$/i), "Perawatan forklift");
+    await userEvent.type(within(m).getByLabelText(/biaya per bulan/i), "1200000");
+    await userEvent.click(within(m).getByRole("radio", { name: /per tahun/i }));
+    expect(within(m).getByText(/100\.000/)).toBeDefined(); // 1,2 jt ÷ 12 per bulan
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan template/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          holding_cost_rate_pct: 20,
+          items: [
+            expect.objectContaining({
+              item_type: "MAINTENANCE", monthly_amount: 1200000, period_basis: "annual", purchase_price: null,
+            }),
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("i (%) di luar 0–100 ditolak", async () => {
+    const onSubmit = vi.fn();
+    render(<CostTemplateForm onSubmit={onSubmit} />);
+    await userEvent.type(screen.getByLabelText(/^nama template$/i), "T");
+    await userEvent.type(screen.getByLabelText(/biaya pesan/i), "1");
+    await userEvent.type(screen.getByLabelText(/biaya simpan \/ unit/i), "1");
+    await userEvent.type(screen.getByLabelText(/i \(%\)/i), "150");
+    await userEvent.click(screen.getByRole("button", { name: /simpan template/i }));
+
+    expect(await screen.findByText(/antara 0 dan 100/i)).toBeDefined();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

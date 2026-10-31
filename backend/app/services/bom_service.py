@@ -73,16 +73,22 @@ def compute_standard_usage(output_produksi: float, bom_qty_per_unit: float) -> f
     return float(output_produksi) * float(bom_qty_per_unit)
 
 
-def compute_buffer_stock(standard_usage: float, actual_usage: float) -> tuple[float, float]:
-    """
-    Buffer Stock = Standar Pemakaian − Aktual Pemakaian (kuantitas, tak negatif).
-    buffer_pct = (standar − aktual) / standar × 100 (0 bila standar 0).
-    Mengantisipasi waste produksi (Bab III thesis).
-    """
-    standard, actual = float(standard_usage), float(actual_usage)
-    buffer_qty = max(0.0, standard - actual)
-    buffer_pct = ((standard - actual) / standard * 100) if standard != 0 else 0.0
-    return buffer_qty, buffer_pct
+def compute_waste_factor(actual: float, standard: float) -> float | None:
+    """Buffer Stock thesis = Aktual Pemakaian : Standar Pemakaian (Fase 11.1, REVISI_V2 §3.8).
+    Standar ≤ 0 → tak terdefinisi (None). Menggantikan rumus lama `max(0, standar − aktual)`
+    yang selalu 0 justru saat ada waste (aktual > standar)."""
+    standard = float(standard)
+    if standard <= 0:
+        return None
+    return float(actual) / standard
+
+
+def compute_buffer_qty(waste_factor: float | None, requirement: float) -> float:
+    """Qty buffer = max(0, faktor waste − 1) × kebutuhan material periode (Keputusan #8).
+    Tanpa data pemakaian (None) atau pemakaian di bawah standar → 0."""
+    if waste_factor is None:
+        return 0.0
+    return max(0.0, float(waste_factor) - 1.0) * float(requirement)
 
 
 class _Repo(Protocol):

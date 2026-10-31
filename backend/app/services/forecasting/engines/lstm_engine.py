@@ -70,7 +70,7 @@ def _lstm_forecast(values: np.ndarray, steps: int, window: int) -> np.ndarray:
     return np.asarray(preds, dtype=float) * scale + vmin
 
 
-def forecast_lstm(df, horizon: int) -> EngineResult:
+def forecast_lstm(df, horizon: int, options=None) -> EngineResult:  # options: tak dipakai (Fase 11.2)
     settings = get_settings()
     series = to_period_series(df)
     _, test = train_test_split_series(series, horizon)

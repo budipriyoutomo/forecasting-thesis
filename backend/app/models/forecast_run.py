@@ -26,6 +26,9 @@ class ForecastRun(Base):
     horizon: Mapped[int] = mapped_column(Integer, nullable=False)
     horizon_unit: Mapped[str] = mapped_column(String(10), nullable=False, default="days")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    # Metrik ranking yang dipakai mode otomatis saat run dibuat (snapshot master data
+    # Pengaturan Forecast, Fase 11.2a). None = mode manual / run sebelum Fase 11.2a.
+    ranking_metric: Mapped[str | None] = mapped_column(String(10), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

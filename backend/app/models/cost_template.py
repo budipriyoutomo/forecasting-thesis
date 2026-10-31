@@ -30,6 +30,8 @@ class CostTemplate(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     ordering_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     holding_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # Fase 11.4: i (%) biaya simpan tahunan untuk EOQ klasik √(2AS/iC). NULL → EOQ dinamis.
+    holding_cost_rate_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -61,9 +63,10 @@ class CostTemplateItem(Base):
         index=True,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # urutan tampil
-    item_type: Mapped[str] = mapped_column(String(20), nullable=False)  # OVERHEAD | STORAGE_ASSET
+    item_type: Mapped[str] = mapped_column(String(20), nullable=False)  # OVERHEAD | STORAGE_ASSET | MAINTENANCE
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    monthly_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    monthly_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)  # nominal per period_basis
+    period_basis: Mapped[str] = mapped_column(String(10), nullable=False, default="monthly")  # monthly | annual
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     salvage_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     useful_life_months: Mapped[int | None] = mapped_column(Integer, nullable=True)

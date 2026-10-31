@@ -24,6 +24,11 @@ const STATUS_VARIANT: Record<ReorderStatus, "destructive" | "secondary" | "outli
 
 const FILTERS: (ReorderStatus | "all")[] = ["all", "urgent", "safe", "overstock"];
 
+const ITEM_STATUS_NOTE: Record<string, string> = {
+  MISSING_UNIT_PRICE: "Harga material belum diisi — EOQ dinamis",
+  MISSING_HOLDING_RATE: "i (%) template biaya belum diisi — EOQ dinamis",
+};
+
 interface ReorderRow extends ReorderRecommendation {
   materialLabel: string;
 }
@@ -66,6 +71,23 @@ export function ReorderTable({
         ),
       },
       {
+        accessorKey: "buffer_stock",
+        header: "Buffer",
+        cell: ({ row }) => {
+          const factor = row.original.waste_factor;
+          return (
+            <span className="flex flex-col tabular-nums">
+              {formatNumber(row.original.buffer_stock ?? 0)}
+              {factor != null && (
+                <span className="text-xs text-muted-foreground">
+                  waste {((Number(factor) - 1) * 100).toFixed(1)}%
+                </span>
+              )}
+            </span>
+          );
+        },
+      },
+      {
         accessorKey: "reorder_point",
         header: "Reorder point",
         cell: ({ row }) => (
@@ -77,6 +99,38 @@ export function ReorderTable({
         header: "Order qty",
         cell: ({ row }) => (
           <span className="tabular-nums">{formatNumber(row.original.recommended_order_qty)}</span>
+        ),
+      },
+      {
+        accessorKey: "eoq_qty",
+        header: "EOQ",
+        cell: ({ row }) => {
+          const note = ITEM_STATUS_NOTE[row.original.item_status ?? ""];
+          return (
+            <span className="flex flex-col tabular-nums">
+              {formatNumber(row.original.eoq_qty ?? null)}
+              {row.original.eoq_method && (
+                <span className="text-xs text-muted-foreground">
+                  {row.original.eoq_method === "classic" ? "Klasik √(2AS/iC)" : "Dinamis"}
+                </span>
+              )}
+              {note && <span className="text-xs text-amber-700 dark:text-amber-400">{note}</span>}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "current_stock_used",
+        header: "Stok dipakai",
+        cell: ({ row }) => (
+          <span className="flex flex-col tabular-nums">
+            {formatNumber(row.original.current_stock_used ?? null)}
+            {row.original.stock_source && (
+              <span className="text-xs text-muted-foreground">
+                {row.original.stock_source === "snapshot" ? "Stok ERP" : "Input manual"}
+              </span>
+            )}
+          </span>
         ),
       },
       {

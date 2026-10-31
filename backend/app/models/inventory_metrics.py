@@ -36,6 +36,9 @@ class InventoryMetric(Base):
     fill_rate: Mapped[Decimal] = mapped_column(Numeric(9, 4), nullable=False)
     stock_out_rate: Mapped[Decimal] = mapped_column(Numeric(9, 4), nullable=False)
     inventory_turnover: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # Fase 11.7 — inventory turnover (hari) thesis & biaya kekurangan (Rp)
+    inventory_days: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    shortage_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

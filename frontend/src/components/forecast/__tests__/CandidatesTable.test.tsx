@@ -59,4 +59,49 @@ describe("CandidatesTable", () => {
 
     expect(container.firstChild).toBeNull();
   });
+
+  it("menampilkan 3 kolom peringkat MAD, |MFE|, MAPE sebagai acuan", async () => {
+    render(<CandidatesTable candidates={ranked} winner="xgboost" rankingMetric="mad" />);
+    await bukaPerbandingan();
+
+    expect(screen.getByRole("columnheader", { name: /rank mad/i })).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: /rank \|mfe\|/i })).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: /rank mape/i })).toBeDefined();
+    const ma = screen.getAllByRole("row").find((r) => r.textContent?.includes("moving_average"));
+    expect(ma?.textContent).toContain("#3"); // rank MAD & MAPE moving_average
+    expect(ma?.textContent).toContain("#2"); // rank |MFE| moving_average
+  });
+
+  it("mengurutkan & menandai kolom peringkat sesuai metrik ranking aktif", async () => {
+    render(<CandidatesTable candidates={ranked} winner="random_forest" rankingMetric="mfe_abs" />);
+    await bukaPerbandingan();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0].textContent).toContain("random_forest"); // |MFE| terkecil
+    const header = screen.getByRole("columnheader", { name: /rank \|mfe\|/i });
+    expect(header.getAttribute("aria-sort")).toBe("ascending");
+    expect(screen.getByText(/pemenang ditentukan oleh \|mfe\|/i)).toBeDefined();
+  });
+
+  it("default metrik ranking MAD", async () => {
+    render(<CandidatesTable candidates={ranked} winner="xgboost" />);
+    await bukaPerbandingan();
+
+    expect(screen.getByRole("columnheader", { name: /rank mad/i }).getAttribute("aria-sort")).toBe(
+      "ascending",
+    );
+  });
+
+  it("run lama tanpa kolom peringkat menampilkan strip", async () => {
+    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mad" />);
+    await bukaPerbandingan();
+
+    expect(screen.queryByText(/#\d/)).toBeNull();
+  });
 });
+
+const ranked: ForecastCandidate[] = [
+  { ...candidates[0], rank_mad: 3, rank_mfe: 2, rank_mape: 3 },
+  { ...candidates[1], mfe: 4.0, rank_mad: 1, rank_mfe: 3, rank_mape: 1 },
+  { ...candidates[2], rank_mad: 2, rank_mfe: 1, rank_mape: 2 },
+];

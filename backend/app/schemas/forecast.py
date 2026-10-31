@@ -29,6 +29,7 @@ class ForecastRunSummary(BaseModel):
     status: str  # PENDING / PROCESSING / COMPLETED / FAILED
     horizon: int
     horizon_unit: str
+    ranking_metric: str | None = None  # mad | mfe_abs | mape; None = manual / run lama
     n_products: int
     n_completed: int
     n_failed: int
@@ -48,3 +49,5 @@ class ForecastResultOut(BaseModel):
     explanation: str | None = None
     forecast: list[ForecastPointOut] = []
     metrics: dict | None = None
+    feature_importance: dict | None = None  # Fase 11.2 — RF/XGB
+    hyperparameters: dict | None = None

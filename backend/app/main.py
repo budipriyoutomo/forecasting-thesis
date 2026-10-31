@@ -10,12 +10,19 @@ from app.api.v1 import (
     boms,
     cost_templates,
     dashboard,
+    external_variables,
     forecast,
+    forecast_settings,
+    inventory,
+    material_usage,
+    material_components,
     materials,
     metrics,
     overrides,
+    planning,
     products,
     reorder,
+    stock_projection,
     uploads,
     warehouse,
 )
@@ -43,12 +50,20 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(products.router, prefix="/api/v1")
 app.include_router(materials.router, prefix="/api/v1")
+app.include_router(material_usage.router, prefix="/api/v1")
+app.include_router(inventory.router, prefix="/api/v1")
+# Sebelum boms: /boms/tree harus menang atas /boms/{bom_id}.
+app.include_router(material_components.router, prefix="/api/v1")
 app.include_router(boms.router, prefix="/api/v1")
 app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(forecast.router, prefix="/api/v1")
 app.include_router(reorder.router, prefix="/api/v1")
 app.include_router(warehouse.router, prefix="/api/v1")
+app.include_router(stock_projection.router, prefix="/api/v1")
+app.include_router(planning.router, prefix="/api/v1")
 app.include_router(cost_templates.router, prefix="/api/v1")
+app.include_router(forecast_settings.router, prefix="/api/v1")
+app.include_router(external_variables.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
 app.include_router(overrides.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")

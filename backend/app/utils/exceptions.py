@@ -169,3 +169,45 @@ class ForecastRunNotFoundError(AppError):
 class UnsupportedForecastMethodError(AppError):
     status_code = 400
     code = "UNSUPPORTED_FORECAST_METHOD"
+
+
+class ExternalVariableNotFoundError(AppError):
+    """Fase 11.2b — variabel eksternal tidak ada."""
+
+    status_code = 404
+    code = "EXTERNAL_VARIABLE_NOT_FOUND"
+
+
+class ExternalVariableCodeExistsError(AppError):
+    """Fase 11.2b — kode variabel eksternal sudah dipakai."""
+
+    status_code = 409
+    code = "EXTERNAL_VARIABLE_CODE_EXISTS"
+
+
+class BomCycleDetectedError(AppError):
+    """Fase 11.3 — komponen material membentuk siklus (A → B → A)."""
+
+    status_code = 422
+    code = "BOM_CYCLE_DETECTED"
+
+
+class MaterialComponentNotFoundError(AppError):
+    """Fase 11.3 — baris komponen material (BOM level 2) tidak ada."""
+
+    status_code = 404
+    code = "MATERIAL_COMPONENT_NOT_FOUND"
+
+
+class StockSnapshotNotFoundError(AppError):
+    """Fase 11.5 — belum ada snapshot stok (ERP) untuk material/tanggal yang diminta."""
+
+    status_code = 404
+    code = "STOCK_SNAPSHOT_NOT_FOUND"
+
+
+class MaterialReceiptNotFoundError(AppError):
+    """Fase 11.5 — rencana kedatangan material tidak ada."""
+
+    status_code = 404
+    code = "MATERIAL_RECEIPT_NOT_FOUND"

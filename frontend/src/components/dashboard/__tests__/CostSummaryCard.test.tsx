@@ -59,3 +59,22 @@ describe("CostSummaryCard — template biaya & biaya pembelian (Fase 10)", () =>
     expect(screen.queryByText(/biaya pembelian material/i)).toBeNull();
   });
 });
+
+describe("CostSummaryCard — shortage cost & metode EOQ (Fase 11)", () => {
+  it("menampilkan biaya kekurangan usulan vs existing dan metode EOQ", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { CostSummaryCard } = await import("@/components/dashboard/CostSummaryCard");
+    render(
+      <CostSummaryCard
+        summary={{
+          run_id: "r1", total_ordering_cost: "1", total_holding_cost: "1", total_inventory_cost: "2",
+          baseline_inventory_cost: "4", savings_pct: "50", eoq_method: "classic",
+          shortage_cost: "700000", baseline_shortage_cost: "2100000",
+        }}
+      />,
+    );
+    expect(screen.getByText(/biaya kekurangan forecastiq/i)).toBeDefined();
+    expect(screen.getByText(/2\.100\.000/)).toBeDefined();
+    expect(screen.getByText(/eoq klasik/i)).toBeDefined();
+  });
+});

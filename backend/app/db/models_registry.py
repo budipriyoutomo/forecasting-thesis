@@ -9,13 +9,19 @@ from app.db.base import Base
 from app.models.bom import Bom  # noqa: F401
 from app.models.cost_template import CostTemplate, CostTemplateItem  # noqa: F401
 from app.models.demand_history import DemandHistory  # noqa: F401
+from app.models.external_variable import ExternalVariable, ExternalVariableValue  # noqa: F401
 from app.models.forecast_result import ForecastResult  # noqa: F401
 from app.models.forecast_run import ForecastRun  # noqa: F401
+from app.models.forecast_setting import ForecastSetting  # noqa: F401
+from app.models.inventory import MaterialReceipt, StockSnapshot  # noqa: F401
 from app.models.inventory_metrics import InventoryMetric  # noqa: F401
 from app.models.material import Material  # noqa: F401
+from app.models.material_component import MaterialComponent  # noqa: F401
+from app.models.material_usage import MaterialUsage  # noqa: F401
 from app.models.product import Product  # noqa: F401
 from app.models.override import Override  # noqa: F401
 from app.models.reorder_recommendation import ReorderRecommendation  # noqa: F401
+from app.models.stock_projection import StockProjection  # noqa: F401
 from app.models.upload_session import UploadSession  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.warehouse import WarehouseConfig, WarehouseValidation  # noqa: F401

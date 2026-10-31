@@ -28,6 +28,12 @@ class SqlWarehouseConfigRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_material(self, material_id: str) -> WarehouseConfig | None:
+        result = await self._session.execute(
+            select(WarehouseConfig).where(WarehouseConfig.material_id == material_id)
+        )
+        return result.scalar_one_or_none()
+
     async def add(self, config: WarehouseConfig) -> WarehouseConfig:
         self._session.add(config)
         await self._session.flush()

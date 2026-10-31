@@ -90,3 +90,14 @@ def test_hasil_bertipe_decimal_untuk_kolom_numeric():
     assert isinstance(r.safety_stock, Decimal)
     assert isinstance(r.reorder_point, Decimal)
     assert isinstance(r.recommended_order_qty, Decimal)
+
+
+# ── Buffer stock ikut menaikkan ROP & order-up-to (Fase 11.1) ──
+
+
+def test_buffer_menaikkan_rop_dan_qty():
+    tanpa = compute_reorder(mu=10, sigma=2, lead_time_days=4, moq=0, z=Z, manual_ss=None, current_stock=0)
+    dengan = compute_reorder(mu=10, sigma=2, lead_time_days=4, moq=0, z=Z, manual_ss=None, current_stock=0, buffer=15)
+
+    assert float(dengan.reorder_point) == pytest.approx(float(tanpa.reorder_point) + 15)  # 46.6 + 15
+    assert dengan.recommended_order_qty == math.ceil(86.6 + 15)

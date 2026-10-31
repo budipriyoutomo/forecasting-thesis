@@ -3,7 +3,7 @@
 > Wajib dibaca sebelum menambah atau mengubah file di folder ini (AGENTS.md §5, docs/ARCHITECTURE.md §6.0/§6.4).
 >
 > **v3.0 (Comparative Selection):** tidak ada lagi klasifikasi kuadran ADI/CV². Seluruh metode aktif
-> dibandingkan langsung via backtest, metrik ranking terendah menang (`FORECAST_RANKING_METRIC`).
+> dibandingkan langsung via backtest, metrik ranking terendah menang (`forecast_settings.ranking_metric`, master data).
 > Engine legacy v2.0 (ETS/ARIMA/LightGBM/Croston) dipindah ke `legacy/` — nonaktif, jangan dihapus (larangan #16).
 
 ## Kontrak fungsi
@@ -40,7 +40,7 @@ def forecast_<method>(df: pd.DataFrame, horizon: int) -> EngineResult:
 1. Buat `<nama>_engine.py`, tulis **satu** fungsi `forecast_<nama>(df, horizon) -> EngineResult`.
 2. Tulis test dulu (`tests/unit/test_<nama>_engine.py`) — TDD wajib (AGENTS.md §3).
 3. Daftarkan di `../registry.py` → `MODEL_REGISTRY["<nama>"] = forecast_<nama>`.
-4. Aktifkan lewat env `FORECAST_ENGINES_ENABLED` (tak ada lagi pemetaan kuadran).
+4. Aktifkan lewat Master Data → Pengaturan Forecast (`forecast_settings.enabled_methods`, bukan env — Fase 11.2a).
 5. **Jangan** ubah `forecast_service.py`, endpoint, atau engine lain — cukup tambah kode baru.
 
 ## Status & minimum data per metode (aktif v3.0)

@@ -15,7 +15,7 @@ from app.services.forecasting.preprocessing import to_period_series
 from app.services.forecasting.types import EngineResult
 
 
-def forecast_moving_average(df, horizon: int) -> EngineResult:
+def forecast_moving_average(df, horizon: int, options=None) -> EngineResult:  # options: tak dipakai (Fase 11.2)
     settings = get_settings()
     window = max(1, int(settings.MOVING_AVERAGE_WINDOW))
 

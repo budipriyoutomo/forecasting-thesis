@@ -1,11 +1,12 @@
 """
-XGBoost — 1 fungsi (v3.0). XGBRegressor dengan fitur lag + kalender, forecast
-rekursif multi-step (Bab III thesis).
+XGBoost — 1 fungsi (v3.0). XGBRegressor dengan fitur lag + kalender (+ variabel
+eksternal aktif), forecast rekursif multi-step (Bab III thesis).
 
-Catatan: thesis menyebut tuning via GridSearchCV. Pada data bulanan pendek (< ~40
-titik), grid search cross-validation rapuh/lambat, jadi dipakai hyperparameter tetap
-yang wajar & deterministik (random_state=42). Bila volume data besar, tuning bisa
-diaktifkan tanpa mengubah kontrak fungsi.
+Fase 11.2: hyperparameter tuning `GridSearchCV` + `TimeSeriesSplit` sesuai thesis,
+aktif via `options.ml_grid_search` (Pengaturan Forecast). Nonaktif / sampel train
+< MIN_TUNING_SAMPLES → hyperparameter tetap yang wajar & deterministik
+(random_state=42). Batasan: data bulanan pendek membuat fold CV kecil — dicatat di
+thesis. Feature importance (embedded) disimpan.
 
 Kontrak: docs/ARCHITECTURE.md §6.4 dan engines/README.md.
 """
@@ -13,17 +14,13 @@ from xgboost import XGBRegressor
 
 from app.config import get_settings
 from app.services.forecasting.engines._common import build_points, resid_std
-from app.services.forecasting.engines._ml import (
-    build_supervised,
-    fit_and_backtest,
-    recursive_forecast,
-)
+from app.services.forecasting.engines._ml import run_supervised
 from app.services.forecasting.evaluation import backtest_metrics
-from app.services.forecasting.metrics import train_test_split_series
 from app.services.forecasting.preprocessing import to_period_series
-from app.services.forecasting.types import EngineResult
+from app.services.forecasting.types import EngineOptions, EngineResult
 
 _LAGS = [1, 2, 12]
+_PARAM_GRID = {"max_depth": [3, 4], "learning_rate": [0.05, 0.1]}
 
 
 def _model() -> XGBRegressor:
@@ -38,26 +35,25 @@ def _model() -> XGBRegressor:
     )
 
 
-def forecast_xgboost(df, horizon: int) -> EngineResult:
+def forecast_xgboost(df, horizon: int, options: EngineOptions | None = None) -> EngineResult:
     settings = get_settings()
     series = to_period_series(df)
-    _, test = train_test_split_series(series, horizon)
-    train = series.iloc[: len(series) - len(test)]
-
-    test_pred, _ = fit_and_backtest(_model, series, _LAGS, len(test))
+    run = run_supervised(_model, _PARAM_GRID, series, _LAGS, horizon, options)
     metrics = backtest_metrics(
-        test.to_numpy(), test_pred, train.to_numpy(), compute_mase=settings.COMPUTE_MASE
+        run.test.to_numpy(), run.test_pred, run.train.to_numpy(), compute_mase=settings.COMPUTE_MASE
     )
 
-    X, y, used = build_supervised(series, _LAGS)
-    model = _model()
-    model.fit(X, y)
-    values = recursive_forecast(model, series, used, horizon)
-
-    std = resid_std(test.to_numpy(), test_pred, series)
-    points = build_points(series, values, std)
+    std = resid_std(run.test.to_numpy(), run.test_pred, series)
+    points = build_points(series, run.values, std)
+    top = next(iter(run.feature_importance))
     explanation = (
-        f"XGBoost (gradient boosting, fitur lag {used} + bulan) memodelkan interaksi "
-        f"non-linear antar periode. MAPE backtest: {metrics['mape']:.2f}%."
+        f"XGBoost (gradient boosting, fitur lag {run.lags} + bulan) memodelkan interaksi "
+        f"non-linear antar periode; fitur terpenting {top}. MAPE backtest: {metrics['mape']:.2f}%."
     )
-    return EngineResult(forecast=points, explanation=explanation, **metrics)
+    return EngineResult(
+        forecast=points,
+        explanation=explanation,
+        feature_importance=run.feature_importance,
+        hyperparameters=run.hyperparameters,
+        **metrics,
+    )

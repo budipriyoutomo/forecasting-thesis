@@ -9,15 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useEnabledMethods } from "@/hooks/useForecast";
-
-// Label ramah untuk kode metode engine.
-const LABELS: Record<string, string> = {
-  ets: "ETS (Exponential Smoothing)",
-  arima: "ARIMA",
-  lgbm: "LightGBM",
-  croston: "Croston / SBA",
-  prophet: "Prophet",
-};
+import { methodLabel } from "@/lib/methods";
 
 // Radix Select tidak menerima value "" untuk item, sementara kontrak komponen ini
 // tetap memakai "" sebagai penanda mode otomatis (method: null ke backend).
@@ -48,7 +40,7 @@ export function MethodSelector({
           <SelectItem value={OTOMATIS}>Otomatis (Direkomendasikan)</SelectItem>
           {(methods ?? []).map((m) => (
             <SelectItem key={m} value={m}>
-              {LABELS[m] ?? m}
+              {methodLabel(m)}
             </SelectItem>
           ))}
         </SelectContent>

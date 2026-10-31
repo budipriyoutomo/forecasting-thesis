@@ -4,7 +4,8 @@ ReorderService — safety stock & reorder point (Fase 5), docs/ARCHITECTURE.md �
 `compute_reorder` adalah FUNGSI MURNI (mudah diverifikasi manual, AGENTS.md §3):
 
   SS  = manual_safety_stock jika diisi, else Z · σ_harian · sqrt(lead_time)
-  ROP = μ_harian · lead_time + SS
+  B   = buffer stock = max(0, faktor waste − 1) × kebutuhan periode (Fase 11.1)
+  ROP = μ_harian · lead_time + SS + B
   S   = order-up-to = ROP + μ_harian · lead_time
   current ≤ ROP      → urgent   (qty = max(MOQ, ceil(S − current)))
   ROP < current ≤ S  → safe     (qty = 0)
@@ -13,22 +14,54 @@ ReorderService — safety stock & reorder point (Fase 5), docs/ARCHITECTURE.md �
 Orkestrasi (`ReorderService`) menghitung μ/σ dari deret kebutuhan material
 hasil breakdown BOM atas forecast produk, dan mengambil lead_time/MOQ/manual SS
 dari master data material.
+
+Fase 11.0 (REVISI_V2 §3.7): deret forecast berskala PERIODE (bulanan di data
+thesis), sedangkan lead time dalam HARI. μ/σ dikonversi ke harian dulu:
+  μ_d = μ_p / days_in_period,  σ_d = σ_p / √days_in_period  (asumsi demand
+  harian independen). Z = Φ⁻¹(service level / 100); service level dari master data
+  Pengaturan Forecast (Fase 11.4, default 95).
 """
 import math
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
+from statistics import NormalDist, median
 
 import numpy as np
 
 from app.config import get_settings
 from app.models.reorder_recommendation import ReorderRecommendation
-from app.services.bom_service import BomLine, breakdown_requirements_series
+from app.services.bom_service import BomLine, breakdown_requirements_series, compute_buffer_qty
 from app.services.cost_template_service import load_cost_params
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
 
 def _dec(value) -> Decimal:
     return Decimal(str(round(float(value), 4)))
+
+
+def period_to_daily(mu: float, sigma: float, days: float) -> tuple[float, float]:
+    """μ/σ per periode → per hari: μ/days, σ/√days (demand harian independen)."""
+    days = float(days)
+    if days <= 0:
+        raise ValueError("days harus > 0")
+    return float(mu) / days, float(sigma) / math.sqrt(days)
+
+
+def days_in_period(dates) -> float:
+    """Jumlah hari per periode = median selisih tanggal; < 2 tanggal valid → 1 (harian)."""
+    parsed = sorted(date.fromisoformat(str(d)[:10]) for d in dates if d)
+    if len(parsed) < 2:
+        return 1
+    return float(median((b - a).days for a, b in zip(parsed, parsed[1:])))
+
+
+def z_from_service_level(pct: float) -> float:
+    """Faktor Z dari target service level (%), mis. 95 → 1.6449, 99 → 2.3263."""
+    pct = float(pct)
+    if not 50 < pct < 100:
+        raise ValueError("service level harus di antara 50 dan 100 (%)")
+    return NormalDist().inv_cdf(pct / 100)
 
 
 @dataclass
@@ -95,6 +128,90 @@ def round_to_moq(qty: float, moq: float) -> Decimal:
     return _dec(math.ceil(round(qty / moq, 6)) * moq)
 
 
+# ── EOQ klasik thesis (Fase 11.4, REVISI_V2 §3.5) ──
+
+DEFAULT_SERVICE_LEVEL_PCT = 95.0
+DEFAULT_EOQ_METHOD = "classic"
+
+
+def periods_per_year(days: float) -> float:
+    """Periode per tahun: bulanan (28–31 hari) → 12, selain itu 365 ÷ hari."""
+    days = float(days)
+    return 12.0 if 28 <= days <= 31 else 365.0 / days
+
+
+def annual_demand(series, days: float) -> float:
+    """A = rata-rata kebutuhan per periode horizon × periode per tahun (Σ ÷ n × 12)."""
+    values = [float(v) for v in series]
+    if not values:
+        return 0.0
+    return sum(values) / len(values) * periods_per_year(days)
+
+
+@dataclass
+class ClassicEOQ:
+    eoq_qty: float
+    n_orders: float
+    ordering_cost: float  # (A/Q)·S per tahun
+    holding_cost: float  # (Q/2)·i·C per tahun
+    total_cost: float
+
+
+def compute_eoq_classic(annual_demand: float, ordering_cost: float, holding_rate, unit_price) -> ClassicEOQ:
+    """EOQ = √(2AS / iC); TC = (A/Q)S + (Q/2)iC. `holding_rate` pecahan (0,2 = 20%).
+    i atau C kosong/≤ 0 → ValueError (EOQ klasik tak terdefinisi)."""
+    if holding_rate is None or unit_price is None or float(holding_rate) <= 0 or float(unit_price) <= 0:
+        raise ValueError("EOQ klasik butuh i (%) dan harga material > 0.")
+    a, s, ic = float(annual_demand), float(ordering_cost), float(holding_rate) * float(unit_price)
+    if a <= 0:
+        return ClassicEOQ(0.0, 0.0, 0.0, 0.0, 0.0)
+    q = math.sqrt(2 * a * s / ic)
+    if q == 0:  # S = 0 → tak ada biaya pesan, EOQ teoritis 0
+        return ClassicEOQ(0.0, 0.0, 0.0, 0.0, 0.0)
+    ordering, holding = a / q * s, q / 2 * ic
+    return ClassicEOQ(q, a / q, ordering, holding, ordering + holding)
+
+
+def suggest_holding_rate(annual_holding_cost: float, avg_inventory_value: float) -> float | None:
+    """Keputusan #5: i (%) = Σ biaya simpan tahunan ÷ rata-rata nilai persediaan (Rp) × 100."""
+    if float(avg_inventory_value) <= 0:
+        return None
+    return float(annual_holding_cost) / float(avg_inventory_value) * 100
+
+
+@dataclass
+class EoqChoice:
+    method: str  # classic | dynamic (yang benar-benar dipakai)
+    status: str  # COMPLETED | MISSING_UNIT_PRICE | MISSING_HOLDING_RATE
+    eoq_qty: float
+    ordering_cost: float
+    holding_cost: float
+    total_cost: float
+    annual_demand: float
+
+
+def choose_eoq(series, days: float, method: str, unit_price, holding_rate_pct, cost) -> EoqChoice:
+    """Pilih EOQ per material (dipakai reorder usulan & baseline supaya simetris).
+
+    `classic` hanya bila harga & i (%) ada; selain itu jatuh ke EOQ dinamis dengan
+    status per item (bukan menggagalkan run, REVISI_V2 §3.5).
+    """
+    a = annual_demand(series, days)
+    status = "COMPLETED"
+    if method == "classic":
+        if unit_price is None or float(unit_price) <= 0:
+            status = "MISSING_UNIT_PRICE"
+        elif holding_rate_pct is None or float(holding_rate_pct) <= 0:
+            status = "MISSING_HOLDING_RATE"
+        else:
+            r = compute_eoq_classic(a, cost.ordering_cost, float(holding_rate_pct) / 100, unit_price)
+            return EoqChoice("classic", status, r.eoq_qty, r.ordering_cost, r.holding_cost, r.total_cost, a)
+    dyn = compute_eoq(series, cost.ordering_cost, cost.holding_cost)
+    ordering = dyn.n * cost.ordering_cost
+    holding = float(dyn.total_cost) - ordering
+    return EoqChoice("dynamic", status, float(dyn.eoq_qty), ordering, holding, float(dyn.total_cost), a)
+
+
 def compute_tic(ordering_cost_total: float, holding_cost_total: float) -> Decimal:
     """Total Inventory Cost = Ordering Cost + Holding Cost."""
     return _dec(float(ordering_cost_total) + float(holding_cost_total))
@@ -116,13 +233,15 @@ def compute_reorder(
     z: float,
     manual_ss: float | None,
     current_stock: float,
+    buffer: float = 0.0,
 ) -> ReorderComputation:
     mu, sigma = float(mu), float(sigma)
     lt, moq, current = float(lead_time_days), float(moq), float(current_stock)
 
     ss = float(manual_ss) if manual_ss is not None else z * sigma * math.sqrt(lt)
     demand_over_lt = mu * lt
-    rop = demand_over_lt + ss
+    # Buffer stock (antisipasi waste, Fase 11.1) disimpan di atas safety stock.
+    rop = demand_over_lt + ss + float(buffer)
     order_up_to = rop + demand_over_lt
 
     if current <= rop:
@@ -147,29 +266,52 @@ class ReorderService:
     safety stock, dan sebagai demand EOQ.
     """
 
-    def __init__(self, reorder_repo, forecast_repo, boms, materials, cost_templates=None):
+    def __init__(
+        self,
+        reorder_repo,
+        forecast_repo,
+        boms,
+        materials,
+        cost_templates=None,
+        usage=None,
+        settings=None,
+        stock=None,
+    ):
         self._repo = reorder_repo
         self._forecast = forecast_repo
         self._boms = boms
         self._materials = materials
         # Fase 10: S & H dari template biaya aktif; None/tanpa template aktif → env.
         self._cost_templates = cost_templates
+        # Fase 11.1: MaterialUsageService → faktor waste per material untuk buffer stock.
+        self._usage = usage
+        # Fase 11.4: ForecastSettingsService → service level & metode EOQ (master data, bukan env).
+        self._settings = settings
+        # Fase 11.5: StockSnapshotService → stok terakhir dari ERP; `current_stock` request = fallback.
+        self._stock = stock
 
     async def generate_for_run(self, user_id: str, run_id: str, current_stock: dict | None = None):
         run = await self._require_run(user_id, run_id)
         current_stock = current_stock or {}
         settings = get_settings()
-        z = settings.SERVICE_LEVEL_Z
+        service_level = await self._settings.service_level_pct() if self._settings else DEFAULT_SERVICE_LEVEL_PCT
+        eoq_method = await self._settings.eoq_method() if self._settings else DEFAULT_EOQ_METHOD
+        z = z_from_service_level(service_level)
         cost = await load_cost_params(self._cost_templates, settings)
 
         # Deret forecast per produk (hanya yang COMPLETED & punya data).
         product_series: dict[str, list[float]] = {}
+        forecast_dates: list = []
         for result in await self._forecast.list_results(run_id):
             if result.status != "COMPLETED":
                 continue
             fdata = getattr(result, "forecast_data", None) or []
             if fdata:
                 product_series[str(result.product_id)] = [float(p.get("value", 0)) for p in fdata]
+                if not forecast_dates:
+                    forecast_dates = [p.get("date") for p in fdata]
+        # Satu run = satu granularitas periode; semua produk berbagi tanggal horizon.
+        period_days = days_in_period(forecast_dates)
 
         # Breakdown BOM → deret kebutuhan per material.
         bom_lines: list[BomLine] = []
@@ -178,14 +320,24 @@ class ReorderService:
                 bom_lines.append(BomLine(str(bom.product_id), str(bom.material_id), float(bom.qty_per_unit)))
         material_series = breakdown_requirements_series(product_series, bom_lines)
 
+        waste = await self._usage.waste_factors(list(material_series)) if self._usage else {}
+        snapshots = await self._stock.latest_stock() if self._stock else {}
+
         recommendations = []
         for material_id, series in material_series.items():
             material = await self._materials.get_by_id(material_id)
             if material is None:
                 continue
             arr = np.asarray(series, dtype=float)
-            mu = float(np.mean(arr)) if len(arr) else 0.0
-            sigma = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+            mu_p = float(np.mean(arr)) if len(arr) else 0.0
+            sigma_p = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+            mu, sigma = period_to_daily(mu_p, sigma_p, period_days)
+            if str(material_id) in snapshots:
+                stock_qty, stock_source = snapshots[str(material_id)][1], "snapshot"
+            else:
+                stock_qty, stock_source = float(current_stock.get(material_id, 0)), "request"
+            waste_factor = waste.get(str(material_id))
+            buffer = compute_buffer_qty(waste_factor, mu_p)
             comp = compute_reorder(
                 mu=mu,
                 sigma=sigma,
@@ -195,19 +347,23 @@ class ReorderService:
                 manual_ss=float(material.manual_safety_stock)
                 if material.manual_safety_stock is not None
                 else None,
-                current_stock=float(current_stock.get(material_id, 0)),
+                current_stock=stock_qty,
+                buffer=buffer,
             )
 
-            eoq = compute_eoq(series, cost.ordering_cost, cost.holding_cost)
-            eoq_qty = round_to_moq(float(eoq.eoq_qty), float(material.moq))
-            ordering_total = eoq.n * cost.ordering_cost
-            holding_total = float(eoq.total_cost) - ordering_total
+            price = getattr(material, "unit_price", None)
+            eoq = choose_eoq(series, period_days, eoq_method, price, cost.holding_rate_pct, cost)
+            raw_qty = math.ceil(round(eoq.eoq_qty, 6)) if eoq.method == "classic" else eoq.eoq_qty
+            eoq_qty = round_to_moq(raw_qty, float(material.moq))
+            ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
 
             recommendations.append(
                 ReorderRecommendation(
                     run_id=run.id,
                     material_id=material.id,
                     safety_stock=comp.safety_stock,
+                    buffer_stock=_dec(buffer),
+                    waste_factor=_dec(waste_factor) if waste_factor is not None else None,
                     reorder_point=comp.reorder_point,
                     recommended_order_qty=comp.recommended_order_qty,
                     status=comp.status,
@@ -215,6 +371,13 @@ class ReorderService:
                     ordering_cost=_dec(ordering_total),
                     holding_cost=_dec(holding_total),
                     total_inventory_cost=compute_tic(ordering_total, holding_total),
+                    eoq_method=eoq.method,
+                    item_status=eoq.status,
+                    annual_demand=_dec(eoq.annual_demand),
+                    unit_price_used=price,
+                    holding_rate_used=cost.holding_rate_pct if eoq.method == "classic" else None,
+                    current_stock_used=_dec(stock_qty),
+                    stock_source=stock_source,
                 )
             )
 

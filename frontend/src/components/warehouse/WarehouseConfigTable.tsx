@@ -8,46 +8,56 @@ import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
 import { CAPACITY_MODE_LABELS, usesDus, usesPallet } from "@/lib/warehouse";
+import type { Material } from "@/types/material";
 import type { Product } from "@/types/product";
-import type { WarehouseConfig } from "@/types/warehouse";
+import type { WarehouseConfig, WarehouseTarget } from "@/types/warehouse";
 
 interface WarehouseConfigRow extends WarehouseConfig {
   productLabel: string;
 }
 
-// "10 pallet × 60 + 25 dus" / "10 pallet × 60" / "25 dus"
-function capacityBreakdown(c: WarehouseConfig): string {
+// "10 pallet × 60 + 25 dus" / "10 pallet × 60" / "25 dus" — material memakai CTN (Fase 11.6)
+function capacityBreakdown(c: WarehouseConfig, dusWord: string): string {
   const parts: string[] = [];
   if (usesPallet(c.capacity_mode))
     parts.push(`${formatNumber(c.pallet_qty)} pallet × ${formatNumber(c.dus_per_pallet)}`);
-  if (usesDus(c.capacity_mode)) parts.push(`${formatNumber(c.dus_qty)} dus`);
+  if (usesDus(c.capacity_mode)) parts.push(`${formatNumber(c.dus_qty)} ${dusWord}`);
   return parts.join(" + ");
 }
 
 export function WarehouseConfigTable({
   configs,
   products,
+  materials = [],
+  targetType = "product",
   onEdit,
   onDelete,
 }: {
   configs: WarehouseConfig[];
   products: Product[];
+  materials?: Material[];
+  targetType?: WarehouseTarget;
   onEdit?: (c: WarehouseConfig) => void;
   onDelete?: (c: WarehouseConfig) => void;
 }) {
   const rows = useMemo<WarehouseConfigRow[]>(() => {
-    const productById = new Map(products.map((p) => [p.id, p]));
+    const byId = new Map<string, { code: string; name: string }>(
+      (targetType === "material" ? materials : products).map((p) => [p.id, p]),
+    );
     return configs.map((c) => {
-      const p = productById.get(c.product_id);
-      return { ...c, productLabel: p ? `${p.code} — ${p.name}` : c.product_id };
+      const id = (targetType === "material" ? c.material_id : c.product_id) ?? "";
+      const p = byId.get(id);
+      return { ...c, productLabel: p ? `${p.code} — ${p.name}` : id };
     });
-  }, [configs, products]);
+  }, [configs, products, materials, targetType]);
+  const isMaterial = targetType === "material";
+  const dusWord = isMaterial ? "CTN" : "dus";
 
   const columns = useMemo<ColumnDef<WarehouseConfigRow>[]>(
     () => [
       {
         accessorKey: "productLabel",
-        header: "Produk",
+        header: isMaterial ? "Material" : "Produk",
         cell: ({ row }) => <span className="font-medium">{row.original.productLabel}</span>,
       },
       {
@@ -61,15 +71,15 @@ export function WarehouseConfigTable({
         enableSorting: false,
         cell: ({ row }) => (
           <span className="tabular-nums text-muted-foreground">
-            {capacityBreakdown(row.original)}
+            {capacityBreakdown(row.original, dusWord)}
           </span>
         ),
       },
       {
         accessorKey: "capacity_dus",
-        header: "Dalam dus",
+        header: `Dalam ${dusWord}`,
         cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.capacity_dus)} dus</span>
+          <span className="tabular-nums">{formatNumber(row.original.capacity_dus)} {dusWord}</span>
         ),
       },
       {
@@ -114,7 +124,7 @@ export function WarehouseConfigTable({
         ),
       },
     ],
-    [onEdit, onDelete],
+    [onEdit, onDelete, isMaterial, dusWord],
   );
 
   return (

@@ -119,18 +119,18 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 
 - FR-3.1 **[CHANGED]** Untuk tiap produk, sistem menjalankan **seluruh** metode forecasting yang aktif (tanpa penyaringan berdasarkan pola demand lebih dulu).
 - FR-3.2 **[CHANGED]** Tiap metode menjalankan holdout backtest dan melaporkan empat metrik akurasi: **MAD, MFE, MSE, MAPE**. MASE dihitung sebagai metrik tambahan opsional (`COMPUTE_MASE`), tidak dipakai untuk ranking.
-- FR-3.3 **[CHANGED]** Sistem memilih metode dengan nilai **metrik ranking terendah** (`FORECAST_RANKING_METRIC`, default `mape`; opsi lain `mad`/`mse`/`mfe_abs`). Metode yang metriknya tidak terdefinisi diperlakukan sebagai terburuk, bukan menggagalkan run.
-- FR-3.4 **[NEW]** Seluruh metode yang berhasil dievaluasi disimpan di `candidates_evaluated` (metode + keempat metrik) **dan ditampilkan di UI** sebagai tabel terurut dari metrik ranking terbaik, dengan pemenang ditandai — agar user bisa menilai apakah selisih akurasinya berarti, bukan hanya menerima pemenangnya.
+- FR-3.3 **[CHANGED]** Sistem memilih metode dengan nilai **metrik ranking terendah** (master data **Pengaturan Forecast**, default `mad`; opsi lain `mfe_abs`/`mape` — diubah admin dari UI, bukan env; Fase 11.2a). Metode yang metriknya tidak terdefinisi diperlakukan sebagai terburuk, bukan menggagalkan run.
+- FR-3.4 **[NEW]** Seluruh metode yang berhasil dievaluasi disimpan di `candidates_evaluated` (metode + keempat metrik) **dan ditampilkan di UI** sebagai tabel terurut dari metrik ranking terbaik, dengan pemenang ditandai, plus **3 kolom peringkat berdampingan (Rank MAD, Rank |MFE|, Rank MAPE)** sebagai acuan dan kolom metrik aktif ditandai — agar user bisa menilai apakah selisih akurasinya berarti, bukan hanya menerima pemenangnya.
 - FR-3.5 **[CHANGED]** Sistem menghasilkan penjelasan bahasa natural tentang metode yang dipilih dan alasannya. Di mode otomatis penjelasan **dibuka dengan dasar pemilihannya** — metode pemenang, berapa metode dibandingkan, metrik ranking beserta nilainya, dan metode terbaik berikutnya — baru diikuti karakteristik metode tersebut. Di mode manual tidak ada narasi perbandingan (tidak ada yang dibandingkan).
 - FR-3.6 **[CHANGED]** Metode yang gagal saat fit/backtest di mode otomatis **dikecualikan dari perbandingan** dan run tetap lanjut dengan metode yang tersisa. Jika **semua** metode gagal → `MODEL_SELECTION_FAILED`. (Fallback berurutan versi v2.0 tidak berlaku — tidak ada urutan skor untuk di-fallback-i.)
 - FR-3.7 User dapat melihat metode yang dipakai per item dan (opsional) memicu ulang forecast dengan metode berbeda secara manual.
-- FR-3.8 **[CHANGED]** Daftar metode aktif (`FORECAST_ENGINES_ENABLED`) dan metrik ranking (`FORECAST_RANKING_METRIC`) dapat dikonfigurasi tanpa mengubah kode.
+- FR-3.8 **[CHANGED]** Daftar metode aktif dan metrik ranking dikonfigurasi admin lewat master data **Pengaturan Forecast** (menu Master Data → Pengaturan Forecast) tanpa mengubah kode maupun env (Fase 11.2a). Metode aktif = kandidat mode otomatis sekaligus pilihan mode manual; minimal satu metode.
 - FR-3.9 **[CHANGED]** **Sebelum menjalankan forecast** (belum generate), user dapat memilih mode: **"Bandingkan Otomatis (Direkomendasikan)"** — sistem membandingkan seluruh metode aktif — atau **memilih metode secara manual** dari daftar metode yang tersedia (Moving Average / Exponential Smoothing / Random Forest / XGBoost / LSTM) untuk run tersebut.
 - FR-3.10 **[CHANGED]** Jika user memilih metode manual, sistem **langsung memakai metode itu** (tanpa perbandingan), tapi tetap menjalankan backtest untuk melaporkan MAD/MFE/MSE/MAPE dan tetap menghasilkan penjelasan bahasa natural — supaya user tetap tahu seberapa akurat pilihannya secara historis.
 - FR-3.11 Jika metode manual yang dipilih gagal dijalankan (mis. data tidak cukup untuk metode itu), sistem mengembalikan error yang jelas (`UNSUPPORTED_FORECAST_METHOD` atau `MODEL_SELECTION_FAILED`), bukan diam-diam pindah ke metode lain — karena user sudah memilih secara sadar.
 
 ### FR-4 Rekomendasi Reorder, Buffer Stock & EOQ
-- FR-4.1 Sistem menghitung safety stock berdasarkan variabilitas demand, lead time, dan target service level (dapat dikonfigurasi, `SERVICE_LEVEL_Z` default 1.65 ≈ 95%).
+- FR-4.1 Sistem menghitung safety stock berdasarkan variabilitas demand, lead time, dan target service level (dapat dikonfigurasi, `SERVICE_LEVEL_PCT` default 95 → Z ≈ 1.645; 99 → Z ≈ 2.326). σ dan μ demand dihitung **harian** (dikonversi dari periode forecast) karena lead time dalam hari.
 - FR-4.2 Sistem menghitung reorder point = (demand rata-rata selama lead time) + safety stock.
 - FR-4.3 Sistem menghasilkan rekomendasi jumlah order (order quantity) mempertimbangkan MOQ sebagai batas bawah.
 - FR-4.4 Sistem menandai item dengan status "Perlu Reorder Segera", "Aman", atau "Overstock".
@@ -184,6 +184,18 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-11.4 Definisi rumus keempat metrik tidak tersedia di sumber thesis; definisi standar yang dipakai disepakati bersama user dan dicatat di `RECONCILIATION.md` §Fase 7 agar bisa dipertanggungjawabkan.
 - FR-11.5 **[NEW 2 Okt 2026]** S & H untuk EOQ/TIC diambil dari **template biaya aktif** (FR-2.7); bila belum ada template aktif, memakai nilai default env seperti sebelumnya. Ringkasan biaya menampilkan sumbernya (template/env) dan **biaya pembelian material** sebagai informasi — **tidak** dijumlahkan ke TIC.
 
+### FR-12 Alur Perencanaan Persediaan Material (thesis v3.2) **[NEW 30 Okt 2026]**
+- FR-12.1 Master data **Pengaturan Forecast** (admin): metrik ranking pemenang (MAD/|MFE|/MAPE, default MAD), metode aktif, grid α ES (default thesis 0,01/0,05/0,15/0,2/0,8/0,95/0,99, dipilih by MAD), grid search ML, cap outlier IQR, target service level (95/99%), metode EOQ (klasik/dinamis). **Tidak ada pengaturan metode di env.**
+- FR-12.2 Hasil forecast menampilkan **3 kolom peringkat** (MAD, |MFE|, MAPE), label interpretasi MAPE (Lewis), α terpilih, dan **feature importance** RF/XGBoost.
+- FR-12.3 Master data **Variabel Eksternal** dinamis (musim, cuaca/temperatur, harga, promo/event, …): tipe numerik/flag, cakupan global/per produk, toggle aktif; nilai per periode di-upload. RF/XGBoost memakai variabel aktif yang nilainya lengkap untuk histori + horizon.
+- FR-12.4 **Buffer stock** = max(0, Σaktual ÷ Σstandar − 1) × kebutuhan periode, dari upload pemakaian aktual (standar = output produksi × BOM).
+- FR-12.5 **BOM multi-level**: komponen material (mis. Preform ← Bottle) sebagai informasi level 2; siklus ditolak.
+- FR-12.6 **EOQ klasik** √(2AS/iC) per material bila harga & i (%) tersedia (i diturunkan otomatis dari biaya simpan tahunan ÷ rata-rata nilai persediaan, bisa di-override di template biaya); selain itu EOQ dinamis dengan status per item.
+- FR-12.7 **Stok ERP & kedatangan**: upload snapshot stok, input/upload estimasi kedatangan. Stok untuk reorder = snapshot terakhir (`current_stock` request jadi fallback).
+- FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan + pesanan EOQ − pemakaian; utilisasi stok awal & akhir; dua skenario (forecast vs planning).
+- FR-12.9 **Evaluasi material**: fulfillment/service level, stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga jual).
+- FR-12.10 Tombol **Jalankan perencanaan** menjalankan tahap 2→4 berurutan (`POST /forecast/runs/{id}/plan`).
+
 ## 6. Metode Forecasting yang Didukung
 
 **[CHANGED]** Daftar metode diganti total mengikuti Bab III thesis: dua baseline konvensional + tiga metode machine learning, semuanya dibandingkan secara langsung.
@@ -195,7 +207,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 | Machine Learning | Random Forest | Regressor atas fitur lag | MVP |
 | Machine Learning | XGBoost | Regressor atas fitur lag | MVP |
 | Machine Learning | LSTM | Butuh histori lebih panjang (`LSTM_MIN_PERIODS`, default 24) dan TensorFlow | MVP — **belum terverifikasi jalan di image Docker**, lihat `TASK_BREAKDOWN.md` §10 |
-| **[DROPPED]** Legacy v2.0 | ETS, ARIMA, LightGBM, Croston/SBA, Prophet | Dipindah ke `engines/legacy/`, nonaktif di `FORECAST_ENGINES_ENABLED`. **Tidak dihapus** — kandidat reuse untuk forecasting raw material intermittent di luar scope thesis | Nonaktif |
+| **[DROPPED]** Legacy v2.0 | ETS, ARIMA, LightGBM, Croston/SBA, Prophet | Dipindah ke `engines/legacy/`, tidak terdaftar di `MODEL_REGISTRY` (tidak muncul di Pengaturan Forecast). **Tidak dihapus** — kandidat reuse untuk forecasting raw material intermittent di luar scope thesis | Nonaktif |
 | Post-MVP | SARIMA, Holt-Winters, Theta, TBATS, N-HiTS, TFT | Musiman kompleks / long-horizon multivariate | Post-MVP |
 
 Sistem menjalankan **seluruh metode aktif** untuk tiap SKU, menghitung **MAD/MFE/MSE/MAPE** lewat backtest, lalu memilih metode dengan metrik ranking terendah — bukan satu metode yang dipaksakan untuk semua item, dan bukan pula penyaringan kandidat berdasarkan klasifikasi pola demand lebih dulu.
@@ -254,7 +266,7 @@ Sistem menjalankan **seluruh metode aktif** untuk tiap SKU, menghitung **MAD/MFE
 
 - Integrasi langsung ke ERP/database perusahaan (real-time atau scheduled sync).
 - Notifikasi otomatis (email/WhatsApp) saat item mencapai reorder point.
-- **[NEW]** Jalur forecasting raw material langsung (untuk perusahaan tanpa BOM lengkap, atau item berpola intermittent) — dilepas dari v3.0 pada 4 Agustus 2026. Menghidupkannya lagi **bukan sekadar mengubah `FORECAST_ENGINES_ENABLED`**: butuh tabel histori raw material baru (`consumption_history` sudah di-drop di `c9d0e1f2a3b4`), mode ingestion `material_code`, dan jalur forecast/reorder level material. Engine legacy di `legacy/` masih ada sebagai titik awal.
+- **[NEW]** Jalur forecasting raw material langsung (untuk perusahaan tanpa BOM lengkap, atau item berpola intermittent) — dilepas dari v3.0 pada 4 Agustus 2026. Menghidupkannya lagi **bukan sekadar mengaktifkan metode di Pengaturan Forecast**: butuh tabel histori raw material baru (`consumption_history` sudah di-drop di `c9d0e1f2a3b4`), mode ingestion `material_code`, dan jalur forecast/reorder level material. Engine legacy di `legacy/` masih ada sebagai titik awal.
 - **[NEW]** Racking / penyimpanan bertingkat dalam perhitungan kapasitas gudang.
 - Multi-lokasi/gudang, multi-tenant (organization/project) untuk dijual sebagai SaaS ke banyak perusahaan.
 - Engine tambahan: SARIMA, Holt-Winters, TBATS, NeuralProphet, dan tier enterprise (N-HiTS/TFT).

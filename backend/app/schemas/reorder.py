@@ -21,6 +21,14 @@ class ReorderRecommendationOut(BaseModel):
     status: str  # urgent / safe / overstock
     # v3.0 — buffer stock, EOQ dinamis & total biaya (opsional; null bila belum dihitung)
     buffer_stock: Decimal | None = None
+    waste_factor: Decimal | None = None
+    eoq_method: str | None = None  # Fase 11.4 — classic | dynamic
+    item_status: str | None = None  # COMPLETED | MISSING_UNIT_PRICE | MISSING_HOLDING_RATE
+    annual_demand: Decimal | None = None
+    unit_price_used: Decimal | None = None
+    holding_rate_used: Decimal | None = None
+    current_stock_used: Decimal | None = None
+    stock_source: str | None = None  # snapshot | request
     eoq_qty: Decimal | None = None
     ordering_cost: Decimal | None = None
     holding_cost: Decimal | None = None

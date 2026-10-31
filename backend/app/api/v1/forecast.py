@@ -17,6 +17,7 @@ from app.api.deps import (
     get_current_user,
     get_export_service,
     get_forecast_run_service,
+    get_forecast_settings_service,
 )
 from app.services.export_service import ExportService
 from app.schemas.forecast import (
@@ -25,16 +26,15 @@ from app.schemas.forecast import (
     ForecastRunSummary,
 )
 from app.services.forecast_run_service import ForecastRunService
-from app.services.forecasting import registry
+from app.services.forecast_settings_service import ForecastSettingsService
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 
 
 @router.get("/methods", dependencies=[Depends(get_current_user)])
-async def list_methods():
-    """Metode aktif untuk MethodSelector di frontend (§6.8). Listing saja,
-    bukan menjalankan seleksi — jadi boleh baca registry langsung."""
-    methods = sorted(registry.get_enabled_methods())
+async def list_methods(settings: ForecastSettingsService = Depends(get_forecast_settings_service)):
+    """Metode aktif (master data Pengaturan Forecast) untuk MethodSelector di frontend (§6.8)."""
+    methods = sorted(await settings.enabled_methods())
     return {"success": True, "data": {"methods": methods}}
 
 
@@ -57,6 +57,8 @@ def _result_out(result) -> dict:
         explanation=result.explanation,
         forecast=list(result.forecast_data or []),
         metrics=result.metrics,
+        feature_importance=getattr(result, "feature_importance", None),
+        hyperparameters=getattr(result, "hyperparameters", None),
     ).model_dump()
 
 
@@ -67,6 +69,7 @@ def _summary(run, results) -> dict:
         status=run.status,
         horizon=run.horizon,
         horizon_unit=run.horizon_unit,
+        ranking_metric=getattr(run, "ranking_metric", None),
         n_products=len(results),
         n_completed=n_completed,
         n_failed=len(results) - n_completed,

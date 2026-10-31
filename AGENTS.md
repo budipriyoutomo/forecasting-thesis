@@ -110,8 +110,11 @@ UNSUPPORTED_FORECAST_METHOD    WAREHOUSE_CONFIG_NOT_FOUND      WAREHOUSE_CAPACIT
 OVERRIDE_REASON_REQUIRED       OVERRIDE_TARGET_NOT_FOUND       STORAGE_UPLOAD_FAILED
 RATE_LIMIT_EXCEEDED            WAREHOUSE_CONFIG_EXISTS         COST_TEMPLATE_NOT_FOUND
 COST_TEMPLATE_NAME_EXISTS      WAREHOUSE_CAPACITY_INVALID
+EXTERNAL_VARIABLE_NOT_FOUND    EXTERNAL_VARIABLE_CODE_EXISTS  BOM_CYCLE_DETECTED
+MATERIAL_COMPONENT_NOT_FOUND   STOCK_SNAPSHOT_NOT_FOUND       MATERIAL_RECEIPT_NOT_FOUND
 ```
 > **Tambahan 2 Oktober 2026** (`RECONCILIATION.md` §"Konsolidasi Master Data"): `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409), `WAREHOUSE_CAPACITY_INVALID` (400, input pallet/dus tidak lengkap/tidak valid untuk mode & unit produknya), dan `WAREHOUSE_CONFIG_EXISTS` (409) — yang terakhir sudah dipakai kode sejak 24 Agustus 2026 tapi baru didaftarkan di sini.
+> **Tambahan 30 Oktober 2026** (Fase 11, `RECONCILIATION.md` §"Rekonsiliasi v3.2"): `EXTERNAL_VARIABLE_NOT_FOUND` (404), `EXTERNAL_VARIABLE_CODE_EXISTS` (409), `BOM_CYCLE_DETECTED` (422, komponen material membentuk siklus), `MATERIAL_COMPONENT_NOT_FOUND` (404), `STOCK_SNAPSHOT_NOT_FOUND` (404, disiapkan), `MATERIAL_RECEIPT_NOT_FOUND` (404). `MISSING_UNIT_PRICE` / `MISSING_HOLDING_RATE` adalah **status per item** reorder (`item_status`), bukan error HTTP.
 > Daftar ini final hasil v3.1 (v3.0 + 4 code yang diwarisi dari implementasi v2.0 di git: `AUTH_FORBIDDEN`, `PRODUCT_CODE_EXISTS`, `MATERIAL_CODE_EXISTS`, `OVERRIDE_TARGET_NOT_FOUND` — lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1"). Jangan tambah error code sepihak — kalau butuh code baru, tambahkan di sini dulu (dan di `ARCHITECTURE.md` §5) sebelum dipakai di kode. `WAREHOUSE_CAPACITY_EXCEEDED` dipakai sebagai *flag* di data response (200), **bukan** status error HTTP — lihat `ARCHITECTURE.md` §5.
 
 ### HTTP Status Code
@@ -125,8 +128,8 @@ COST_TEMPLATE_NAME_EXISTS      WAREHOUSE_CAPACITY_INVALID
 - **Semua proses forecasting harus melalui `app/services/forecasting/forecast_service.py`** — tidak boleh inline di router manapun.
 - User **boleh memilih metode secara manual sebelum generate** (field `method` di request — lihat `docs/ARCHITECTURE.md` §6.6). Kalau `method` diisi, **skip** perbandingan, langsung panggil fungsi metode itu. Kalau kosong/`null`, jalankan **Comparative Selection** penuh (bandingkan seluruh metode aktif).
 - Kegagalan pada **mode manual TIDAK di-fallback** ke metode lain — user sudah memilih sadar, errornya harus jelas (`MODEL_SELECTION_FAILED` atau `UNSUPPORTED_FORECAST_METHOD`), bukan diam-diam diganti metode.
-- **Tidak ada klasifikasi pola demand (ADI/CV²/kuadran Syntetos-Boylan) di v3.0.** Comparative Selection menjalankan seluruh metode aktif dan memilih berdasarkan metrik akurasi (`FORECAST_RANKING_METRIC`, default MAPE terendah menang) — mengikuti metodologi Bab III thesis. Jangan tambahkan klasifikasi kuadran kembali tanpa didiskusikan dengan user dan dicatat di `RECONCILIATION.md`.
-- Nama/daftar metode aktif **tidak boleh hardcode tersebar di kode** — baca dari config/env (`FORECAST_ENGINES_ENABLED`, `FORECAST_RANKING_METRIC`), bisa diubah tanpa ubah kode.
+- **Tidak ada klasifikasi pola demand (ADI/CV²/kuadran Syntetos-Boylan) di v3.0.** Comparative Selection menjalankan seluruh metode aktif dan memilih berdasarkan metrik akurasi (master data **Pengaturan Forecast** `forecast_settings.ranking_metric`: `mad` | `mfe_abs` | `mape`, default MAD terendah menang — **bukan env**, sejak Fase 11.2a) — mengikuti metodologi Bab III thesis. Jangan tambahkan klasifikasi kuadran kembali tanpa didiskusikan dengan user dan dicatat di `RECONCILIATION.md`.
+- Nama/daftar metode aktif **tidak boleh hardcode tersebar di kode** — baca dari master data **Pengaturan Forecast** (`forecast_settings.enabled_methods` & `ranking_metric`, sejak Fase 11.2a — **bukan env**), bisa diubah admin dari UI tanpa ubah kode. Nama metode yang boleh dipilih = kunci `MODEL_REGISTRY`.
 - **Setiap metode forecasting (Moving Average, Exponential Smoothing, Random Forest, XGBoost, LSTM) adalah SATU FUNGSI MURNI** — bukan class/Protocol. Signature seragam: `def forecast_<method>(df: pd.DataFrame, horizon: int) -> EngineResult`. Fungsi itu sendiri yang melakukan backtest (untuk MAD/MFE/MSE/MAPE), fit ulang di seluruh data, predict horizon, dan generate explanation — semua self-contained di satu fungsi, satu file. Lihat `docs/ARCHITECTURE.md` §6.0/§6.4.
 - Registry adalah `dict[str, Callable]` sederhana (`registry.py`).
 - Engine legacy (ETS/ARIMA/LightGBM/Croston/Prophet dari arsitektur v2.0) **tidak dihapus**, dipindah ke `engines/legacy/` dan nonaktif default — lihat `docs/ARCHITECTURE.md` §6.9. Jangan hapus file-file ini; cukup biarkan tidak terdaftar di `MODEL_REGISTRY` aktif.
@@ -134,9 +137,9 @@ COST_TEMPLATE_NAME_EXISTS      WAREHOUSE_CAPACITY_INVALID
 ### Alur seleksi model (wajib diikuti urutannya) — detail lengkap di `docs/ARCHITECTURE.md` §6
 1. **Cek volume data** — `BACKTEST_MIN_PERIODS` (default 12), atau `LSTM_MIN_PERIODS` (default 24) khusus bila LSTM diminta/diikutkan. Di bawah minimum → `INSUFFICIENT_DATA`, fail fast.
 2. **Mode manual**: panggil langsung 1 fungsi metode yang diminta, tanpa fallback.
-3. **Mode otomatis**: jalankan seluruh metode aktif di `FORECAST_ENGINES_ENABLED` — tiap fungsi melakukan holdout backtest sendiri dan mengembalikan MAD/MFE/MSE/MAPE.
+3. **Mode otomatis**: jalankan seluruh metode aktif di `forecast_settings.enabled_methods` (NULL = seluruh `MODEL_REGISTRY`; dibaca sekali per run) — tiap fungsi melakukan holdout backtest sendiri dan mengembalikan MAD/MFE/MSE/MAPE.
 4. **Exclude yang gagal** — metode yang error saat backtest/fit dikeluarkan dari perbandingan, proses lanjut dengan sisanya.
-5. **Ranking** — pilih metode dengan nilai `FORECAST_RANKING_METRIC` terbaik (default: MAPE terendah).
+5. **Ranking** — pilih metode dengan nilai `ranking_metric` (master data Pengaturan Forecast, dibaca sekali per run & dicatat di `forecast_runs.ranking_metric`) terbaik (default: MAD terendah). Tiap kandidat juga diberi `rank_mad`, `rank_mfe` (|MFE|), `rank_mape` sebagai acuan.
 6. **Generate hasil final** dari metode terpilih → simpan seluruh `candidates_evaluated` (bukan cuma pemenang) untuk transparansi → generate natural language explanation yang membandingkan pemenang dengan kandidat lain.
 
 ### Struktur forecasting service (function registry, 1 fungsi = 1 metode)
@@ -182,8 +185,7 @@ backend/app/services/forecasting/
 ### Environment variables yang diperlukan
 ```env
 # backend/.env
-FORECAST_ENGINES_ENABLED=moving_average,exponential_smoothing,random_forest,xgboost,lstm
-FORECAST_RANKING_METRIC=mape          # mape | mad | mse | mfe_abs — ganti di sini, 0 perubahan kode
+# Metode aktif & metrik ranking: master data Pengaturan Forecast (bukan env, Fase 11.2a)
 COMPUTE_MASE=true
 BACKTEST_MIN_PERIODS=12
 LSTM_MIN_PERIODS=24
@@ -193,6 +195,7 @@ LSTM_ENGINE_TIMEOUT_SECONDS=120
 FORECAST_TIMEOUT_SECONDS=180
 MAX_UPLOAD_SIZE_MB=10
 
+SERVICE_LEVEL_PCT=95                   # target service level (%), Z = Φ⁻¹(pct/100)
 DEFAULT_ORDERING_COST=...              # fallback bila tidak ada cost_template aktif
 DEFAULT_HOLDING_COST_RATE=...          # fallback bila tidak ada cost_template aktif
 WAREHOUSE_PALLET_NO_RACKING=true
@@ -326,6 +329,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Validasi kapasitas gudang menghasilkan flag, bukan block otomatis
 - [ ] Setiap metode forecasting baru adalah 1 fungsi (bukan class), sudah ada test-nya sendiri (`test_<method>_engine.py`)
 - [ ] Mode manual (`method` diisi user) sudah diuji: sukses, error saat metode tidak dikenal (`UNSUPPORTED_FORECAST_METHOD`), dan tidak fallback saat gagal
-- [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap, ranking sesuai `FORECAST_RANKING_METRIC`
+- [ ] Konversi satuan periode ↔ hari (SS/ROP, annualisasi EOQ) dites dengan data bulanan (Fase 11.0)
+- [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap, ranking sesuai `forecast_settings.ranking_metric`, 3 kolom peringkat terisi
 - [ ] Field `code` pada resource baru (produk/material/dsb) sudah dicek unik sebelum insert, dan pesan error mengikuti pola `*_CODE_EXISTS`
 - [ ] Resource yang di-generate dari perhitungan (bukan CRUD murni) menyediakan endpoint `POST` untuk generate & persist sebelum `GET` untuk membaca — lihat `ARCHITECTURE.md` §5

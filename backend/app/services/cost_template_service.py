@@ -35,10 +35,17 @@ def monthly_depreciation(purchase_price, salvage_value, useful_life_months: int,
     return _q((_d(purchase_price) - _d(salvage_value)) / Decimal(useful_life_months) * _d(qty))
 
 
+_EXPENSE_TYPES = ("OVERHEAD", "MAINTENANCE")
+
+
 def item_monthly_cost(item) -> Decimal:
-    """Biaya per bulan satu item: overhead × qty, atau depresiasi aset."""
-    if item.item_type == "OVERHEAD":
-        return _q(_d(item.monthly_amount) * _d(item.qty))
+    """Biaya per bulan satu item: overhead/perawatan × qty (basis tahunan ÷ 12, Fase 11.4),
+    atau depresiasi aset. Kolom `monthly_amount` = nominal per `period_basis`."""
+    if item.item_type in _EXPENSE_TYPES:
+        amount = _d(item.monthly_amount) * _d(item.qty)
+        if getattr(item, "period_basis", "monthly") == "annual":
+            amount = amount / Decimal(12)
+        return _q(amount)
     return monthly_depreciation(item.purchase_price, item.salvage_value, item.useful_life_months, item.qty)
 
 
@@ -49,21 +56,32 @@ class TemplateSummary:
     total_monthly: Decimal
     total_capacity_dus: Decimal
     suggested_holding_cost: Decimal | None
+    # Fase 11.4 (Keputusan #5): biaya simpan tahunan & saran i (%) untuk EOQ klasik.
+    total_maintenance_monthly: Decimal = Decimal(0)
+    total_annual: Decimal = Decimal(0)
+    avg_inventory_value: Decimal | None = None
+    suggested_holding_rate_pct: Decimal | None = None
 
 
-def summarize_template(items, total_capacity_dus) -> TemplateSummary:
-    depreciation = sum(
-        (item_monthly_cost(i) for i in items if i.item_type == "STORAGE_ASSET"), Decimal(0)
-    )
-    overhead = sum((item_monthly_cost(i) for i in items if i.item_type == "OVERHEAD"), Decimal(0))
-    total = depreciation + overhead
+def summarize_template(items, total_capacity_dus, avg_inventory_value=None) -> TemplateSummary:
+    def total_of(kind: str) -> Decimal:
+        return sum((item_monthly_cost(i) for i in items if i.item_type == kind), Decimal(0))
+
+    depreciation, overhead, maintenance = total_of("STORAGE_ASSET"), total_of("OVERHEAD"), total_of("MAINTENANCE")
+    total = depreciation + overhead + maintenance
     capacity = _d(total_capacity_dus)
+    annual = total * 12
+    value = _d(avg_inventory_value) if avg_inventory_value is not None else None
     return TemplateSummary(
         total_depreciation_monthly=_q(depreciation),
         total_overhead_monthly=_q(overhead),
         total_monthly=_q(total),
         total_capacity_dus=_q(capacity),
         suggested_holding_cost=_q(total / capacity) if capacity > 0 else None,
+        total_maintenance_monthly=_q(maintenance),
+        total_annual=_q(annual),
+        avg_inventory_value=_q(value) if value is not None else None,
+        suggested_holding_rate_pct=_q(annual / value * 100) if value and value > 0 else None,
     )
 
 
@@ -75,6 +93,7 @@ class CostParams:
     holding_cost: float
     source: str  # "template" | "env"
     template_name: str | None = None
+    holding_rate_pct: float | None = None  # i (%) tahunan EOQ klasik — hanya dari template
 
 
 def resolve_cost_params(active_template, settings) -> CostParams:
@@ -85,6 +104,11 @@ def resolve_cost_params(active_template, settings) -> CostParams:
             holding_cost=float(active_template.holding_cost),
             source="template",
             template_name=active_template.name,
+            holding_rate_pct=(
+                float(active_template.holding_cost_rate_pct)
+                if getattr(active_template, "holding_cost_rate_pct", None) is not None
+                else None
+            ),
         )
     return CostParams(
         ordering_cost=float(settings.DEFAULT_ORDERING_COST),
@@ -109,11 +133,13 @@ class CostTemplateService:
         warehouse_configs,
         template_factory: Callable[..., object] = CostTemplate,
         item_factory: Callable[..., object] = CostTemplateItem,
+        stock=None,
     ):
         self._repo = repo
         self._warehouse = warehouse_configs
         self._template = template_factory
         self._item = item_factory
+        self._stock = stock  # Fase 11.5 — StockSnapshotService untuk saran i (%)
 
     async def list(self):
         return await self._repo.list()
@@ -141,6 +167,7 @@ class CostTemplateService:
             description=payload.description,
             ordering_cost=payload.ordering_cost,
             holding_cost=payload.holding_cost,
+            holding_cost_rate_pct=payload.holding_cost_rate_pct,
             items=self._build_items(payload),
         )
         template.is_active = False  # aktivasi selalu eksplisit lewat activate()
@@ -153,6 +180,7 @@ class CostTemplateService:
         template.description = payload.description
         template.ordering_cost = payload.ordering_cost
         template.holding_cost = payload.holding_cost
+        template.holding_cost_rate_pct = payload.holding_cost_rate_pct
         template.items = self._build_items(payload)
         return await self._repo.save(template)
 
@@ -169,7 +197,8 @@ class CostTemplateService:
         template = await self.get(template_id)
         configs = await self._warehouse.list()
         total_dus = sum((Decimal(str(capacity_dus_of(c))) for c in configs), Decimal(0))
-        return summarize_template(template.items, total_dus)
+        value = await self._stock.average_inventory_value() if self._stock else None
+        return summarize_template(template.items, total_dus, Decimal(str(value)) if value is not None else None)
 
     async def _require_unique_name(self, name: str, exclude_id=None) -> None:
         existing = await self._repo.get_by_name(name)
@@ -182,7 +211,8 @@ class CostTemplateService:
                 position=i,
                 item_type=item.item_type,
                 name=item.name,
-                monthly_amount=item.monthly_amount if item.item_type == "OVERHEAD" else None,
+                monthly_amount=item.monthly_amount if item.item_type in _EXPENSE_TYPES else None,
+                period_basis=item.period_basis,
                 purchase_price=item.purchase_price if item.item_type == "STORAGE_ASSET" else None,
                 salvage_value=(item.salvage_value or Decimal(0)) if item.item_type == "STORAGE_ASSET" else None,
                 useful_life_months=item.useful_life_months if item.item_type == "STORAGE_ASSET" else None,

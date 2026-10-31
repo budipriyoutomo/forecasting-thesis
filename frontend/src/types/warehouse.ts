@@ -3,9 +3,14 @@
 // `capacity_qty` (unit produk) & `uom` (= unit produk) adalah turunan server.
 export type CapacityMode = "PALLET" | "DUS" | "COMBINED";
 
+export type WarehouseTarget = "product" | "material";
+
 export interface WarehouseConfig {
   id: string;
-  product_id: string;
+  // Fase 11.6: target polimorfik — produk (gudang FG) atau material (gudang packaging).
+  item_type?: WarehouseTarget;
+  product_id: string | null;
+  material_id?: string | null;
   capacity_mode: CapacityMode;
   pallet_qty: string; // Decimal → string
   dus_qty: string;
@@ -25,7 +30,9 @@ export interface WarehouseCapacityInput {
 }
 
 export interface WarehouseConfigInput extends WarehouseCapacityInput {
-  product_id: string;
+  item_type?: WarehouseTarget; // absen = product (kontrak lama)
+  product_id?: string;
+  material_id?: string;
 }
 
 export interface WarehouseProductValidation {

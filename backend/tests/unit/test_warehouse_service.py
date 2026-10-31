@@ -15,6 +15,7 @@ from app.services.warehouse_service import (
     validate_capacity,
 )
 from app.utils.exceptions import (
+    MaterialNotFoundError,
     ForbiddenRoleError,
     ForecastRunNotFoundError,
     ProductNotFoundError,
@@ -373,3 +374,69 @@ async def test_validate_for_run_tidak_ada_404():
     svc = _service(run=None, configs=[_config()])
     with pytest.raises(ForecastRunNotFoundError):
         await svc.validate_for_run(USER, "ghost")
+
+
+# ── Fase 11.6: kapasitas per MATERIAL (Keputusan #1 — produk + material) ──
+
+
+class FakeMaterialRepo:
+    def __init__(self, materials):
+        self._by_id = {m.id: m for m in materials}
+
+    async def get_by_id(self, mid):
+        return self._by_id.get(mid)
+
+
+class FakeConfigRepoV2(FakeConfigRepo):
+    async def get_by_material(self, material_id):
+        return next((c for c in self._rows.values() if getattr(c, "material_id", None) == material_id), None)
+
+    async def add(self, config):
+        config.id = config.id or f"cfg-{len(self._rows) + 1}"
+        self._rows[config.id] = config
+        return config
+
+
+def _service_v2(configs=None):
+    return WarehouseService(
+        config_repo=FakeConfigRepoV2(configs),
+        validation_repo=FakeValidationRepo(),
+        forecast_repo=FakeForecastRepo(None),
+        products=FakeProductRepo(["p1"]),
+        materials=FakeMaterialRepo([SimpleNamespace(id="m1", unit="PCS"), SimpleNamespace(id="m2", unit="CTN")]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_material_config_pallet_ctn_pcs():
+    svc = _service_v2()
+    # 10 pallet × 40 CTN + 0 → 400 CTN × 500 pcs = 200.000 pcs
+    config = await svc.create_material_config("m1", _input("PALLET", pallet_qty=10, dus_per_pallet=40, pcs_per_dus=500))
+
+    assert config.item_type == "material" and config.material_id == "m1" and config.product_id is None
+    assert float(config.capacity_qty) == 200_000 and config.uom == "PCS"
+
+
+@pytest.mark.asyncio
+async def test_create_material_config_duplikat_dan_404():
+    svc = _service_v2()
+    await svc.create_material_config("m2", _input("DUS", dus_qty=100))
+    with pytest.raises(WarehouseConfigExistsError):
+        await svc.create_material_config("m2", _input("DUS", dus_qty=50))
+    with pytest.raises(MaterialNotFoundError):
+        await svc.create_material_config("zz", _input("DUS", dus_qty=50))
+
+
+@pytest.mark.asyncio
+async def test_update_material_config_pakai_unit_material():
+    svc = _service_v2()
+    cfg = await svc.create_material_config("m1", _input("DUS", dus_qty=10, pcs_per_dus=100))
+    cfg = await svc.update_config(cfg.id, _input("DUS", dus_qty=20, pcs_per_dus=100))
+    assert float(cfg.capacity_qty) == 2000
+
+
+def test_validate_capacity_produk_mengabaikan_config_material():
+    product_cfg = SimpleNamespace(product_id="p1", capacity_qty=Decimal("100"), item_type="product")
+    material_cfg = SimpleNamespace(product_id=None, material_id="m1", capacity_qty=Decimal("1"), item_type="material")
+    result = validate_capacity([product_cfg, material_cfg], {"p1": 50})
+    assert [d.product_id for d in result.details] == ["p1"]

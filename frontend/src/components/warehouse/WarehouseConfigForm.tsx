@@ -31,18 +31,20 @@ import {
   usesDus,
   usesPallet,
 } from "@/lib/warehouse";
+import type { Material } from "@/types/material";
 import type { Product } from "@/types/product";
 import type {
   CapacityMode,
   WarehouseCapacityInput,
   WarehouseConfig,
   WarehouseConfigInput,
+  WarehouseTarget,
 } from "@/types/warehouse";
 
 // Angka disimpan sebagai string di form supaya field kosong bisa dibedakan dari 0;
 // dikonversi ke number saat submit.
 const baseSchema = z.object({
-  product_id: z.string().min(1, "Produk wajib dipilih"),
+  product_id: z.string(), // id target (produk/material) — wajib dicek di superRefine
   capacity_mode: z.enum(["PALLET", "DUS", "COMBINED"]),
   pallet_qty: z.string(),
   dus_qty: z.string(),
@@ -72,29 +74,40 @@ function toCapacityInput(v: FormValues, unit: string): WarehouseCapacityInput {
 // Kapasitas diinput dalam pallet, dus, atau kombinasi (Fase 10, 2 Oktober 2026).
 // `capacity_qty` resmi dihitung server; pratinjau di sini memakai rumus yang sama
 // (lib/warehouse.ts). Produk terkunci saat mode ubah — satu produk satu baris.
+// Fase 11.6: `targetType="material"` memakai master material & istilah CTN (dus = CTN).
 export function WarehouseConfigForm({
   products,
+  materials = [],
+  targetType = "product",
   initial,
   onSubmit,
   submitting,
   error,
 }: {
   products: Product[];
+  materials?: Material[];
+  targetType?: WarehouseTarget;
   initial?: WarehouseConfig;
   onSubmit: (input: WarehouseConfigInput) => void;
   submitting?: boolean;
   error?: string | null;
 }) {
+  const isMaterial = targetType === "material";
+  const targetLabel = isMaterial ? "Material" : "Produk";
+  const dusWord = isMaterial ? "CTN" : "dus";
+  const items: { id: string; code: string; name: string; unit: string }[] = isMaterial ? materials : products;
   const unitOf = useMemo(() => {
-    const byId = new Map(products.map((p) => [p.id, p.unit]));
+    const byId = new Map(items.map((p) => [p.id, p.unit]));
     return (productId: string) => byId.get(productId) ?? "";
-  }, [products]);
+  }, [items]);
 
   const schema = useMemo(
     () =>
       baseSchema.superRefine((v, ctx) => {
         const mode = v.capacity_mode as CapacityMode;
         const unit = unitOf(v.product_id);
+        if (!v.product_id)
+          ctx.addIssue({ code: "custom", path: ["product_id"], message: `${targetLabel} wajib dipilih` });
         const nonNegative = (field: "pallet_qty" | "dus_qty") => {
           const n = num(v[field]);
           if (n !== null && (!Number.isFinite(n) || n < 0))
@@ -106,7 +119,7 @@ export function WarehouseConfigForm({
             ctx.addIssue({
               code: "custom",
               path: ["dus_per_pallet"],
-              message: "Dus per pallet wajib diisi (> 0)",
+              message: `${isMaterial ? "CTN" : "Dus"} per pallet wajib diisi (> 0)`,
             });
         }
         if (usesDus(mode)) nonNegative("dus_qty");
@@ -114,7 +127,7 @@ export function WarehouseConfigForm({
           ctx.addIssue({
             code: "custom",
             path: ["pcs_per_dus"],
-            message: "Pcs per dus wajib diisi (> 0)",
+            message: `Pcs per ${dusWord} wajib diisi (> 0)`,
           });
 
         const cap = computeEffectiveCapacity(toCapacityInput(v, unit || "DUS"), unit || "DUS");
@@ -125,14 +138,14 @@ export function WarehouseConfigForm({
             message: "Kapasitas harus lebih dari 0",
           });
       }),
-    [unitOf],
+    [unitOf, targetLabel, isMaterial, dusWord],
   );
 
   const str = (v: string | null | undefined) => (v == null ? "" : String(Number(v)));
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      product_id: initial?.product_id ?? "",
+      product_id: initial?.product_id ?? initial?.material_id ?? "",
       capacity_mode: initial?.capacity_mode ?? "DUS",
       pallet_qty: initial && usesPallet(initial.capacity_mode) ? str(initial.pallet_qty) : "",
       dus_qty: initial && usesDus(initial.capacity_mode) ? str(initial.dus_qty) : "",
@@ -147,9 +160,14 @@ export function WarehouseConfigForm({
   const needsPcs = Boolean(unit) && !isDusLike(unit);
   const preview = unit ? computeEffectiveCapacity(toCapacityInput(values, unit), unit) : null;
 
-  const submit = form.handleSubmit((v) =>
-    onSubmit({ product_id: v.product_id, ...toCapacityInput(v, unitOf(v.product_id)) }),
-  );
+  const submit = form.handleSubmit((v) => {
+    const capacity = toCapacityInput(v, unitOf(v.product_id));
+    onSubmit(
+      isMaterial
+        ? { item_type: "material", material_id: v.product_id, ...capacity }
+        : { product_id: v.product_id, ...capacity },
+    );
+  });
 
   const numberField = (name: keyof FormValues, label: string) => (
     <FormField
@@ -175,7 +193,7 @@ export function WarehouseConfigForm({
           name="product_id"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Produk</FormLabel>
+              <FormLabel>{targetLabel}</FormLabel>
               <Select
                 value={field.value}
                 onValueChange={field.onChange}
@@ -183,11 +201,11 @@ export function WarehouseConfigForm({
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Pilih produk…" />
+                    <SelectValue placeholder={`Pilih ${targetLabel.toLowerCase()}…`} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {products.map((p) => (
+                  {items.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.code} — {p.name}
                     </SelectItem>
@@ -227,17 +245,18 @@ export function WarehouseConfigForm({
         {usesPallet(mode) && (
           <div className="grid grid-cols-2 gap-4">
             {numberField("pallet_qty", "Jumlah pallet")}
-            {numberField("dus_per_pallet", "Dus per pallet")}
+            {numberField("dus_per_pallet", isMaterial ? "CTN per pallet" : "Dus per pallet")}
           </div>
         )}
-        {usesDus(mode) && numberField("dus_qty", usesPallet(mode) ? "Jumlah dus lepas" : "Jumlah dus")}
-        {needsPcs && numberField("pcs_per_dus", `Pcs per dus (unit produk: ${unit})`)}
+        {usesDus(mode) &&
+          numberField("dus_qty", usesPallet(mode) ? `Jumlah ${dusWord} lepas` : `Jumlah ${dusWord}`)}
+        {needsPcs && numberField("pcs_per_dus", `Pcs per ${dusWord} (unit ${targetLabel.toLowerCase()}: ${unit})`)}
 
         {preview && (
           <p className="text-sm text-muted-foreground" aria-live="polite">
             Kapasitas efektif:{" "}
             <span className="font-medium text-foreground tabular-nums">
-              {formatNumber(preview.dus)} dus
+              {formatNumber(preview.dus)} {dusWord}
             </span>
             {needsPcs && (
               <>

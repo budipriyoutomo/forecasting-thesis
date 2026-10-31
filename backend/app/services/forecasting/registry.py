@@ -3,14 +3,17 @@ Registry v3.0 — dict[str, Callable] datar (AGENTS.md §5). Comparative Selecti
 tak ada filter kuadran — seluruh metode aktif ikut dibandingkan (docs §6.3).
 
 Engine legacy v2.0 (ets/arima/lgbm/croston) dipindah ke engines/legacy/ dan
-di-comment di bawah — nonaktif default, aktifkan dgn uncomment + FORECAST_ENGINES_ENABLED
-(docs/ARCHITECTURE.md §6.9). Jangan hapus file legacy (larangan #16).
+di-comment di bawah — nonaktif default, aktifkan dgn uncomment lalu centang di master data
+Pengaturan Forecast (docs/ARCHITECTURE.md §6.9). Jangan hapus file legacy (larangan #16).
+
+Fase 11.2a: daftar metode aktif dibaca dari master data `forecast_settings.enabled_methods`
+(diteruskan sebagai argumen), BUKAN env. None = belum diatur → seluruh metode terdaftar.
 """
+from collections.abc import Iterable
 from typing import Callable
 
 import pandas as pd
 
-from app.config import get_settings
 from app.services.forecasting.engines.exponential_smoothing_engine import (
     forecast_exponential_smoothing,
 )
@@ -39,7 +42,12 @@ MODEL_REGISTRY: dict[str, Callable[[pd.DataFrame, int], EngineResult]] = {
 }
 
 
-def get_enabled_methods() -> set[str]:
-    settings = get_settings()
-    enabled_in_env = {name.strip() for name in settings.FORECAST_ENGINES_ENABLED.split(",") if name.strip()}
-    return enabled_in_env & MODEL_REGISTRY.keys()  # abaikan nama di env yang belum ada fungsinya
+def available_methods() -> list[str]:
+    """Seluruh metode yang punya fungsi terdaftar — pilihan di Pengaturan Forecast."""
+    return sorted(MODEL_REGISTRY)
+
+
+def get_enabled_methods(enabled: Iterable[str] | None = None) -> set[str]:
+    if enabled is None:
+        return set(MODEL_REGISTRY)
+    return set(enabled) & MODEL_REGISTRY.keys()  # abaikan nama yang belum ada fungsinya

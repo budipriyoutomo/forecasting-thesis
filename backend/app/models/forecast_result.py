@@ -46,6 +46,10 @@ class ForecastResult(Base):
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     forecast_data: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Fase 11.2: feature importance RF/XGB pemenang & hyperparameter yang dipakai
+    # (α ES, hasil grid search, outlier di-cap, variabel eksternal terpakai).
+    feature_importance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    hyperparameters: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
+import { BomComponentForm } from "@/components/boms/BomComponentForm";
 import { BomCostSummary } from "@/components/boms/BomCostSummary";
 import { BomForm } from "@/components/boms/BomForm";
+import { BomTree } from "@/components/boms/BomTree";
 import { BomsTable } from "@/components/boms/BomsTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { useBoms, useCreateBom, useDeleteBom, useUpdateBom } from "@/hooks/useBoms";
 import { useMaterials } from "@/hooks/useMaterials";
+import { useBomComponent, useBomTree } from "@/hooks/usePlanning";
 import { useProducts } from "@/hooks/useProducts";
 import type { Bom, BomInput } from "@/types/bom";
 
@@ -43,6 +46,9 @@ export default function BomsPage() {
   const create = useCreateBom();
   const update = useUpdateBom();
   const remove = useDeleteBom();
+  // Fase 11.3: tree multi-level FG → material → komponen untuk produk yang difilter.
+  const tree = useBomTree(productFilter);
+  const component = useBomComponent();
 
   const [editing, setEditing] = useState<Bom | null>(null);
   const [open, setOpen] = useState(false);
@@ -100,6 +106,25 @@ export default function BomsPage() {
         </Alert>
       )}
       {boms && <BomCostSummary boms={boms} products={products ?? []} />}
+      {tree.data && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-base font-medium">Struktur BOM multi-level</h2>
+            <p className="text-sm text-muted-foreground">
+              Level 1 = material yang dibeli (masuk EOQ & kapasitas). Level 2 (mis. Preform untuk Bottle) hanya
+              informasi — Bottle dibeli jadi.
+            </p>
+          </div>
+          <BomTree tree={tree.data} onRemove={(id) => component.mutate({ removeId: id })} />
+          <BomComponentForm
+            parents={tree.data.children.map((c) => ({ id: c.material_id as string, code: c.code ?? "" }))}
+            materials={materials ?? []}
+            submitting={component.isPending}
+            error={component.error?.message ?? null}
+            onSubmit={(input) => component.mutate(input)}
+          />
+        </section>
+      )}
       {boms && (
         <BomsTable
           boms={boms}

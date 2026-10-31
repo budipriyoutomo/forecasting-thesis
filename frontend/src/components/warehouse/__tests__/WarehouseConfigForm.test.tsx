@@ -130,4 +130,30 @@ describe("WarehouseConfigForm", () => {
       }),
     );
   });
+
+  it("target material (Fase 11.6): label Material & CTN, submit item_type material", async () => {
+    const onSubmit = vi.fn();
+    const materials = [{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS" }] as never[];
+    render(<WarehouseConfigForm products={PRODUCTS} materials={materials} targetType="material" onSubmit={onSubmit} />);
+
+    await pilih(/^material$/i, /BTL-WHITE/);
+    await pilih(/mode kapasitas/i, /pallet/i);
+    await userEvent.type(screen.getByLabelText(/jumlah pallet/i), "10");
+    await userEvent.type(screen.getByLabelText(/ctn per pallet/i), "40");
+    await userEvent.type(screen.getByLabelText(/pcs per ctn/i), "500");
+    expect(screen.getByText(/400 CTN/)).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        item_type: "material",
+        material_id: "m1",
+        capacity_mode: "PALLET",
+        pallet_qty: 10,
+        dus_qty: 0,
+        dus_per_pallet: 40,
+        pcs_per_dus: 500,
+      }),
+    );
+  });
 });

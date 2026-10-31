@@ -10,6 +10,11 @@ import type {
   CostTemplateInput,
   CostTemplateSummary,
 } from "@/types/costTemplate";
+import type { BomTreeNode } from "@/components/boms/BomTree";
+import type { ExternalVariable, ExternalVariableInput, ImportResult } from "@/types/externalVariable";
+import type { LatestStock, MaterialReceipt, MaterialReceiptInput, WasteFactor } from "@/types/inventory";
+import type { PlanningSummary, StockProjectionRow } from "@/types/planning";
+import type { ForecastSettings, ForecastSettingsInput } from "@/types/forecastSettings";
 import type { Override, OverrideInput } from "@/types/override";
 import type { Product, ProductInput } from "@/types/product";
 import type {
@@ -32,6 +37,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse
 }
 
 const jsonHeaders = { "Content-Type": "application/json" };
+
+// Upload file (CSV/Excel) multipart — dipakai seluruh endpoint `/import` (Fase 11.2b+).
+function uploadFile<T>(path: string, file: File, token: string): Promise<ApiResponse<T>> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<T>(path, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+}
+
+function authed(token: string, init: RequestInit = {}): RequestInit {
+  const json = init.body && typeof init.body === "string" ? jsonHeaders : {};
+  return { cache: "no-store", ...init, headers: { ...json, Authorization: `Bearer ${token}` } };
+}
 
 // Contoh pola API client — perluas per endpoint di docs/ARCHITECTURE.md §5.
 export const api = {
@@ -107,6 +124,87 @@ export const api = {
       request<{ id: string; deleted: boolean }>(`/api/v1/boms/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
+      }),
+  },
+
+  // Fase 11.1/11.5 — stok ERP, kedatangan, pemakaian aktual
+  inventory: {
+    latest: (token: string) => request<LatestStock[]>("/api/v1/stock-snapshots/latest", authed(token)),
+    importSnapshots: (file: File, token: string) =>
+      uploadFile<ImportResult>("/api/v1/stock-snapshots/import", file, token),
+    receipts: (token: string) => request<MaterialReceipt[]>("/api/v1/material-receipts", authed(token)),
+    createReceipt: (input: MaterialReceiptInput, token: string) =>
+      request<MaterialReceipt>(
+        "/api/v1/material-receipts",
+        authed(token, { method: "POST", body: JSON.stringify(input) }),
+      ),
+    removeReceipt: (id: string, token: string) =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/material-receipts/${id}`, authed(token, { method: "DELETE" })),
+    importReceipts: (file: File, token: string) =>
+      uploadFile<ImportResult>("/api/v1/material-receipts/import", file, token),
+    wasteFactors: (token: string) => request<WasteFactor[]>("/api/v1/material-usage/waste-factors", authed(token)),
+    importUsage: (file: File, token: string) => uploadFile<ImportResult>("/api/v1/material-usage/import", file, token),
+  },
+
+  // Fase 11.3 — BOM multi-level
+  bomTree: {
+    get: (productId: string, token: string) =>
+      request<BomTreeNode>(`/api/v1/boms/tree?product_id=${encodeURIComponent(productId)}`, authed(token)),
+    addComponent: (parentId: string, componentId: string, qty: number, token: string) =>
+      request<{ id: string }>(
+        `/api/v1/materials/${parentId}/components`,
+        authed(token, { method: "POST", body: JSON.stringify({ component_material_id: componentId, qty_per_unit: qty }) }),
+      ),
+    removeComponent: (id: string, token: string) =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/material-components/${id}`, authed(token, { method: "DELETE" })),
+  },
+
+  // Fase 11.6/11.8 — pipeline tahap 2→4 & proyeksi stok
+  planning: {
+    run: (runId: string, currentStock: Record<string, number> | null, token: string) =>
+      request<PlanningSummary>(
+        `/api/v1/forecast/runs/${runId}/plan`,
+        authed(token, { method: "POST", body: JSON.stringify({ current_stock: currentStock }) }),
+      ),
+    projection: (runId: string, token: string) =>
+      request<StockProjectionRow[]>(`/api/v1/forecast/runs/${runId}/stock-projection`, authed(token)),
+  },
+
+  externalVariables: {
+    list: (token: string) => request<ExternalVariable[]>("/api/v1/external-variables", authed(token)),
+    create: (input: ExternalVariableInput, token: string) =>
+      request<ExternalVariable>(
+        "/api/v1/external-variables",
+        authed(token, { method: "POST", body: JSON.stringify(input) }),
+      ),
+    update: (id: string, input: ExternalVariableInput, token: string) =>
+      request<ExternalVariable>(
+        `/api/v1/external-variables/${id}`,
+        authed(token, { method: "PUT", body: JSON.stringify(input) }),
+      ),
+    remove: (id: string, token: string) =>
+      request<{ id: string; deleted: boolean }>(`/api/v1/external-variables/${id}`, authed(token, { method: "DELETE" })),
+    clearValues: (id: string, token: string) =>
+      request<{ id: string; deleted_values: number }>(
+        `/api/v1/external-variables/${id}/values`,
+        authed(token, { method: "DELETE" }),
+      ),
+    importValues: (file: File, token: string) =>
+      uploadFile<ImportResult>("/api/v1/external-variables/values/import", file, token),
+  },
+
+  forecastSettings: {
+    get: (token: string): Promise<ApiResponse<ForecastSettings>> =>
+      request<ForecastSettings>("/api/v1/forecast-settings", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    update: (input: ForecastSettingsInput, token: string): Promise<ApiResponse<ForecastSettings>> =>
+      request<ForecastSettings>("/api/v1/forecast-settings", {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
       }),
   },
 

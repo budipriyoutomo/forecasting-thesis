@@ -6,6 +6,8 @@ menghitung akurasi holdout backtest, jadi tidak melanggar aturan 1-fungsi-1-meto
 (AGENTS.md §5). MASE dipertahankan sebagai metrik tambahan opsional (COMPUTE_MASE)
 lewat metrics.py legacy — bukan dipakai ranking default.
 """
+import math
+
 import numpy as np
 
 from app.services.forecasting.metrics import mean_absolute_scaled_error
@@ -59,3 +61,20 @@ def backtest_metrics(actual, forecast, train_series, compute_mase: bool = True) 
     if compute_mase:
         metrics["mase"] = mean_absolute_scaled_error(a, f, np.asarray(train_series, dtype=float))
     return metrics
+
+
+def mape_interpretation(value) -> str:
+    """Label interpretasi MAPE (Lewis, 1982 — tabel di docx thesis):
+    < 10% sangat baik · 10–20% baik · 20–50% cukup · ≥ 50% buruk."""
+    if value is None:
+        return "Tidak terdefinisi"
+    value = float(value)
+    if not math.isfinite(value):
+        return "Tidak terdefinisi"
+    if value < 10:
+        return "Sangat baik"
+    if value < 20:
+        return "Baik"
+    if value < 50:
+        return "Cukup"
+    return "Buruk"

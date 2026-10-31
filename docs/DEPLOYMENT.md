@@ -548,16 +548,18 @@ core) kalau CPU menganggur dan RAM lega.
 ## 9. Catatan LSTM
 
 `tensorflow` masih di-comment di `backend/requirements.txt`, jadi engine `lstm` otomatis
-dikeluarkan dari perbandingan (`ARCHITECTURE.md` §6.4) — dan `.env.prod.example` sengaja
-tidak mencantumkannya di `FORECAST_ENGINES_ENABLED`, supaya ketiadaannya eksplisit dan
-bukan kegagalan diam-diam.
+dikeluarkan dari perbandingan (`ARCHITECTURE.md` §6.4). Sejak Fase 11.2a daftar metode
+aktif bukan env lagi, melainkan master data **Pengaturan Forecast**. Setelah deploy pertama
+yang memuat migrasi `e6f7a8b9c0d1`, admin wajib membuka Master Data → Pengaturan Forecast
+dan **menonaktifkan LSTM** — tanpa baris pengaturan, seluruh metode dianggap aktif, sehingga
+LSTM muncul di pilihan mode manual dan gagal (`MODEL_SELECTION_FAILED`).
 
 Untuk mengaktifkan:
 
 1. Uncomment `tensorflow>=2.16` di `backend/requirements.txt` (image memakai Python 3.11,
    yang punya wheel resmi TF).
-2. Tambahkan `lstm` ke `FORECAST_ENGINES_ENABLED` di `.env.prod`.
-3. `make prod-deploy`.
+2. `make prod-deploy`.
+3. Centang LSTM di Master Data → Pengaturan Forecast.
 
 Konsekuensi: image bertambah ±1 GB, build jauh lebih lama, dan RAM saat training naik
 signifikan. `LSTM_ENGINE_TIMEOUT_SECONDS` (default 120 detik) mungkin perlu dinaikkan di

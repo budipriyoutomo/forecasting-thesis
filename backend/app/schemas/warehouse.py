@@ -9,9 +9,10 @@ produk dilakukan service (`WAREHOUSE_CAPACITY_INVALID`), bukan di sini.
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, model_validator
 
 CapacityMode = Literal["PALLET", "DUS", "COMBINED"]
+ItemType = Literal["product", "material"]
 
 
 class WarehouseConfigUpdate(BaseModel):
@@ -23,14 +24,27 @@ class WarehouseConfigUpdate(BaseModel):
 
 
 class WarehouseConfigCreate(WarehouseConfigUpdate):
-    product_id: str = Field(min_length=1)
+    # Fase 11.6: target produk (default, perilaku lama) atau material — tepat satu id.
+    item_type: ItemType = "product"
+    product_id: str | None = None
+    material_id: str | None = None
+
+    @model_validator(mode="after")
+    def _target_sesuai_tipe(self):
+        target = self.product_id if self.item_type == "product" else self.material_id
+        other = self.material_id if self.item_type == "product" else self.product_id
+        if not target or other:
+            raise ValueError(f"item_type '{self.item_type}' wajib mengisi tepat {self.item_type}_id.")
+        return self
 
 
 class WarehouseConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    product_id: str
+    item_type: ItemType = "product"
+    product_id: str | None = None
+    material_id: str | None = None
     capacity_mode: CapacityMode
     pallet_qty: Decimal
     dus_qty: Decimal

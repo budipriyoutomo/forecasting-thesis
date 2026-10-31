@@ -39,3 +39,23 @@ describe("InventoryMetricsTable", () => {
     expect(screen.getByText(/belum ada metrik inventory/i)).toBeDefined();
   });
 });
+
+describe("InventoryMetricsTable — level material (Fase 11.7)", () => {
+  it("menampilkan target, inventory days & shortage cost", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { InventoryMetricsTable } = await import("@/components/dashboard/InventoryMetricsTable");
+    render(
+      <InventoryMetricsTable
+        metrics={[
+          { target_type: "material", target_id: "m1", scope: "forecastiq", service_level: "0.5", fill_rate: "0.9091",
+            stock_out_rate: "0.5", inventory_turnover: "2.44", inventory_days: "24.5", shortage_cost: "700000" },
+        ]}
+        materials={[{ id: "m1", code: "BTL-WHITE", name: "Bottle White" }] as never[]}
+      />,
+    );
+    expect(screen.getByText("BTL-WHITE")).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: /inventory days/i })).toBeDefined();
+    expect(screen.getByText(/24\.5 hari/)).toBeDefined();
+    expect(screen.getByText(/700\.000/)).toBeDefined();
+  });
+});

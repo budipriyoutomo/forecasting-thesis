@@ -32,9 +32,8 @@ class Settings(BaseSettings):
     UPLOAD_MIN_ROWS: int = 10  # minimum baris di file agar tidak INSUFFICIENT_DATA saat upload
 
     # Forecasting engine v3.0 — Comparative Selection (docs/ARCHITECTURE.md §6).
-    # Bandingkan seluruh metode aktif via backtest, pilih akurasi terbaik.
-    FORECAST_ENGINES_ENABLED: str = "moving_average,exponential_smoothing,random_forest,xgboost,lstm"
-    FORECAST_RANKING_METRIC: str = "mape"  # mape | mad | mse | mfe_abs — terendah menang
+    # Bandingkan seluruh metode aktif via backtest, pilih akurasi terbaik. Daftar metode aktif &
+    # metrik ranking = master data Pengaturan Forecast (Fase 11.2a), bukan env.
     COMPUTE_MASE: bool = True  # hitung & simpan MASE tambahan (bukan buat ranking, lihat RECONCILIATION v3.0)
     BACKTEST_MIN_PERIODS: int = 12
     LSTM_MIN_PERIODS: int = 24  # LSTM butuh histori lebih panjang
@@ -44,13 +43,12 @@ class Settings(BaseSettings):
     FORECAST_TIMEOUT_SECONDS: int = 180
 
     # Engine legacy v2.0 (nonaktif default — docs/ARCHITECTURE.md §6.9).
-    # Dipakai hanya bila engines legacy diaktifkan kembali di FORECAST_ENGINES_ENABLED.
+    # Dipakai hanya bila engines legacy diaktifkan kembali (registry + Pengaturan Forecast).
     SCORING_WEIGHT_MASE: float = 0.6
     SCORING_WEIGHT_GUARDRAIL: float = 0.3
     SCORING_WEIGHT_FIT: float = 0.1
 
-    # Reorder / safety stock (Fase 5). Z = faktor service level (1.65 ≈ 95%).
-    SERVICE_LEVEL_Z: float = 1.65
+    # Service level & metode EOQ: master data Pengaturan Forecast (Fase 11.4), bukan env.
 
     # EOQ & total cost (Fase 5 v3.0)
     DEFAULT_ORDERING_COST: float = 0.0

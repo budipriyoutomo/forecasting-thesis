@@ -37,6 +37,28 @@ export function CostSummaryCard({ summary }: { summary: CostSummary }) {
           hint={savings >= 0 ? "Lebih murah dari planning" : "Lebih mahal dari planning"}
         />
       </div>
+      {summary.eoq_method && (
+        <p className="text-xs text-muted-foreground">
+          {summary.eoq_method === "classic"
+            ? "EOQ klasik √(2AS/iC), biaya tahunan — material tanpa harga atau i (%) memakai EOQ dinamis"
+            : "EOQ dinamis (simulasi jumlah pesanan pada horizon)"}
+        </p>
+      )}
+      {summary.shortage_cost != null && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatTile
+            label="Biaya kekurangan ForecastIQ"
+            value={formatMoney(summary.shortage_cost)}
+            tone={Number(summary.shortage_cost) > 0 ? "urgent" : "default"}
+            hint="Qty produk tak terpenuhi × harga jual"
+          />
+          <StatTile
+            label="Biaya kekurangan existing"
+            value={formatMoney(summary.baseline_shortage_cost ?? null)}
+            hint="Skenario planning perusahaan"
+          />
+        </div>
+      )}
       {summary.purchase_cost !== undefined && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile

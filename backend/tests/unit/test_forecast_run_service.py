@@ -191,3 +191,143 @@ async def test_run_produk_only_tanpa_turunan_material(smooth_df):
     assert all(hasattr(r, "product_id") for r in results)
     assert not hasattr(svc, "list_requirements")
     assert not hasattr(svc, "_build_requirements")
+
+
+# ── Metrik ranking dari master data Pengaturan Forecast (Fase 11.2a) ──
+
+
+class FakeRankingSettings:
+    def __init__(self, metric, methods=None):
+        from app.services.forecasting.registry import get_enabled_methods
+
+        self.metric = metric
+        self.methods = get_enabled_methods(methods)
+
+    async def ranking_metric(self):
+        return self.metric
+
+    async def enabled_methods(self):
+        return self.methods
+
+    async def engine_options(self):
+        from app.services.forecasting.types import EngineOptions
+
+        return self.options if hasattr(self, "options") else EngineOptions()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metric,key", [("mape", "mape"), ("mad", "mad")])
+async def test_run_memakai_metrik_ranking_master_data(smooth_df, metric, key):
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=FakeRankingSettings(metric),
+    )
+
+    run, results = await svc.create_run(USER, ["p1"], horizon=7)
+
+    assert run.ranking_metric == metric  # tercatat per run (audit/reproducible)
+    best = min(results[0].candidates_evaluated, key=lambda c: c[key])
+    assert results[0].method_used == best["method"]
+
+
+@pytest.mark.asyncio
+async def test_run_tanpa_settings_default_mad(smooth_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+
+    run, _ = await svc.create_run(USER, ["p1"], horizon=7)
+
+    assert run.ranking_metric == "mad"
+
+
+@pytest.mark.asyncio
+async def test_run_manual_tidak_mencatat_metrik_ranking(smooth_df):
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=FakeRankingSettings("mape"),
+    )
+
+    run, _ = await svc.create_run(USER, ["p1"], horizon=7, method="moving_average")
+
+    assert run.ranking_metric is None  # mode manual tidak membandingkan apa pun
+
+
+@pytest.mark.asyncio
+async def test_run_auto_hanya_metode_aktif_master_data(smooth_df):
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=FakeRankingSettings("mad", ["moving_average", "exponential_smoothing"]),
+    )
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=7)
+
+    assert {c["method"] for c in results[0].candidates_evaluated} == {"moving_average", "exponential_smoothing"}
+
+
+@pytest.mark.asyncio
+async def test_run_manual_metode_nonaktif_400(smooth_df):
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=FakeRankingSettings("mad", ["moving_average"]),
+    )
+
+    with pytest.raises(UnsupportedForecastMethodError):
+        await svc.create_run(USER, ["p1"], horizon=7, method="xgboost")
+
+
+@pytest.mark.asyncio
+async def test_run_meneruskan_opsi_engine_dan_menyimpan_hyperparameters(smooth_df):
+    from app.services.forecasting.types import EngineOptions
+
+    settings = FakeRankingSettings("mad", ["exponential_smoothing"])
+    settings.options = EngineOptions(es_alpha_grid=(0.15,))
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=settings,
+    )
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=7)
+
+    assert results[0].hyperparameters["alpha"] == 0.15
+    assert results[0].feature_importance is None  # ES bukan ML
+
+
+class FakeExternal:
+    def __init__(self, exog):
+        self.exog = exog
+        self.asked = []
+
+    async def exog_for_product(self, product_id):
+        self.asked.append(str(product_id))
+        return self.exog
+
+
+@pytest.mark.asyncio
+async def test_run_meneruskan_variabel_eksternal_aktif_ke_engine_ml():
+    import pandas as pd
+
+    idx = pd.date_range("2024-01-01", periods=33, freq="MS")
+    rows = [SimpleNamespace(period=str(d.date()), actual=float(10 + i % 5)) for i, d in enumerate(idx[:30])]
+    exog = pd.DataFrame({"suhu": [float(i % 4) for i in range(33)]}, index=idx)
+    external = FakeExternal(exog)
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": rows}),
+        settings=FakeRankingSettings("mad", ["random_forest"]),
+        external=external,
+    )
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=3)
+
+    assert external.asked == ["p1"]
+    assert results[0].hyperparameters["exog_used"] == ["suhu"]

@@ -9,12 +9,18 @@ from app.db.session import get_db
 from app.repositories.bom_repository import SqlBomRepository
 from app.repositories.cost_template_repository import SqlCostTemplateRepository
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
+from app.repositories.external_variable_repository import SqlExternalVariableRepository
 from app.repositories.forecast_repository import SqlForecastRepository
+from app.repositories.forecast_settings_repository import SqlForecastSettingsRepository
 from app.repositories.inventory_metrics_repository import SqlInventoryMetricsRepository
+from app.repositories.inventory_repository import SqlMaterialReceiptRepository, SqlStockSnapshotRepository
+from app.repositories.material_component_repository import SqlMaterialComponentRepository
 from app.repositories.material_repository import SqlMaterialRepository
+from app.repositories.material_usage_repository import SqlMaterialUsageRepository
 from app.repositories.override_repository import SqlOverrideRepository
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.reorder_repository import SqlReorderRepository
+from app.repositories.stock_projection_repository import SqlStockProjectionRepository
 from app.repositories.upload_session_repository import (
     SqlUploadSessionRepository,
 )
@@ -28,13 +34,20 @@ from app.services.bom_service import BomService
 from app.services.cost_service import CostService
 from app.services.cost_template_service import CostTemplateService
 from app.services.dashboard_service import DashboardService
+from app.services.inventory_data_service import MaterialReceiptService, StockSnapshotService
 from app.services.inventory_metrics_service import InventoryMetricsService
 from app.services.export_service import ExportService
+from app.services.external_variable_service import ExternalVariableService
 from app.services.forecast_run_service import ForecastRunService
+from app.services.forecast_settings_service import ForecastSettingsService
+from app.services.material_component_service import MaterialComponentService
 from app.services.material_service import MaterialService
+from app.services.material_usage_service import MaterialUsageService
 from app.services.override_service import OverrideService
+from app.services.planning_pipeline_service import PlanningPipelineService
 from app.services.product_service import ProductService
 from app.services.reorder_service import ReorderService
+from app.services.stock_projection_service import StockProjectionService
 from app.services.storage_service import StorageService, build_s3_client
 from app.services.dev_auth import build_authenticator
 from app.services.upload_service import UploadService
@@ -119,6 +132,38 @@ def get_forecast_run_service(session: AsyncSession = Depends(get_db)) -> Forecas
         forecast_repo=SqlForecastRepository(session),
         products=SqlProductRepository(session),
         demand=SqlDemandHistoryRepository(session),
+        settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
+        external=ExternalVariableService(SqlExternalVariableRepository(session), SqlProductRepository(session)),
+    )
+
+
+def get_external_variable_service(session: AsyncSession = Depends(get_db)) -> ExternalVariableService:
+    return ExternalVariableService(SqlExternalVariableRepository(session), SqlProductRepository(session))
+
+
+def get_forecast_settings_service(session: AsyncSession = Depends(get_db)) -> ForecastSettingsService:
+    return ForecastSettingsService(SqlForecastSettingsRepository(session))
+
+
+def _material_usage(session: AsyncSession) -> MaterialUsageService:
+    return MaterialUsageService(
+        SqlMaterialUsageRepository(session),
+        materials=SqlMaterialRepository(session),
+        products=SqlProductRepository(session),
+        boms=SqlBomRepository(session),
+    )
+
+
+def get_material_usage_service(session: AsyncSession = Depends(get_db)) -> MaterialUsageService:
+    return _material_usage(session)
+
+
+def get_material_component_service(session: AsyncSession = Depends(get_db)) -> MaterialComponentService:
+    return MaterialComponentService(
+        SqlMaterialComponentRepository(session),
+        materials=SqlMaterialRepository(session),
+        products=SqlProductRepository(session),
+        boms=SqlBomRepository(session),
     )
 
 
@@ -129,6 +174,9 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         boms=SqlBomRepository(session),
         materials=SqlMaterialRepository(session),
         cost_templates=SqlCostTemplateRepository(session),
+        usage=_material_usage(session),
+        settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
+        stock=_stock(session),
     )
 
 
@@ -143,6 +191,10 @@ def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService
         forecast_repo=SqlForecastRepository(session),
         reorder_repo=SqlReorderRepository(session),
         storage=storage,
+        projections=SqlStockProjectionRepository(session),
+        metrics_repo=SqlInventoryMetricsRepository(session),
+        materials=SqlMaterialRepository(session),
+        products=SqlProductRepository(session),
     )
 
 
@@ -152,6 +204,7 @@ def get_warehouse_service(session: AsyncSession = Depends(get_db)) -> WarehouseS
         validation_repo=SqlWarehouseValidationRepository(session),
         forecast_repo=SqlForecastRepository(session),
         products=SqlProductRepository(session),
+        materials=SqlMaterialRepository(session),
     )
 
 
@@ -159,7 +212,20 @@ def get_cost_template_service(session: AsyncSession = Depends(get_db)) -> CostTe
     return CostTemplateService(
         repo=SqlCostTemplateRepository(session),
         warehouse_configs=SqlWarehouseConfigRepository(session),
+        stock=_stock(session),
     )
+
+
+def _stock(session: AsyncSession) -> StockSnapshotService:
+    return StockSnapshotService(SqlStockSnapshotRepository(session), SqlMaterialRepository(session))
+
+
+def get_stock_snapshot_service(session: AsyncSession = Depends(get_db)) -> StockSnapshotService:
+    return _stock(session)
+
+
+def get_material_receipt_service(session: AsyncSession = Depends(get_db)) -> MaterialReceiptService:
+    return MaterialReceiptService(SqlMaterialReceiptRepository(session), SqlMaterialRepository(session))
 
 
 def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
@@ -171,6 +237,8 @@ def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
         products=SqlProductRepository(session),
         cost_templates=SqlCostTemplateRepository(session),
         materials=SqlMaterialRepository(session),
+        settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
+        metrics_repo=SqlInventoryMetricsRepository(session),
     )
 
 
@@ -180,6 +248,8 @@ def get_inventory_metrics_service(session: AsyncSession = Depends(get_db)) -> In
         demand_repo=SqlDemandHistoryRepository(session),
         products=SqlProductRepository(session),
         metrics_repo=SqlInventoryMetricsRepository(session),
+        projections=SqlStockProjectionRepository(session),
+        boms=SqlBomRepository(session),
     )
 
 
@@ -203,3 +273,27 @@ def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideSer
         "reorder_recommendation": reorder_repo.get_recommendation,
     }
     return OverrideService(SqlOverrideRepository(session), resolvers)
+
+
+def get_stock_projection_service(session: AsyncSession = Depends(get_db)) -> StockProjectionService:
+    return StockProjectionService(
+        SqlStockProjectionRepository(session),
+        forecast_repo=SqlForecastRepository(session),
+        reorder_repo=SqlReorderRepository(session),
+        boms=SqlBomRepository(session),
+        demand_repo=SqlDemandHistoryRepository(session),
+        products=SqlProductRepository(session),
+        warehouse_configs=SqlWarehouseConfigRepository(session),
+        stock=_stock(session),
+        receipts=SqlMaterialReceiptRepository(session),
+        reorder_service=get_reorder_service(session),
+    )
+
+
+def get_planning_pipeline_service(session: AsyncSession = Depends(get_db)) -> PlanningPipelineService:
+    return PlanningPipelineService(
+        reorder=get_reorder_service(session),
+        projection=get_stock_projection_service(session),
+        metrics=get_inventory_metrics_service(session),
+        cost=get_cost_service(session),
+    )

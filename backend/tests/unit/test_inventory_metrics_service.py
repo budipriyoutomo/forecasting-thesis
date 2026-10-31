@@ -219,3 +219,102 @@ async def test_run_milik_user_lain_403():
     svc = _service(run=run)
     with pytest.raises(ForbiddenRoleError):
         await svc.compute_for_run(USER, "r1")
+
+
+# ── Fase 11.7: evaluasi level MATERIAL + inventory days + shortage cost ──
+
+from app.services.inventory_metrics_service import (  # noqa: E402
+    allocate_shortage,
+    inventory_days,
+    material_metrics,
+    shortage_cost,
+)
+
+
+def test_inventory_days_thesis():
+    # rata-rata persediaan 3.000 ÷ rata-rata pemakaian per hari (3.100 / 31 = 100) = 30 hari
+    assert inventory_days(avg_inventory=3000, avg_daily_usage=100) == pytest.approx(30)
+    assert inventory_days(avg_inventory=3000, avg_daily_usage=0) is None
+
+
+def test_shortage_cost_produk():
+    assert shortage_cost({"p1": 10, "p2": 5}, {"p1": Decimal("7000"), "p2": None}) == pytest.approx(70_000)
+
+
+def test_alokasi_shortage_material_bersama():
+    # Bottle dipakai p1 (600) & p2 (400), qty BOM 1 → shortage 100 dibagi 60:40
+    units = allocate_shortage(100, {"p1": 600, "p2": 400}, {"p1": 1, "p2": 1})
+    assert units == pytest.approx({"p1": 60, "p2": 40})
+    assert allocate_shortage(100, {}, {}) == {}
+
+
+def _proj(opening, usage, ending, shortage):
+    return SimpleNamespace(opening_qty=opening, usage_qty=usage, ending_qty=ending, shortage_qty=shortage)
+
+
+def test_material_metrics_dari_proyeksi():
+    rows = [_proj(1000, 600, 400, 0), _proj(400, 500, 0, 100)]
+    m = material_metrics(rows, days_per_period=30)
+
+    assert float(m.fill_rate) == pytest.approx(1 - 100 / 1100, abs=1e-4)
+    assert float(m.stock_out_rate) == pytest.approx(0.5)
+    assert float(m.service_level) == pytest.approx(0.5)
+    avg_stock = ((1000 + 400) / 2 + (400 + 0) / 2) / 2  # 450
+    assert float(m.inventory_days) == pytest.approx(avg_stock / (1100 / 60), abs=1e-4)
+    assert float(m.inventory_turnover) == pytest.approx(1100 / avg_stock, abs=1e-4)
+
+
+class FakeProjections:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def list_by_run(self, run_id):
+        return self._rows
+
+
+class FakeBoms:
+    async def list(self, product_id=None):
+        return [SimpleNamespace(product_id="P1", material_id="M1", qty_per_unit=1)]
+
+
+@pytest.mark.asyncio
+async def test_compute_menambah_scope_material_dan_shortage_cost():
+    from datetime import date
+
+    run = SimpleNamespace(id="r1", user_id=USER)
+    fdata = [{"date": "2026-11-01", "value": 600}, {"date": "2026-12-01", "value": 500}]
+    proj = [
+        SimpleNamespace(material_id="M1", scenario="proposed", period=date(2026, 11, 1), opening_qty=1000,
+                        usage_qty=600, ending_qty=400, shortage_qty=0),
+        SimpleNamespace(material_id="M1", scenario="proposed", period=date(2026, 12, 1), opening_qty=400,
+                        usage_qty=500, ending_qty=0, shortage_qty=100),
+    ]
+    svc = InventoryMetricsService(
+        forecast_repo=FakeForecastRepo(run, [SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=fdata)]),
+        demand_repo=FakeDemandRepo({}),
+        products=FakeProductRepo([SimpleNamespace(id="P1", code="SKU1", selling_price=Decimal("7000"))]),
+        metrics_repo=FakeMetricsRepo(),
+        projections=FakeProjections(proj),
+        boms=FakeBoms(),
+    )
+    rows = await svc.compute_for_run(USER, "r1")
+
+    mat = [r for r in rows if r.target_type == "material"]
+    assert len(mat) == 1 and mat[0].scope == "forecastiq" and str(mat[0].target_id) == "M1"
+    assert float(mat[0].shortage_cost) == pytest.approx(100 * 7000)
+    assert mat[0].inventory_days is not None
+
+
+@pytest.mark.asyncio
+async def test_baris_produk_punya_shortage_cost():
+    run = SimpleNamespace(id="r1", user_id=USER)
+    drows = [SimpleNamespace(period="2026-01-01", actual=100, planning=90),
+             SimpleNamespace(period="2026-02-01", actual=100, planning=100)]
+    svc = InventoryMetricsService(
+        forecast_repo=FakeForecastRepo(run, [SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=[])]),
+        demand_repo=FakeDemandRepo({"P1": drows}),
+        products=FakeProductRepo([SimpleNamespace(id="P1", code="SKU1", selling_price=Decimal("7000"))]),
+        metrics_repo=FakeMetricsRepo(),
+    )
+    rows = await svc.compute_for_run(USER, "r1")
+    assert float(rows[0].shortage_cost) == pytest.approx(10 * 7000)

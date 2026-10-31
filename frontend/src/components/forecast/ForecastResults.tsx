@@ -2,11 +2,13 @@
 
 import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
 import { CandidatesTable } from "@/components/forecast/CandidatesTable";
+import { FeatureImportance } from "@/components/forecast/FeatureImportance";
 import { ForecastChart } from "@/components/forecast/ForecastChart";
 import { ForecastQtyTable } from "@/components/forecast/ForecastQtyTable";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNumber } from "@/lib/format";
+import { mapeLabel } from "@/lib/mape";
 import type { ForecastRunResponse } from "@/types/forecast";
 import type { Product } from "@/types/product";
 
@@ -52,7 +54,13 @@ export function ForecastResults({
                       <CardDescription>
                         Metode <span className="font-medium">{r.method_used}</span> (
                         {r.selection_mode === "manual" ? "dipilih manual" : "dipilih otomatis"})
-                        {r.mape != null && <> · MAPE {formatNumber(r.mape)}%</>}
+                        {r.mape != null && (
+                          <>
+                            {" "}
+                            · MAPE {formatNumber(r.mape)}% ({mapeLabel(r.mape)})
+                          </>
+                        )}
+                        {typeof r.hyperparameters?.alpha === "number" && <> · α {r.hyperparameters.alpha}</>}
                       </CardDescription>
                     )}
                   </div>
@@ -68,7 +76,9 @@ export function ForecastResults({
                   <CandidatesTable
                     candidates={r.candidates_evaluated ?? []}
                     winner={r.method_used}
+                    rankingMetric={run.ranking_metric}
                   />
+                  <FeatureImportance importance={r.feature_importance ?? null} />
                   <ForecastChart forecast={r.forecast} />
                   <ForecastQtyTable forecast={r.forecast} />
                 </CardContent>

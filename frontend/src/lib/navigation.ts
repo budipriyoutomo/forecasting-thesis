@@ -1,17 +1,21 @@
 import {
+  Archive,
   Boxes,
   Calculator,
+  CloudSun,
   LayoutDashboard,
   LineChart,
   Network,
   Package,
+  SlidersHorizontal,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
 
 // Sumber tunggal struktur navigasi: dipakai sidebar sekaligus breadcrumb, supaya
 // keduanya tidak bisa saling tidak sinkron. Urutan grup mengikuti alur kerja PPIC —
-// master data (produk → material → BOM → kapasitas gudang → template biaya) dulu,
+// master data (produk → material → BOM → kapasitas gudang → template biaya →
+// pengaturan forecast) dulu,
 // baru operasional (forecast). Gudang & template biaya masuk Master Data sejak Fase 10.
 
 export interface NavItem {
@@ -38,11 +42,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/boms", label: "BOM", icon: Network },
       { href: "/warehouse", label: "Kapasitas Gudang", icon: Warehouse },
       { href: "/cost-templates", label: "Template Biaya", icon: Calculator },
+      { href: "/forecast-settings", label: "Pengaturan Forecast", icon: SlidersHorizontal },
+      { href: "/external-variables", label: "Variabel Eksternal", icon: CloudSun },
     ],
   },
   {
     label: "Operasional",
-    items: [{ href: "/forecast/new", label: "Forecast", icon: LineChart }],
+    items: [
+      { href: "/inventory", label: "Persediaan Material", icon: Archive },
+      { href: "/forecast/new", label: "Forecast", icon: LineChart },
+    ],
   },
 ];
 

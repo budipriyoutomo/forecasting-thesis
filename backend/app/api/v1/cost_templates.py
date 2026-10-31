@@ -35,6 +35,7 @@ def _to_response(template) -> dict:
         description=template.description,
         ordering_cost=template.ordering_cost,
         holding_cost=template.holding_cost,
+        holding_cost_rate_pct=getattr(template, "holding_cost_rate_pct", None),
         is_active=bool(template.is_active),
         items=[
             CostTemplateItemOut(
@@ -46,6 +47,7 @@ def _to_response(template) -> dict:
                 salvage_value=i.salvage_value,
                 useful_life_months=i.useful_life_months,
                 qty=i.qty,
+                period_basis=getattr(i, "period_basis", None) or "monthly",
                 monthly_cost=item_monthly_cost(i),
             )
             for i in template.items
@@ -88,6 +90,11 @@ async def get_cost_template_summary(
             total_capacity_dus=s.total_capacity_dus,
             suggested_holding_cost=s.suggested_holding_cost,
             holding_cost=template.holding_cost,
+            total_maintenance_monthly=s.total_maintenance_monthly,
+            total_annual=s.total_annual,
+            avg_inventory_value=s.avg_inventory_value,
+            suggested_holding_rate_pct=s.suggested_holding_rate_pct,
+            holding_cost_rate_pct=getattr(template, "holding_cost_rate_pct", None),
         ).model_dump(mode="json"),
     }
 

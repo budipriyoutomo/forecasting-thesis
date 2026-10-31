@@ -34,10 +34,21 @@ class ReorderRecommendation(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     # v3.0 — buffer stock, EOQ dinamis & total biaya (Bab III thesis)
     buffer_stock: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    # Fase 11.1: Σ aktual ÷ Σ standar pemakaian; NULL = belum ada data pemakaian aktual.
+    waste_factor: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     eoq_qty: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     ordering_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     holding_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     total_inventory_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    # Fase 11.4 — EOQ klasik vs dinamis per material (REVISI_V2 §3.5)
+    eoq_method: Mapped[str | None] = mapped_column(String(10), nullable=True)  # classic | dynamic
+    item_status: Mapped[str | None] = mapped_column(String(30), nullable=True)  # COMPLETED | MISSING_*
+    annual_demand: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    unit_price_used: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    holding_rate_used: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    # Fase 11.5 — stok yang dipakai & sumbernya (snapshot ERP | request fallback)
+    current_stock_used: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    stock_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -9,7 +9,11 @@ Alur (docs/ARCHITECTURE.md §6.1):
     Gagal → error langsung, TIDAK fallback (user memilih sadar — AGENTS.md §5/#14).
   - `requested_method` None  → MODE OTOMATIS: jalankan SELURUH metode aktif,
     hitung MAD/MFE/MSE/MAPE tiap metode, pilih metrik ranking terbaik
-    (FORECAST_RANKING_METRIC). Tak ada klasifikasi kuadran (larangan #12).
+    (`ranking_metric`, dari master data Pengaturan Forecast — bukan env).
+    Tak ada klasifikasi kuadran (larangan #12).
+
+Fase 11.2a (Keputusan #6): tiap kandidat mode otomatis membawa 3 peringkat
+berdampingan — `rank_mad`, `rank_mfe` (|MFE|), `rank_mape` — sebagai acuan planner.
 """
 import logging
 import math
@@ -20,12 +24,17 @@ import pandas as pd
 from app.config import get_settings
 from app.services.forecasting import registry
 from app.services.forecasting.preprocessing import to_period_series
-from app.services.forecasting.types import EngineResult, ForecastPoint
+from app.services.forecasting.evaluation import mape_interpretation
+from app.services.forecasting.types import EngineOptions, EngineResult, ForecastPoint
 from app.utils.exceptions import UnsupportedForecastMethodError
 
 log = logging.getLogger(__name__)
 
 _VALID_RANKING = {"mape", "mad", "mse", "mfe_abs"}
+DEFAULT_RANKING_METRIC = "mad"  # dipakai bila master data belum diisi (Keputusan #6)
+
+# kolom peringkat → (kunci metrik di kandidat, pakai nilai mutlak?)
+_RANK_COLUMNS = {"rank_mad": ("mad", False), "rank_mfe": ("mfe", True), "rank_mape": ("mape", False)}
 
 
 @dataclass
@@ -41,10 +50,12 @@ class ForecastResultRecord:
     mase: float | None = None
     candidates_evaluated: list[dict] | None = None
     explanation: str | None = None
+    feature_importance: dict | None = None  # Fase 11.2 — RF/XGB pemenang
+    hyperparameters: dict | None = None  # α ES / hasil grid search / outlier di-cap
 
 
 def _ranking_value(result: EngineResult, metric: str) -> float:
-    metric = metric if metric in _VALID_RANKING else "mape"
+    metric = metric if metric in _VALID_RANKING else DEFAULT_RANKING_METRIC
     value = abs(result.mfe) if metric == "mfe_abs" else getattr(result, metric)
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return float("inf")  # metode dgn metrik tak terdefinisi dianggap terburuk
@@ -52,7 +63,16 @@ def _ranking_value(result: EngineResult, metric: str) -> float:
 
 
 def _candidate_row(method: str, r: EngineResult) -> dict:
-    return {"method": method, "mad": r.mad, "mfe": r.mfe, "mse": r.mse, "mape": r.mape, "mase": r.mase}
+    return {
+        "method": method,
+        "mad": r.mad,
+        "mfe": r.mfe,
+        "mse": r.mse,
+        "mape": r.mape,
+        "mase": r.mase,
+        "feature_importance": r.feature_importance,
+        "hyperparameters": r.hyperparameters,
+    }
 
 
 def _fmt_metric(value: float | None, metric: str) -> str:
@@ -88,11 +108,32 @@ def _comparison_note(winner: str, metric: str, candidates: list[dict]) -> str:
 
 
 def _ranking_key(candidate: dict, metric: str) -> float:
-    key = "mfe" if metric == "mfe_abs" else (metric if metric in _VALID_RANKING else "mape")
+    key = "mfe" if metric == "mfe_abs" else (metric if metric in _VALID_RANKING else DEFAULT_RANKING_METRIC)
     value = candidate.get(key)
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return float("inf")
     return abs(float(value)) if metric == "mfe_abs" else float(value)
+
+
+def _defined(value) -> bool:
+    return value is not None and math.isfinite(float(value))
+
+
+def rank_candidates(candidates: list[dict]) -> list[dict]:
+    """Salinan `candidates` + `rank_mad`/`rank_mfe`/`rank_mape` (1 = terbaik).
+
+    Seri → peringkat sama lalu dilompati (1, 1, 3); metrik tak terdefinisi → None.
+    """
+    ranked = [dict(c) for c in candidates]
+    for column, (key, absolute) in _RANK_COLUMNS.items():
+        values = [
+            (abs(float(c[key])) if absolute else float(c[key])) if _defined(c.get(key)) else None
+            for c in ranked
+        ]
+        defined = [v for v in values if v is not None]
+        for c, v in zip(ranked, values):
+            c[column] = None if v is None else 1 + sum(1 for other in defined if other < v)
+    return ranked
 
 
 def _completed(method: str, mode: str, r: EngineResult, candidates: list[dict]) -> ForecastResultRecord:
@@ -107,14 +148,27 @@ def _completed(method: str, mode: str, r: EngineResult, candidates: list[dict]) 
         mape=r.mape,
         mase=r.mase,
         candidates_evaluated=candidates,
-        explanation=r.explanation,
+        explanation=_with_mape_label(r.explanation, r.mape),
+        feature_importance=r.feature_importance,
+        hyperparameters=r.hyperparameters,
     )
 
 
+def _with_mape_label(explanation: str | None, value) -> str:
+    label = f"Interpretasi MAPE: {mape_interpretation(value)}."
+    return f"{explanation} {label}".strip() if explanation else label
+
+
 def run_forecast_for_product(
-    df: pd.DataFrame, horizon: int, requested_method: str | None = None
+    df: pd.DataFrame,
+    horizon: int,
+    requested_method: str | None = None,
+    ranking_metric: str = DEFAULT_RANKING_METRIC,
+    enabled_methods: set[str] | None = None,
+    options: EngineOptions | None = None,
 ) -> ForecastResultRecord:
     settings = get_settings()
+    enabled = registry.get_enabled_methods(enabled_methods)
 
     if df.empty or "date" not in df.columns or df["quantity"].dropna().empty:
         return ForecastResultRecord(status="INSUFFICIENT_DATA")
@@ -126,13 +180,13 @@ def run_forecast_for_product(
 
     # ── MODE MANUAL ──────────────────────────────────────────────────────
     if requested_method is not None:
-        if requested_method not in registry.get_enabled_methods():
+        if requested_method not in enabled:
             raise UnsupportedForecastMethodError(
                 f"Metode '{requested_method}' tidak dikenal atau tidak aktif"
             )
         forecast_fn = registry.MODEL_REGISTRY[requested_method]
         try:
-            result = forecast_fn(df, horizon)
+            result = forecast_fn(df, horizon, options=options)
         except Exception:  # TIDAK fallback di mode manual (AGENTS.md §5/#14)
             log.warning("Metode manual '%s' gagal", requested_method, exc_info=True)
             return ForecastResultRecord(
@@ -142,19 +196,19 @@ def run_forecast_for_product(
 
     # ── MODE OTOMATIS: Comparative Selection ─────────────────────────────
     evaluated: list[tuple[str, EngineResult]] = []
-    for method_name in sorted(registry.get_enabled_methods()):  # sorted → ranking stabil saat seri
+    for method_name in sorted(enabled):  # sorted → ranking stabil saat seri
         forecast_fn = registry.MODEL_REGISTRY[method_name]
         try:
-            evaluated.append((method_name, forecast_fn(df, horizon)))
+            evaluated.append((method_name, forecast_fn(df, horizon, options=options)))
         except Exception:
             log.warning("Metode '%s' gagal saat backtest/fit, dikecualikan", method_name, exc_info=True)
 
     if not evaluated:
         return ForecastResultRecord(status="MODEL_SELECTION_FAILED")
 
-    metric = settings.FORECAST_RANKING_METRIC
+    metric = ranking_metric if ranking_metric in _VALID_RANKING else DEFAULT_RANKING_METRIC
     method_name, result = min(evaluated, key=lambda item: _ranking_value(item[1], metric))
-    candidates = [_candidate_row(name, r) for name, r in evaluated]
+    candidates = rank_candidates([_candidate_row(name, r) for name, r in evaluated])
     record = _completed(method_name, "auto", result, candidates)
     # Narasi perbandingan di depan penjelasan engine — planner perlu tahu dasar
     # pemilihannya lebih dulu, baru karakteristik metodenya.

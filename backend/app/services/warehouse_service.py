@@ -17,6 +17,7 @@ from app.models.warehouse import WarehouseConfig, WarehouseValidation
 from app.utils.exceptions import (
     ForbiddenRoleError,
     ForecastRunNotFoundError,
+    MaterialNotFoundError,
     ProductNotFoundError,
     WarehouseCapacityInvalidError,
     WarehouseConfigExistsError,
@@ -117,6 +118,8 @@ def validate_capacity(
     """
     details: list[ProductCapacityResult] = []
     for config in configs:
+        if getattr(config, "item_type", "product") != "product":
+            continue  # kapasitas material dipakai proyeksi stok (Fase 11.6), bukan di sini
         pid = str(config.product_id)
         required = forecast_qty_by_product.get(pid)
         if required is None:
@@ -137,11 +140,12 @@ def validate_capacity(
 
 
 class WarehouseService:
-    def __init__(self, config_repo, validation_repo, forecast_repo, products):
+    def __init__(self, config_repo, validation_repo, forecast_repo, products, materials=None):
         self._config = config_repo
         self._validations = validation_repo
         self._forecast = forecast_repo
         self._products = products
+        self._materials = materials  # Fase 11.6 — kapasitas per material
 
     async def list_configs(self) -> list[WarehouseConfig]:
         return await self._config.list()
@@ -158,17 +162,36 @@ class WarehouseService:
             raise ProductNotFoundError(f"Produk '{product_id}' tidak ditemukan.")
         if await self._config.get_by_product(product_id) is not None:
             raise WarehouseConfigExistsError("Produk ini sudah punya konfigurasi kapasitas.")
-        config = WarehouseConfig(product_id=product_id)
+        config = WarehouseConfig(item_type="product", product_id=product_id)
         apply_capacity(config, inp, product.unit)
+        return await self._config.add(config)
+
+    async def create_material_config(self, material_id: str, inp: CapacityInput) -> WarehouseConfig:
+        """Kapasitas gudang per MATERIAL (Fase 11.6): pallet → CTN (dus) → pcs, rumus sama."""
+        material = await self._require_material(material_id)
+        if await self._config.get_by_material(material_id) is not None:
+            raise WarehouseConfigExistsError("Material ini sudah punya konfigurasi kapasitas.")
+        config = WarehouseConfig(item_type="material", product_id=None, material_id=material_id)
+        apply_capacity(config, inp, material.unit)
         return await self._config.add(config)
 
     async def update_config(self, config_id: str, inp: CapacityInput) -> WarehouseConfig:
         config = await self.get_config(config_id)
-        product = await self._products.get_by_id(str(config.product_id))
-        if product is None:
-            raise ProductNotFoundError(f"Produk '{config.product_id}' tidak ditemukan.")
-        apply_capacity(config, inp, product.unit)
+        if getattr(config, "item_type", "product") == "material":
+            unit = (await self._require_material(str(config.material_id))).unit
+        else:
+            product = await self._products.get_by_id(str(config.product_id))
+            if product is None:
+                raise ProductNotFoundError(f"Produk '{config.product_id}' tidak ditemukan.")
+            unit = product.unit
+        apply_capacity(config, inp, unit)
         return await self._config.save(config)
+
+    async def _require_material(self, material_id: str):
+        material = await self._materials.get_by_id(material_id) if self._materials else None
+        if material is None:
+            raise MaterialNotFoundError(f"Material '{material_id}' tidak ditemukan.")
+        return material
 
     async def delete_config(self, config_id: str) -> None:
         config = await self.get_config(config_id)
@@ -176,7 +199,7 @@ class WarehouseService:
 
     async def validate_for_run(self, user_id: str, run_id: str) -> WarehouseValidation:
         await self._require_run(user_id, run_id)
-        configs = await self._config.list()
+        configs = [c for c in await self._config.list() if getattr(c, "item_type", "product") == "product"]
         if not configs:
             raise WarehouseConfigNotFoundError("Belum ada konfigurasi kapasitas gudang.")
 

@@ -551,3 +551,103 @@ user satu per satu (Fase 0 todo, 2 Oktober 2026).
   **tetap** memuat `capacity_qty` & `uom` (ditambah field baru).
 - Menu **Gudang** pindah dari grup "Operasional" ke "Master Data" dengan label
   "Kapasitas Gudang" (URL `/warehouse` tetap).
+
+---
+
+## Rekonsiliasi v3.2 — Fase 11.0: Fix Satuan Safety Stock & ROP (29 Oktober 2026)
+
+Sumber: `docs/REVISI_V2.md` §3.7. Bug, diperbaiki terlepas dari keputusan thesis lain.
+
+### Masalah
+`ReorderService.generate_for_run` mengambil μ/σ dari deret forecast **per periode**
+(bulanan di data thesis) lalu mengalikannya dengan `lead_time_days`. Untuk data bulanan,
+ROP & order-up-to membengkak ≈30× dan SS ≈√30×.
+
+### Keputusan
+1. `compute_reorder` tetap fungsi murni dengan kontrak **μ/σ harian** (tidak berubah).
+2. Konversi dilakukan di orkestrasi: `μ_d = μ_p / d`, `σ_d = σ_p / √d` (asumsi demand
+   harian independen — dicatat sebagai asumsi di thesis). `d = days_in_period(...)` =
+   median selisih tanggal `forecast_data`; tanpa tanggal / < 2 titik → `d = 1`
+   (perilaku lama, deret dianggap harian).
+3. `SERVICE_LEVEL_Z` diganti `SERVICE_LEVEL_PCT` (default 95). Z = Φ⁻¹(pct/100) via
+   `statistics.NormalDist` (stdlib, tanpa dependency baru), rentang valid 50 < pct < 100.
+   `SERVICE_LEVEL_Z` lama di `.env` diabaikan (`extra="ignore"`).
+
+### Dampak (disadari)
+- Angka SS/ROP/qty pesan untuk run **bulanan** berubah drastis (turun ke skala benar).
+  Rekomendasi reorder lama yang tersimpan tidak dihitung ulang otomatis → generate ulang.
+- Z 95% berubah 1.65 → 1.6449 (selisih < 0,4%).
+- Tidak ada perubahan skema, endpoint, atau response.
+
+### Keputusan blocking REVISI_V2 §6 (dijawab user 29 Oktober 2026)
+1. Kapasitas gudang **produk + material** (polimorfik) — membalik *sebagian* keputusan 24 Agustus; level produk tetap.
+2. Target training = **`actual`**.
+3. Estimasi pemakaian material: **forecast (usulan) dan planning (baseline)**, dihitung berdampingan.
+4. **Bottle dibeli jadi** — EOQ/kapasitas untuk Cap + Bottle; Preform informasi saja.
+5. i (%) **diturunkan otomatis** dari biaya simpan tahunan ÷ rata-rata nilai persediaan, bisa di-override.
+6. Ranking metode: **3 kolom ranking (MAD, |MFE|, MAPE)** sebagai acuan; pemenang otomatis ditentukan **master data Pengaturan Forecast** (default `mad`) — user minta setting metode tidak di env. Lihat §Fase 11.2a di bawah.
+7. Variabel eksternal: **musim, cuaca & temperatur, harga, promosi & event** tersedia → 🆕 master data variabel eksternal dinamis dengan toggle aktif/nonaktif (Fase 11.2b).
+8. Buffer qty = `max(0, aktual/standar − 1) × kebutuhan material periode`.
+
+### Fase 11.2a — Pengaturan Forecast sebagai master data + 3 kolom ranking (29 Oktober 2026)
+1. **Env `FORECAST_RANKING_METRIC` dihapus** (config, `.env.example`, `.env.prod.example`). Permintaan
+   user: setting metode tidak disimpan di env. Penggantinya tabel `forecast_settings` (satu baris,
+   `CHECK id = 1`), endpoint `GET/PUT /forecast-settings` (tulis: admin), menu Master Data →
+   Pengaturan Forecast. Tanpa baris → default `mad` di kode (migration tidak men-seed).
+2. **Default berubah `mape` → `mad`** (Keputusan #6). Opsi dibatasi `mad | mfe_abs | mape` (thesis:
+   MAD/MFE/MAPE); `mse` tidak lagi bisa dipilih (fungsi engine masih menerimanya).
+3. Metrik dibaca **sekali per run** dan dicatat di `forecast_runs.ranking_metric` (nullable) supaya
+   hasil run lama tetap bisa dijelaskan setelah pengaturan diubah. Mode manual → NULL.
+4. `rank_candidates()` (fungsi murni) menambah `rank_mad`, `rank_mfe` (|MFE|), `rank_mape` ke
+   `candidates_evaluated` (JSONB — tanpa perubahan skema). Seri → peringkat sama (1, 1, 3);
+   metrik tak terdefinisi → null.
+
+5. **Daftar metode aktif ikut pindah** (permintaan user 30 Okt 2026): env `FORECAST_ENGINES_ENABLED`
+   dihapus → kolom `forecast_settings.enabled_methods` (`VARCHAR(50)[]`, NULL = seluruh
+   `MODEL_REGISTRY`, array kosong ditolak CHECK). Halaman Pengaturan Forecast punya checkbox
+   metode (minimal satu). `GET /forecast/methods` kini membaca master data. Nama di luar registry
+   → `UNSUPPORTED_FORECAST_METHOD` (400, code yang sudah terdaftar). Metode aktif dibaca sekali
+   per run; tidak disnapshot ke `forecast_runs` karena `candidates_evaluated` sudah mencatat
+   metode yang benar-benar dibandingkan.
+6. Engine legacy tetap tidak bisa dipilih dari UI sebelum didaftarkan ulang di `MODEL_REGISTRY`
+   (larangan #16 tetap: file tidak dihapus).
+
+**Breaking change (disadari):** deploy yang masih mengisi `FORECAST_RANKING_METRIC` /
+`FORECAST_ENGINES_ENABLED` di `.env`
+akan diabaikan diam-diam (`extra="ignore"`) — pemenang beralih ke default `mad` dan **seluruh**
+metode (termasuk LSTM yang sengaja dikeluarkan di production, catatan #8 §Deployment VPS) aktif
+sampai admin menyimpan pengaturan. Runbook: `DEPLOYMENT.md` §9. Run lama (sebelum migrasi `e6f7a8b9c0d1`) tidak punya kolom peringkat
+& `ranking_metric` NULL; UI menampilkan "—" dan tidak mengklaim metrik pemenang.
+
+### Fase 11.1–11.8 — implementasi alur thesis v3.2 (30 Oktober 2026)
+1. **11.2 sisa**: grid α thesis + pemilihan α by MAD, label MAPE (Lewis), feature importance RF/XGB,
+   grid search `GridSearchCV` + `TimeSeriesSplit` (di-tuning pada data train saja; sampel < 6 →
+   parameter tetap), cap outlier IQR opsional. Semua opsi = master data, default grid search OFF
+   (run jauh lebih lama; aktifkan untuk run thesis). Engine menerima argumen opsional `options`.
+2. **Bug tanggal horizon bulanan** ikut diperbaiki: `last + 31 hari` bergeser dari awal bulan;
+   kini melangkah per bulan kalender (dibutuhkan agar sejajar variabel eksternal & proyeksi stok).
+3. **11.2b variabel eksternal**: kode = nama fitur ML (snake_case, tidak boleh `month`/`lag_n`).
+   Variabel aktif tanpa nilai lengkap untuk histori + horizon di-drop per produk dan dicatat di
+   `hyperparameters.exog_dropped`.
+4. **11.1 buffer**: rumus lama `compute_buffer_stock` (selalu 0 saat waste) **dihapus** beserta testnya,
+   diganti `compute_waste_factor` + `compute_buffer_qty`. Faktor = Σ aktual ÷ Σ standar (agregat).
+   Buffer ditambahkan ke ROP & order-up-to.
+5. **11.3 BOM multi-level**: tabel `material_components` terpisah dari `boms` (struktur `boms` tidak
+   berubah). Komponen level ≥ 2 tidak ikut breakdown kebutuhan (Keputusan #4).
+6. **11.4 EOQ klasik**: `SERVICE_LEVEL_PCT` (env dari 11.0) & rencana `EOQ_METHOD` dipindah ke master
+   data. Material tanpa harga/i (%) → EOQ dinamis + `item_status`. Item biaya `MAINTENANCE` & basis
+   tahunan; saran i (%) memakai rata-rata nilai persediaan dari snapshot stok (11.5).
+7. **11.5 stok**: keputusan #16 direvisi — snapshot ERP terakhir menang, `current_stock` request = fallback.
+8. **11.6 kapasitas material**: membalik *sebagian* keputusan 24 Agustus — `warehouse_config` polimorfik;
+   validasi kapasitas produk lama tidak berubah. Pesanan EOQ di proyeksi diasumsikan tiba di periode
+   yang sama (lead time < 1 periode bulanan) — asumsi thesis. Skenario baseline hanya bila planning
+   tersedia untuk seluruh periode horizon (data upload saat ini histori, jadi umumnya tidak tersedia).
+9. **11.7 evaluasi material** dari proyeksi stok; shortage cost juga di baris produk & cost summary.
+10. **11.8** `POST /forecast/runs/{id}/plan`; UI tombol "Jalankan perencanaan". Export Excel/PDF
+    `GET /forecast/runs/{id}/stock-projection/export` (?format, ?scenario) dan
+    `/inventory-metrics/export` (?format, ?target_type) — kolom target pakai **kode** material/produk
+    (bukan UUID) supaya langsung jadi lampiran thesis. Export metrik membaca baris **tersimpan**
+    (hasil perhitungan terakhir), bukan menghitung ulang.
+
+**Batasan / asumsi untuk thesis:** demand harian independen (konversi σ), alokasi shortage material
+bersama proporsional, pesanan tiba dalam periode, baseline butuh planning horizon.

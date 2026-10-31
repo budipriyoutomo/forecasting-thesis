@@ -60,4 +60,18 @@ describe("WarehouseConfigTable", () => {
     await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
     expect(await screen.findByRole("button", { name: /ya, hapus/i })).toBeDefined();
   });
+
+  it("baris material memakai label material & satuan CTN", () => {
+    const cfg = {
+      id: "w9", item_type: "material", product_id: null, material_id: "m1", capacity_mode: "DUS",
+      pallet_qty: "0", dus_qty: "400", dus_per_pallet: null, pcs_per_dus: "500",
+      capacity_dus: "400", capacity_qty: "200000", uom: "PCS",
+    } as never;
+    const materials = [{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS" }] as never[];
+    render(<WarehouseConfigTable configs={[cfg]} products={[]} materials={materials} targetType="material" />);
+
+    expect(screen.getByText("BTL-WHITE — Bottle White")).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: /material/i })).toBeDefined();
+    expect(screen.getAllByText(/CTN/).length).toBeGreaterThan(0);
+  });
 });
