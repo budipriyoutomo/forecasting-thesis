@@ -125,7 +125,7 @@ Legenda prioritas: **P0** = salah secara matematis / blokir klaim thesis · **P1
 | Yoghurt LY | KBYLY 200 — Lychee | ✅ cocok |
 | Yoghurt BF | KBYBF 200 — Black Fruit | ✅ cocok |
 | Yoghurt MG | KBYMG 200 — Mangga | ✅ cocok |
-| Yoghurt **SB** | KBY**ST** (Strawberry) atau KBY**SR** (Slimberries)? | ❌ ambigu |
+| Yoghurt **SB** | KBY**ST** (Strawberry) atau KBY**SR** (Slimberries)? | ✅ 7 Nov: keduanya Cap Red (§9) |
 | — | Satu dari ST/SR | ❌ tidak punya BOM |
 
 Semua `Qty = 1` dan semua UOM `PCS` → aman untuk thesis, tapi pastikan template import BOM mewajibkan kode yang sama persis dengan `products.code` (`KBYxx 200`, bukan "Yoghurt xx").
@@ -372,3 +372,21 @@ SERVICE_LEVEL_PCT=95                  # ganti SERVICE_LEVEL_Z
 ML_GRID_SEARCH=true
 WAREHOUSE_CAPACITY_TARGET=material    # product | material | both
 ```
+
+---
+
+## 9. Delta 7 Nov 2026 (v3.3)
+
+Ringkasan perubahan setelah dokumen thesis 7 Nov (`Rumus thesis untuk program.docx`,
+`Simulasi Thesis.xlsx` 7 Nov). Detail keputusan: `RECONCILIATION.md` §"Rekonsiliasi v3.3";
+checklist: `docs/TODO-v3.md`.
+
+| # | Perubahan | Status |
+|---|---|---|
+| 9.1 | Titik pesan & qty pesan satu sumber (`reorder_service`) untuk Reorder + Proyeksi Stok; `rop_formula` (`standard`/`with_buffer`) & `order_qty_policy` (`order_up_to`/`eoq`) di Pengaturan Forecast | ✅ Fase 11.9 |
+| 9.2 | MAPE pakai \|A − F\|; definisi fulfilment rate (β, qty), stock out rate (periode), service level (α) dikunci; label UI pakai istilah docx | ✅ Fase 11.10 |
+| 9.3 | Seed `--profile thesis`: data 2024–2025 riil, BOM Cap/Bottle/Preform 2 level, kapasitas Preform, template biaya penyimpanan | ✅ sebagian Fase 11.11 |
+| 9.4 | Golden test angka thesis | 🟡 kerangka; menunggu `docs/thesis_golden.xlsx` |
+| 9.5 | Rumus ROP, service level, fulfilment rate, stock out rate di docx; asumsi lead time < 1 periode | ⛔ penulis |
+| 9.6 | Keputusan user 7 Nov: SB → KBYST & KBYSR keduanya Cap Red; kapasitas Cap belum di-seed; Juni 2025 = 0 dipakai apa adanya; α & β ditampilkan keduanya | ✅ |
+| 9.7 | Data belum ada di Excel: kapasitas per warna Cap, harga material/jual, MOQ, S, i (%), stok awal, kedatangan, pemakaian aktual; `#REF!` tabel gap 2025 | ⛔ penulis |

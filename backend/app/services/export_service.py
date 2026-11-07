@@ -57,6 +57,8 @@ def build_reorder_xlsx(recommendations) -> bytes:
         [
             "material_id", "safety_stock", "reorder_point", "recommended_order_qty", "status",
             "buffer_stock", "eoq_qty", "ordering_cost", "holding_cost", "total_inventory_cost",
+            # Fase 11.9 — kebijakan pesan, juga ditambah di akhir (kolom lama tidak bergeser)
+            "rop_formula_used", "order_qty_policy_used",
         ]
     )
     for rec in recommendations:
@@ -72,6 +74,8 @@ def build_reorder_xlsx(recommendations) -> bytes:
                 _num(getattr(rec, "ordering_cost", None)),
                 _num(getattr(rec, "holding_cost", None)),
                 _num(getattr(rec, "total_inventory_cost", None)),
+                getattr(rec, "rop_formula_used", None),
+                getattr(rec, "order_qty_policy_used", None),
             ]
         )
     buffer = io.BytesIO()
@@ -209,7 +213,7 @@ def build_metrics_xlsx(rows, labels: dict) -> bytes:
 
 
 def build_metrics_pdf(run, rows, labels: dict) -> bytes:
-    headers = ["Tipe", "Target", "Skenario", "Service level", "Fill rate", "Stockout", "Turnover",
+    headers = ["Tipe", "Target", "Skenario", "Service level", "Fulfilment", "Stock out", "Turnover",
                "Inv. days", "Shortage cost"]
     widths = [22, 50, 24, 26, 24, 24, 24, 24, 40]
     data = [

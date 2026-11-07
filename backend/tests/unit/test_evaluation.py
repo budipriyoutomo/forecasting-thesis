@@ -59,3 +59,13 @@ def test_backtest_metrics_mase_none_saat_disabled():
     forecast = np.array([11.0, 19.0])
     m = evaluation.backtest_metrics(actual, forecast, np.array([1.0, 2.0]), compute_mase=False)
     assert m["mase"] is None
+
+
+def test_mape_error_positif_negatif_tidak_saling_meniadakan():
+    # Fase 11.10: MAPE memakai |A − F| (docx thesis menulis tanpa absolut — dikoreksi).
+    # Tanpa absolut: (+10% − 10%)/2 = 0% → menyesatkan; dengan absolut = 10%.
+    actual = np.array([100.0, 100.0])
+    forecast = np.array([90.0, 110.0])
+    assert evaluation.mape(actual, forecast) == pytest.approx(10.0)
+    assert evaluation.mad(actual, forecast) == pytest.approx(10.0)
+    assert evaluation.mfe(actual, forecast) == pytest.approx(0.0)  # MFE memang bertanda (bias)

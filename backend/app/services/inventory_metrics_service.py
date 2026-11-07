@@ -9,6 +9,16 @@ scope per produk COMPLETED:
   - forecastiq: demand=actual, supply=forecast ForecastIQ (diselaraskan per periode;
                 dilewati bila horizon forecast tidak beririsan dgn periode historis).
 
+Definisi metrik (dikunci Fase 11.10, v3.3 — istilah docx thesis; sumber: definisi
+standar yang disepakati di RECONCILIATION §Fase 7 karena docx belum memuat rumusnya):
+  Fulfilment rate (β) = 1 − Σ kekurangan ÷ Σ demand          (berbasis QTY; field `fill_rate`)
+  Stock out rate      = periode dgn kekurangan ÷ jumlah periode (berbasis PERIODE)
+  Service level (α)   = 1 − stock out rate                     (berbasis siklus/periode)
+  Inventory turnover  = Σ demand ÷ persediaan rata-rata
+Dipakai SAMA oleh scope produk (`compute_metrics`) dan material (`material_metrics`).
+⛔ Bila docx nanti mendefinisikan stock out rate berbasis qty → tambah opsi di
+Pengaturan Forecast, JANGAN ganti definisi diam-diam (TODO-v3 Fase 11.10).
+
 Fase 11.7 (REVISI_V2 §3.9): scope MATERIAL dari proyeksi stok (tahap 4 thesis) —
 fulfillment/service level, stockout rate, turnover, inventory days, shortage cost.
 Shortage cost = qty produk tak terpenuhi × harga jual. Kekurangan material bersama
@@ -66,7 +76,8 @@ def allocate_shortage(shortage_qty: float, requirement_by_product: dict, qty_per
 
 
 def material_metrics(rows, days_per_period: float) -> InventoryMetricValues:
-    """Metrik satu material × skenario dari baris proyeksi stok (urut periode)."""
+    """Metrik satu material × skenario dari baris proyeksi stok (urut periode).
+    Definisi identik dgn `compute_metrics` (demand = usage, kekurangan = shortage_qty)."""
     usage = sum(float(r.usage_qty) for r in rows)
     shortage = sum(float(r.shortage_qty) for r in rows)
     n = len(rows)
@@ -84,7 +95,7 @@ def material_metrics(rows, days_per_period: float) -> InventoryMetricValues:
 
 
 def fill_rate(demand, supply) -> Decimal:
-    """β service level: 1 − Σ kekurangan / Σ demand. Demand 0 → 1 (tak ada yg tak terpenuhi)."""
+    """Fulfilment rate (β): 1 − Σ kekurangan / Σ demand (berbasis qty). Demand 0 → 1."""
     total_demand = sum(float(d) for d in demand)
     if total_demand <= 0:
         return _dec(1)
@@ -93,7 +104,7 @@ def fill_rate(demand, supply) -> Decimal:
 
 
 def stock_out_rate(demand, supply) -> Decimal:
-    """Proporsi periode yang mengalami kekurangan (demand > supply)."""
+    """Stock out rate: proporsi PERIODE yang mengalami kekurangan (demand > supply), bukan qty."""
     periods = len(demand)
     if periods == 0:
         return _dec(0)
@@ -102,7 +113,7 @@ def stock_out_rate(demand, supply) -> Decimal:
 
 
 def service_level(demand, supply) -> Decimal:
-    """α service level berbasis siklus: 1 − stock out rate."""
+    """Service level (α) berbasis siklus/periode: 1 − stock out rate."""
     return _dec(1 - float(stock_out_rate(demand, supply)))
 
 

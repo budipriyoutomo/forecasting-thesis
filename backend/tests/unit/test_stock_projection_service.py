@@ -89,7 +89,7 @@ def _svc(run=None, planning=None, recs=None, reorder_service=None):
 
 @pytest.mark.asyncio
 async def test_proyeksi_usulan_dengan_stok_awal_kedatangan_kapasitas():
-    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, eoq_qty=0)
+    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
     svc, repo = _svc(recs=[rec])
     rows = await svc.generate_for_run(USER, "r1")
 
@@ -105,7 +105,7 @@ async def test_proyeksi_usulan_dengan_stok_awal_kedatangan_kapasitas():
 @pytest.mark.asyncio
 async def test_skenario_baseline_bila_planning_horizon_ada():
     planning = [SimpleNamespace(period="2026-11-01", planning=600), SimpleNamespace(period="2026-12-01", planning=600)]
-    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, eoq_qty=0)
+    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
     svc, _ = _svc(planning=planning, recs=[rec])
     rows = await svc.generate_for_run(USER, "r1")
 
@@ -121,17 +121,22 @@ async def test_tanpa_reorder_tersimpan_dibuatkan_dulu():
 
         async def generate_for_run(self, user_id, run_id):
             ReorderSvc.called = True
-            return [SimpleNamespace(material_id="m1", safety_stock=900, buffer_stock=0, eoq_qty=300)]
+            return [
+                SimpleNamespace(
+                    material_id="m1", safety_stock=800, buffer_stock=0, reorder_point=900, eoq_qty=300,
+                    order_qty_policy_used="eoq", order_up_to_level=1000, moq_used=0,
+                )
+            ]
 
     svc, _ = _svc(reorder_service=ReorderSvc())
     rows = await svc.generate_for_run(USER, "r1")
     assert ReorderSvc.called
-    assert rows[0].order_qty == 300  # pre 700 < level 900 → 1 × EOQ 300
+    assert rows[0].order_qty == 300  # pre 700 ≤ ROP 900 → 1 × EOQ 300
 
 
 @pytest.mark.asyncio
 async def test_list_filter_dan_akses():
-    svc, _ = _svc(recs=[SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, eoq_qty=0)])
+    svc, _ = _svc(recs=[SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)])
     await svc.generate_for_run(USER, "r1")
     assert {r.scenario for r in await svc.list_for_run(USER, "r1", "proposed")} == {"proposed"}
 
@@ -140,3 +145,27 @@ async def test_list_filter_dan_akses():
     other, _ = _svc(run=SimpleNamespace(id="r1", user_id="u2"))
     with pytest.raises(ForbiddenRoleError):
         await other.generate_for_run(USER, "r1")
+
+
+@pytest.mark.asyncio
+async def test_level_pesan_memakai_reorder_point_bukan_ss_plus_buffer():
+    # Fase 11.9: ROP 800 (μ·L + SS + B) — SS + B = 300 saja tidak akan memicu pesanan di pre 700.
+    rec = SimpleNamespace(
+        material_id="m1", safety_stock=200, buffer_stock=100, reorder_point=800, eoq_qty=250,
+        order_qty_policy_used="eoq", order_up_to_level=1300, moq_used=0,
+    )
+    svc, _ = _svc(recs=[rec])
+    proposed = [r for r in await svc.generate_for_run(USER, "r1") if r.scenario == "proposed"]
+    assert proposed[0].order_qty == 250  # pre 700 ≤ 800 → 1 × 250
+
+
+@pytest.mark.asyncio
+async def test_rekomendasi_lama_tanpa_kolom_policy_fallback_order_up_to():
+    # Baris sebelum migration v3.3: policy/S/MOQ NULL → order_up_to, S = 2·ROP − SS − B (rumus lama).
+    rec = SimpleNamespace(
+        material_id="m1", safety_stock=200, buffer_stock=100, reorder_point=800, eoq_qty=250,
+        order_qty_policy_used=None, order_up_to_level=None, moq_used=None,
+    )
+    svc, _ = _svc(recs=[rec])
+    proposed = [r for r in await svc.generate_for_run(USER, "r1") if r.scenario == "proposed"]
+    assert proposed[0].order_qty == 600  # S = 1600 − 300 = 1300 → 1300 − 700

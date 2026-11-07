@@ -130,11 +130,12 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-3.11 Jika metode manual yang dipilih gagal dijalankan (mis. data tidak cukup untuk metode itu), sistem mengembalikan error yang jelas (`UNSUPPORTED_FORECAST_METHOD` atau `MODEL_SELECTION_FAILED`), bukan diam-diam pindah ke metode lain — karena user sudah memilih secara sadar.
 
 ### FR-4 Rekomendasi Reorder, Buffer Stock & EOQ
-- FR-4.1 Sistem menghitung safety stock berdasarkan variabilitas demand, lead time, dan target service level (dapat dikonfigurasi, `SERVICE_LEVEL_PCT` default 95 → Z ≈ 1.645; 99 → Z ≈ 2.326). σ dan μ demand dihitung **harian** (dikonversi dari periode forecast) karena lead time dalam hari.
-- FR-4.2 Sistem menghitung reorder point = (demand rata-rata selama lead time) + safety stock.
-- FR-4.3 Sistem menghasilkan rekomendasi jumlah order (order quantity) mempertimbangkan MOQ sebagai batas bawah.
+- FR-4.1 Sistem menghitung safety stock berdasarkan variabilitas demand, lead time, dan target service level (master data Pengaturan Forecast `service_level_pct` sejak Fase 11.4 — bukan env; default 95 → Z ≈ 1.645; 99 → Z ≈ 2.326). σ dan μ demand dihitung **harian** (dikonversi dari periode forecast) karena lead time dalam hari.
+- FR-4.2 **[CHANGED 7 Nov 2026]** Sistem menghitung reorder point = (demand rata-rata selama lead time) + safety stock, **ditambah buffer stock** bila rumus `with_buffer` (default) dipilih di Pengaturan Forecast (`rop_formula`: `standard` | `with_buffer`).
+- FR-4.3 **[CHANGED 7 Nov 2026]** Sistem menghasilkan **satu** rekomendasi jumlah order sesuai kebijakan di Pengaturan Forecast (`order_qty_policy`): `order_up_to` (default) = max(MOQ, S − stok) dengan S = ROP + demand selama lead time, atau `eoq` = kelipatan EOQ terkecil sampai stok ≥ ROP (EOQ belum tersedia → `order_up_to`). Pesan bila stok ≤ ROP.
+- FR-4.3a **[NEW 7 Nov 2026]** Titik pesan & qty pesan di tabel Reorder dan Proyeksi Stok (FR-12.8) **identik** untuk stok yang sama — satu sumber rumus. Rekomendasi menyimpan rumus & kebijakan yang dipakai (audit).
 - FR-4.4 Sistem menandai item dengan status "Perlu Reorder Segera", "Aman", atau "Overstock".
-- FR-4.5 **[NEW]** Sistem menghitung **buffer stock** = Standar Pemakaian − Aktual Pemakaian (tidak negatif), di mana Standar Pemakaian = Output Produksi × BOM — untuk mengantisipasi waste produksi.
+- FR-4.5 **[CHANGED 30 Okt 2026]** Sistem menghitung **buffer stock** untuk mengantisipasi waste produksi = max(0, faktor waste − 1) × kebutuhan periode, faktor waste = Σ Aktual Pemakaian ÷ Σ Standar Pemakaian (Standar = Output Produksi × BOM) — rincian FR-12.4. ~~Standar − Aktual~~ (selalu 0 saat ada waste, diganti Fase 11.1).
 - FR-4.6 **[NEW]** Sistem menghitung **EOQ dinamis** dengan mencari jumlah siklus pemesanan yang meminimalkan total biaya `TC = nS + Σ(Iₜ × H)`, lalu membulatkan ke kelipatan MOQ.
 - FR-4.7 **[NEW]** Tiap rekomendasi menyimpan komponen biayanya: `ordering_cost`, `holding_cost`, dan `total_inventory_cost`.
 - FR-4.8 **[CHANGED]** Rekomendasi digenerate lewat `POST` dengan `current_stock` dikirim sebagai parameter request (bukan kolom tersimpan), lalu bisa dibaca ulang lewat `GET`.
@@ -180,20 +181,20 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 ### FR-11 Total Biaya & Evaluasi Kinerja Inventory **[NEW]**
 - FR-11.1 Sistem menghitung **TIC (Total Inventory Cost)** = ordering cost + holding cost, untuk dua skenario: **usulan ForecastIQ** (dari rekomendasi tersimpan) dan **baseline perusahaan** (dari seri `planning`, lewat jalur BOM → EOQ yang sama agar perbandingannya simetris).
 - FR-11.2 Sistem melaporkan **% penghematan** = (TIC baseline − TIC usulan) ÷ TIC baseline × 100.
-- FR-11.3 Sistem menghitung empat metrik kinerja inventory per skenario (`baseline` dan `forecastiq`): **service level** (α, berbasis siklus), **fill rate** (β), **stock out rate**, dan **inventory turnover**.
+- FR-11.3 **[CHANGED 7 Nov 2026]** Sistem menghitung empat metrik kinerja inventory per skenario (`baseline` dan `forecastiq`): **service level (α)** = 1 − stock out rate (berbasis periode), **fulfilment rate (β)** = 1 − Σ kekurangan ÷ Σ demand (berbasis qty; field API `fill_rate`), **stock out rate** = periode kekurangan ÷ jumlah periode (berbasis periode, bukan qty), dan **inventory turnover**. Definisi sama untuk level produk dan material. Bila thesis mendefinisikan stock out rate berbasis qty, ditambahkan sebagai opsi — bukan mengganti definisi diam-diam.
 - FR-11.4 Definisi rumus keempat metrik tidak tersedia di sumber thesis; definisi standar yang dipakai disepakati bersama user dan dicatat di `RECONCILIATION.md` §Fase 7 agar bisa dipertanggungjawabkan.
 - FR-11.5 **[NEW 2 Okt 2026]** S & H untuk EOQ/TIC diambil dari **template biaya aktif** (FR-2.7); bila belum ada template aktif, memakai nilai default env seperti sebelumnya. Ringkasan biaya menampilkan sumbernya (template/env) dan **biaya pembelian material** sebagai informasi — **tidak** dijumlahkan ke TIC.
 
 ### FR-12 Alur Perencanaan Persediaan Material (thesis v3.2) **[NEW 30 Okt 2026]**
-- FR-12.1 Master data **Pengaturan Forecast** (admin): metrik ranking pemenang (MAD/|MFE|/MAPE, default MAD), metode aktif, grid α ES (default thesis 0,01/0,05/0,15/0,2/0,8/0,95/0,99, dipilih by MAD), grid search ML, cap outlier IQR, target service level (95/99%), metode EOQ (klasik/dinamis). **Tidak ada pengaturan metode di env.**
+- FR-12.1 Master data **Pengaturan Forecast** (admin): metrik ranking pemenang (MAD/|MFE|/MAPE, default MAD), metode aktif, grid α ES (default thesis 0,01/0,05/0,15/0,2/0,8/0,95/0,99, dipilih by MAD), grid search ML, cap outlier IQR, target service level (95/99%), metode EOQ (klasik/dinamis), **[NEW 7 Nov 2026]** rumus titik pesan & kebijakan qty pesan (FR-4.2/4.3). **Tidak ada pengaturan metode di env.**
 - FR-12.2 Hasil forecast menampilkan **3 kolom peringkat** (MAD, |MFE|, MAPE), label interpretasi MAPE (Lewis), α terpilih, dan **feature importance** RF/XGBoost.
 - FR-12.3 Master data **Variabel Eksternal** dinamis (musim, cuaca/temperatur, harga, promo/event, …): tipe numerik/flag, cakupan global/per produk, toggle aktif; nilai per periode di-upload. RF/XGBoost memakai variabel aktif yang nilainya lengkap untuk histori + horizon.
 - FR-12.4 **Buffer stock** = max(0, Σaktual ÷ Σstandar − 1) × kebutuhan periode, dari upload pemakaian aktual (standar = output produksi × BOM).
 - FR-12.5 **BOM multi-level**: komponen material (mis. Preform ← Bottle) sebagai informasi level 2; siklus ditolak.
 - FR-12.6 **EOQ klasik** √(2AS/iC) per material bila harga & i (%) tersedia (i diturunkan otomatis dari biaya simpan tahunan ÷ rata-rata nilai persediaan, bisa di-override di template biaya); selain itu EOQ dinamis dengan status per item.
 - FR-12.7 **Stok ERP & kedatangan**: upload snapshot stok, input/upload estimasi kedatangan. Stok untuk reorder = snapshot terakhir (`current_stock` request jadi fallback).
-- FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan + pesanan EOQ − pemakaian; utilisasi stok awal & akhir; dua skenario (forecast vs planning).
-- FR-12.9 **Evaluasi material**: fulfillment/service level, stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga jual).
+- FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan + pesanan − pemakaian (pesanan = kebijakan qty pesan FR-4.3 bila stok ≤ ROP, diasumsikan tiba di periode yang sama); utilisasi stok awal & akhir; dua skenario (forecast vs planning).
+- FR-12.9 **Evaluasi material**: fulfilment rate (β)/service level (α), stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga jual).
 - FR-12.10 Tombol **Jalankan perencanaan** menjalankan tahap 2→4 berurutan (`POST /forecast/runs/{id}/plan`).
 
 ## 6. Metode Forecasting yang Didukung

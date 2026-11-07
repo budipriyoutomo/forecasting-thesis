@@ -330,6 +330,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Setiap metode forecasting baru adalah 1 fungsi (bukan class), sudah ada test-nya sendiri (`test_<method>_engine.py`)
 - [ ] Mode manual (`method` diisi user) sudah diuji: sukses, error saat metode tidak dikenal (`UNSUPPORTED_FORECAST_METHOD`), dan tidak fallback saat gagal
 - [ ] Konversi satuan periode ↔ hari (SS/ROP, annualisasi EOQ) dites dengan data bulanan (Fase 11.0)
+- [ ] Rumus titik pesan (ROP) & qty pesan **hanya** dari `reorder_service` (`compute_rop`, `compute_order_qty`, `OrderPolicy`) — modul lain (proyeksi stok, cost, export) tidak merumuskan ulang (v3.3, Fase 11.9)
 - [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap, ranking sesuai `forecast_settings.ranking_metric`, 3 kolom peringkat terisi
 - [ ] Field `code` pada resource baru (produk/material/dsb) sudah dicek unik sebelum insert, dan pesan error mengikuti pola `*_CODE_EXISTS`
 - [ ] Resource yang di-generate dari perhitungan (bukan CRUD murni) menyediakan endpoint `POST` untuk generate & persist sebelum `GET` untuk membaca — lihat `ARCHITECTURE.md` §5

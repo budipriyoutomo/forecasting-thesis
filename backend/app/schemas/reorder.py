@@ -33,3 +33,8 @@ class ReorderRecommendationOut(BaseModel):
     ordering_cost: Decimal | None = None
     holding_cost: Decimal | None = None
     total_inventory_cost: Decimal | None = None
+    # Fase 11.9 (v3.3) — kebijakan pesan yang dipakai; null = rekomendasi sebelum v3.3
+    rop_formula_used: str | None = None  # standard | with_buffer
+    order_qty_policy_used: str | None = None  # eoq | order_up_to
+    order_up_to_level: Decimal | None = None
+    moq_used: Decimal | None = None

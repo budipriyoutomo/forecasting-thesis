@@ -185,3 +185,27 @@ async def test_put_perencanaan_invalid_422(client, body):
     _override()
     res = await client.put(BASE, json={"ranking_metric": "mad", **body}, headers=_headers("admin"))
     assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_dan_put_kebijakan_reorder(client):
+    repo = _override()
+    data = (await client.get(BASE, headers=_headers("viewer"))).json()["data"]
+    assert data["rop_formula"] == "with_buffer" and data["order_qty_policy"] == "order_up_to"
+
+    res = await client.put(
+        BASE, json={"ranking_metric": "mad", "rop_formula": "standard", "order_qty_policy": "eoq"},
+        headers=_headers("admin"),
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["rop_formula"] == "standard" and res.json()["data"]["order_qty_policy"] == "eoq"
+    assert repo.row.order_qty_policy == "eoq"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{"rop_formula": "wilson"}, {"order_qty_policy": "lot4lot"}])
+async def test_put_kebijakan_reorder_invalid_422(client, body):
+    repo = _override()
+    res = await client.put(BASE, json={"ranking_metric": "mad", **body}, headers=_headers("admin"))
+    assert res.status_code == 422
+    assert repo.saved == 0

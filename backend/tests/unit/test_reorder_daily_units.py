@@ -71,3 +71,14 @@ def test_rop_bulanan_lead_7_hari_bukan_30x():
     assert float(r.reorder_point) == pytest.approx(300 * 7 / 30 + ss, abs=1e-3)  # ≈ 117.82, bukan 2100+
     # order-up-to = ROP + μ_d·LT = 70 + 117.82 → qty = ceil(187.82) = 188
     assert r.recommended_order_qty == math.ceil(70 + 300 * 7 / 30 + ss)
+
+
+def test_rop_standard_bulanan_lead_7_hari():
+    # Fase 11.9: ROP = μ_bln × 7/30 + SS (tanpa buffer) vs + B (with_buffer)
+    mu_d, sigma_d = period_to_daily(mu=300, sigma=60, days=30)
+    kw = dict(mu=mu_d, sigma=sigma_d, lead_time_days=7, moq=0, z=1.65, manual_ss=None, current_stock=0, buffer=12)
+    ss = 1.65 * (60 / math.sqrt(30)) * math.sqrt(7)
+    std = compute_reorder(**kw, formula="standard")
+    buf = compute_reorder(**kw, formula="with_buffer")
+    assert float(std.reorder_point) == pytest.approx(70 + ss, abs=1e-3)
+    assert float(buf.reorder_point) == pytest.approx(70 + ss + 12, abs=1e-3)

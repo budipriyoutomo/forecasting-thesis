@@ -49,6 +49,12 @@ class ReorderRecommendation(Base):
     # Fase 11.5 — stok yang dipakai & sumbernya (snapshot ERP | request fallback)
     current_stock_used: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     stock_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Fase 11.9 (v3.3) — kebijakan pesan yang dipakai (audit) + input yang dibutuhkan
+    # Proyeksi Stok agar memakai titik & qty pesan yang sama. NULL = baris sebelum v3.3.
+    rop_formula_used: Mapped[str | None] = mapped_column(String(20), nullable=True)  # standard | with_buffer
+    order_qty_policy_used: Mapped[str | None] = mapped_column(String(20), nullable=True)  # eoq | order_up_to
+    order_up_to_level: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    moq_used: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

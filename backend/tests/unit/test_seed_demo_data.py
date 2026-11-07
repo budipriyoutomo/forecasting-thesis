@@ -184,8 +184,9 @@ def test_deret_demand_deterministik():
 def test_bulan_tanpa_permintaan_tetap_nol_di_tahun_turunan():
     # KBYSR 200 Januari 2024 = 0 → turunannya tidak boleh mengarang angka.
     series = build_demand_series("KBYSR 200")
-    januari = [p for p in series if p.period.month == 1]
-    assert all(p.actual == 0 for p in januari)
+    # Hanya tahun TURUNAN (2023, 2026); 2025 sekarang data riil (Fase 11.11).
+    januari = [p for p in series if p.period.month == 1 and p.period.year in (2023, 2026)]
+    assert januari and all(p.actual == 0 for p in januari)
 
 
 def test_actual_tidak_pernah_none():
@@ -246,3 +247,118 @@ async def test_seed_idempoten_dijalankan_dua_kali_tidak_menduplikasi():
     assert len(repos["demand"].rows) == sum(
         len(build_demand_series(p.code)) for p in DEMO_PRODUCTS
     )
+
+
+# ── Fase 11.11: data riil 2025 + profil thesis ───────────────────────────
+
+from app.scripts.seed_demo_data import THESIS_PROFILE  # noqa: E402
+from app.scripts.thesis_data import (  # noqa: E402
+    THESIS_BOM,
+    THESIS_COST_ITEMS,
+    THESIS_DEMAND_2025,
+    THESIS_MATERIALS,
+)
+
+
+def test_profil_demo_2025_memakai_data_riil():
+    for code, real in THESIS_DEMAND_2025.items():
+        points = [p for p in build_demand_series(code) if p.period.year == 2025]
+        assert [(p.forecast_existing, p.planning, p.actual) for p in points] == list(real)
+
+
+def test_profil_thesis_hanya_2024_2025_riil():
+    series = build_demand_series("KBYPL 200", profile=THESIS_PROFILE)
+    assert len(series) == 24 >= get_settings().LSTM_MIN_PERIODS
+    assert series[0].period == date(2024, 1, 1) and series[-1].period == date(2025, 12, 1)
+
+
+class FakeWarehouseBoth(FakeWarehouseRepository):
+    def __init__(self):
+        super().__init__()
+        self.configs_by_material = {}
+
+    async def get_by_material(self, material_id):
+        return self.configs_by_material.get(material_id)
+
+    async def add(self, config):
+        if getattr(config, "item_type", "product") == "material":
+            self.configs_by_material[config.material_id] = config
+            return config
+        return await super().add(config)
+
+
+class FakeComponentRepository:
+    def __init__(self):
+        self.items = []
+
+    async def list(self, parent_id=None):
+        return [c for c in self.items if parent_id is None or str(c.parent_material_id) == str(parent_id)]
+
+    async def add(self, row):
+        self.items.append(row)
+        return row
+
+
+class FakeCostTemplateRepository:
+    def __init__(self):
+        self.items = []
+
+    async def get_by_name(self, name):
+        return next((t for t in self.items if t.name == name), None)
+
+    async def add(self, template):
+        self.items.append(template)
+        return template
+
+
+def make_thesis_repos():
+    repos = make_repos()
+    repos["warehouse"] = FakeWarehouseBoth()
+    repos["components"] = FakeComponentRepository()
+    repos["cost_templates"] = FakeCostTemplateRepository()
+    return repos
+
+
+@pytest.mark.asyncio
+async def test_seed_profil_thesis_master_data_bom_kapasitas_biaya():
+    repos = make_thesis_repos()
+    summary = await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+
+    assert summary.products_created == 7
+    assert {m.code for m in repos["materials"].items} == {m.code for m in THESIS_MATERIALS}
+    assert summary.boms_created == len(THESIS_BOM) == 14
+    assert summary.components_created == 1
+    assert summary.demand_rows == 7 * 24
+    # Kapasitas: hanya material (Preform); produk tidak punya data kapasitas di Excel.
+    assert summary.warehouse_created == 1 and not repos["warehouse"].configs_by_product
+    prf = await repos["materials"].get_by_code("PRF-WHITE")
+    assert float(repos["warehouse"].configs_by_material[prf.id].capacity_qty) == 5_555_376
+
+    (tpl,) = repos["cost_templates"].items
+    assert summary.cost_templates_created == 1
+    assert tpl.is_active is False  # ⛔ S (biaya pesan) belum ada di Excel
+    assert len(tpl.items) == len(THESIS_COST_ITEMS)
+
+
+@pytest.mark.asyncio
+async def test_seed_profil_thesis_idempoten():
+    repos = make_thesis_repos()
+    await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+    again = await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+    assert (again.products_created, again.materials_created, again.boms_created, again.components_created,
+            again.demand_rows, again.warehouse_created, again.cost_templates_created) == (0,) * 7
+
+
+@pytest.mark.asyncio
+async def test_profil_tidak_dikenal_ditolak():
+    with pytest.raises(ValueError):
+        await seed_demo_data(user_id="user-1", profile="prod", **make_repos())
+
+
+def test_cli_profile_default_demo_dan_thesis():
+    from app.scripts.seed_demo_data import _parse_profile
+
+    assert _parse_profile([]) == "demo"
+    assert _parse_profile(["--profile", "thesis"]) == "thesis"
+    with pytest.raises(SystemExit):
+        _parse_profile(["--profile", "prod"])

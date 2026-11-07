@@ -16,4 +16,9 @@ export interface ReorderRecommendation {
   annual_demand?: string | null;
   current_stock_used?: string | null;
   stock_source?: "snapshot" | "request" | null;
+  // Fase 11.9 — kebijakan pesan yang dipakai (null = rekomendasi sebelum v3.3)
+  rop_formula_used?: "standard" | "with_buffer" | null;
+  order_qty_policy_used?: "eoq" | "order_up_to" | null;
+  order_up_to_level?: string | null;
+  moq_used?: string | null;
 }

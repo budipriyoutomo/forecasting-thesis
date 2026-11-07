@@ -5,7 +5,14 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { methodLabel } from "@/lib/methods";
-import type { AlphaMetric, EoqMethod, ForecastSettingsInput, RankingMetric } from "@/types/forecastSettings";
+import type {
+  AlphaMetric,
+  EoqMethod,
+  ForecastSettingsInput,
+  OrderQtyPolicy,
+  RankingMetric,
+  RopFormula,
+} from "@/types/forecastSettings";
 
 export const RANKING_OPTIONS: { value: RankingMetric; label: string; description: string }[] = [
   {
@@ -22,6 +29,33 @@ export const RANKING_OPTIONS: { value: RankingMetric; label: string; description
     value: "mape",
     label: "MAPE",
     description: "Galat relatif (%) — mudah dibandingkan antar-SKU dengan volume berbeda.",
+  },
+];
+
+// Fase 11.9 — satu setting untuk tabel Reorder DAN Proyeksi Stok (sumber tunggal).
+export const ROP_FORMULA_OPTIONS: { value: RopFormula; label: string; description: string }[] = [
+  {
+    value: "with_buffer",
+    label: "Dengan buffer: μ·L + SS + B",
+    description: "Buffer stock (antisipasi waste) ikut menaikkan titik pesan.",
+  },
+  {
+    value: "standard",
+    label: "Standar: μ·L + SS",
+    description: "Rumus ROP buku teks; buffer tetap dihitung tapi tidak masuk titik pesan.",
+  },
+];
+
+export const ORDER_QTY_POLICY_OPTIONS: { value: OrderQtyPolicy; label: string; description: string }[] = [
+  {
+    value: "order_up_to",
+    label: "Order-up-to: max(MOQ, S − stok)",
+    description: "Isi stok sampai level S = ROP + μ·L.",
+  },
+  {
+    value: "eoq",
+    label: "Kelipatan EOQ: n × EOQ",
+    description: "Pesan EOQ (n terkecil sampai stok ≥ ROP). EOQ belum tersedia → order-up-to.",
   },
 ];
 
@@ -66,6 +100,8 @@ export function ForecastSettingsForm({
   const [winsorize, setWinsorize] = useState(Boolean(initial.ml_winsorize));
   const [serviceLevel, setServiceLevel] = useState(initial.service_level_pct ?? 95);
   const [eoqMethod, setEoqMethod] = useState<EoqMethod>(initial.eoq_method ?? "classic");
+  const [ropFormula, setRopFormula] = useState<RopFormula>(initial.rop_formula ?? "with_buffer");
+  const [qtyPolicy, setQtyPolicy] = useState<OrderQtyPolicy>(initial.order_qty_policy ?? "order_up_to");
 
   const toggle = (method: string) =>
     setEnabled((prev) => {
@@ -89,6 +125,8 @@ export function ForecastSettingsForm({
           ml_winsorize: winsorize,
           service_level_pct: serviceLevel,
           eoq_method: eoqMethod,
+          rop_formula: ropFormula,
+          order_qty_policy: qtyPolicy,
         });
       }}
     >
@@ -218,6 +256,34 @@ export function ForecastSettingsForm({
             <span>EOQ dinamis (simulasi jumlah pesanan pada horizon)</span>
           </label>
         </div>
+        {(
+          [
+            { title: "Rumus titik pesan (ROP)", name: "rop_formula", options: ROP_FORMULA_OPTIONS, value: ropFormula, set: setRopFormula },
+            { title: "Kebijakan qty pesan", name: "order_qty_policy", options: ORDER_QTY_POLICY_OPTIONS, value: qtyPolicy, set: setQtyPolicy },
+          ] as const
+        ).map((group) => (
+          <div key={group.name} className="flex flex-col gap-1">
+            <span>{group.title}</span>
+            {group.options.map((opt) => (
+              <label key={opt.value} className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  name={group.name}
+                  className="mt-1"
+                  checked={group.value === opt.value}
+                  onChange={() => (group.set as (v: string) => void)(opt.value)}
+                />
+                <span>
+                  {opt.label}
+                  <span className="block text-xs text-muted-foreground">{opt.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground">
+          Berlaku untuk tabel Reorder dan Proyeksi Stok. μ = kebutuhan harian, L = lead time (hari).
+        </p>
       </fieldset>
 
       {error && (

@@ -38,6 +38,9 @@ class ForecastSetting(Base):
     # Perencanaan persediaan (Fase 11.4) — bukan env (permintaan user 30 Okt 2026).
     service_level_pct: Mapped[float] = mapped_column(Float, nullable=False, default=95.0)
     eoq_method: Mapped[str] = mapped_column(String(10), nullable=False, default="classic")
+    # Fase 11.9 (v3.3) — sumber tunggal titik & qty pesan untuk Reorder + Proyeksi Stok.
+    rop_formula: Mapped[str] = mapped_column(String(20), nullable=False, default="with_buffer")
+    order_qty_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="order_up_to")
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

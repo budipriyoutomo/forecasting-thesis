@@ -55,9 +55,10 @@ export function InventoryMetricsTable({
           <TableRow>
             <TableHead>Target</TableHead>
             <TableHead>Scope</TableHead>
-            <TableHead>Service Level</TableHead>
-            <TableHead>Fill Rate</TableHead>
-            <TableHead>Stock Out</TableHead>
+            {/* Istilah docx thesis (Fase 11.10); field API tetap `service_level`/`fill_rate`. */}
+            <TableHead title="1 − stock out rate (berbasis periode)">Service Level (α)</TableHead>
+            <TableHead title="1 − Σ kekurangan ÷ Σ demand (berbasis qty)">Fulfilment Rate (β)</TableHead>
+            <TableHead title="Periode kekurangan ÷ jumlah periode">Stock Out Rate</TableHead>
             <TableHead>Turnover</TableHead>
             <TableHead>Inventory days</TableHead>
             <TableHead>Biaya kekurangan</TableHead>

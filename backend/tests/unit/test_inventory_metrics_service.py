@@ -318,3 +318,30 @@ async def test_baris_produk_punya_shortage_cost():
     )
     rows = await svc.compute_for_run(USER, "r1")
     assert float(rows[0].shortage_cost) == pytest.approx(10 * 7000)
+
+
+def test_definisi_metrik_dikunci_periode_vs_qty():
+    # Fase 11.10 — mengunci definisi (RECONCILIATION §Fase 7, docstring modul):
+    #   stock out rate = periode kekurangan ÷ jumlah periode (BUKAN berbasis qty)
+    #   fulfilment rate β = 1 − Σ kekurangan ÷ Σ demand (berbasis qty)
+    #   service level α = 1 − stock out rate
+    from app.services.inventory_metrics_service import compute_metrics
+
+    m = compute_metrics(demand=[100, 300], supply=[90, 300])  # kurang 10 unit di 1 dari 2 periode
+    assert float(m.stock_out_rate) == pytest.approx(0.5)
+    assert float(m.fill_rate) == pytest.approx(1 - 10 / 400)
+    assert float(m.service_level) == pytest.approx(0.5)
+
+
+def test_material_metrics_definisi_sama_dengan_produk():
+    from app.services.inventory_metrics_service import compute_metrics, material_metrics
+
+    rows = [
+        SimpleNamespace(usage_qty=100, shortage_qty=10, opening_qty=50, ending_qty=0),
+        SimpleNamespace(usage_qty=300, shortage_qty=0, opening_qty=400, ending_qty=100),
+    ]
+    mat = material_metrics(rows, days_per_period=30)
+    prod = compute_metrics(demand=[100, 300], supply=[90, 300])
+    assert (mat.service_level, mat.fill_rate, mat.stock_out_rate) == (
+        prod.service_level, prod.fill_rate, prod.stock_out_rate,
+    )

@@ -11,6 +11,8 @@ seluruh metode di registry. Nama di luar registry → UNSUPPORTED_FORECAST_METHO
 Fase 11.2: opsi engine — grid α ES (None = grid thesis), metrik pemilihan α, grid
 search ML, cap outlier IQR → `engine_options()` (EngineOptions untuk tiap run).
 Fase 11.4: perencanaan persediaan — target service level (%) & metode EOQ.
+Fase 11.9: rumus titik pesan (`rop_formula`) & kebijakan qty pesan (`order_qty_policy`) —
+satu setting untuk tabel Reorder dan Proyeksi Stok. Default = perilaku sebelum v3.3.
 Argumen `update` yang None = nilai lama dipertahankan.
 """
 from collections.abc import Callable
@@ -31,6 +33,8 @@ _DEFAULTS = {
     "ml_winsorize": False,
     "service_level_pct": 95.0,  # Fase 11.4 — target service level (%), menggantikan env SERVICE_LEVEL_PCT
     "eoq_method": "classic",  # classic √(2AS/iC) thesis | dynamic
+    "rop_formula": "with_buffer",  # standard (μ·L + SS) | with_buffer (μ·L + SS + B)
+    "order_qty_policy": "order_up_to",  # order_up_to (S − stok) | eoq (n × EOQ)
 }
 
 
@@ -57,6 +61,12 @@ class ForecastSettingsService:
     async def eoq_method(self) -> str:
         return (await self.get()).eoq_method or _DEFAULTS["eoq_method"]
 
+    async def rop_formula(self) -> str:
+        return (await self.get()).rop_formula or _DEFAULTS["rop_formula"]
+
+    async def order_qty_policy(self) -> str:
+        return (await self.get()).order_qty_policy or _DEFAULTS["order_qty_policy"]
+
     async def engine_options(self) -> EngineOptions:
         s = await self.get()
         return EngineOptions(
@@ -77,6 +87,8 @@ class ForecastSettingsService:
         ml_winsorize: bool | None = None,
         service_level_pct: float | None = None,
         eoq_method: str | None = None,
+        rop_formula: str | None = None,
+        order_qty_policy: str | None = None,
     ):
         methods = None
         if enabled_methods is not None:
@@ -97,6 +109,8 @@ class ForecastSettingsService:
             "ml_winsorize": ml_winsorize,
             "service_level_pct": service_level_pct,
             "eoq_method": eoq_method,
+            "rop_formula": rop_formula,
+            "order_qty_policy": order_qty_policy,
         }
         for field, value in changes.items():
             if value is not None:

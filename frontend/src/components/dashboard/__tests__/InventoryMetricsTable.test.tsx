@@ -59,3 +59,22 @@ describe("InventoryMetricsTable — level material (Fase 11.7)", () => {
     expect(screen.getByText(/700\.000/)).toBeDefined();
   });
 });
+
+describe("InventoryMetricsTable — istilah docx thesis (Fase 11.10)", () => {
+  it("header memakai Service Level (α), Fulfilment Rate (β), Stock Out Rate", () => {
+    render(<InventoryMetricsTable metrics={rows} />);
+    expect(screen.getByRole("columnheader", { name: "Service Level (α)" })).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: "Fulfilment Rate (β)" })).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: "Stock Out Rate" })).toBeDefined();
+    expect(screen.queryByRole("columnheader", { name: /fill rate/i })).toBeNull();
+  });
+
+  it("mapping kolom: fill_rate tampil di Fulfilment Rate (β)", () => {
+    render(<InventoryMetricsTable metrics={[rows[0]]} />);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    const cells = screen.getAllByRole("cell").map((c) => c.textContent);
+    expect(cells[headers.indexOf("Fulfilment Rate (β)")]).toBe("95.0%");
+    expect(cells[headers.indexOf("Service Level (α)")]).toBe("90.0%");
+    expect(cells[headers.indexOf("Stock Out Rate")]).toBe("10.0%");
+  });
+});

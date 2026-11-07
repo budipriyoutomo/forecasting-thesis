@@ -651,3 +651,81 @@ sampai admin menyimpan pengaturan. Runbook: `DEPLOYMENT.md` §9. Run lama (sebel
 
 **Batasan / asumsi untuk thesis:** demand harian independen (konversi σ), alokasi shortage material
 bersama proporsional, pesanan tiba dalam periode, baseline butuh planning horizon.
+
+---
+
+## Rekonsiliasi v3.3 — Sinkronisasi dengan Dokumen Thesis 7 Nov 2026
+
+Acuan: `docs/TODO-v3.md` (Fase 11.9–11.13), `Rumus thesis untuk program.docx` (7 Nov),
+`Simulasi Thesis.xlsx` versi 7 Nov. Branch `feat/v3.3-thesis-sync`.
+
+### Fase 11.9 — Kebijakan ROP & Qty Pesan Configurable (sumber tunggal)
+
+**Masalah.** Tabel Reorder dan Proyeksi Stok menghitung titik & qty pesan dengan rumus berbeda —
+Reorder: ROP = μ_d·L + SS + B, qty = max(MOQ, ceil(S − stok)); Proyeksi: level = SS + B,
+qty = n × EOQ, pembanding `<`. Satu material bisa "perlu pesan" di satu tabel dan "aman" di tabel
+lain. Tabel Reorder juga menampilkan dua angka qty (`recommended_order_qty` & `eoq_qty`) tanpa
+penjelasan. Rumus ROP di docx thesis masih kosong.
+
+**Keputusan (assistant, dicatat agar bisa dikoreksi):**
+1. Dua setting baru di master data Pengaturan Forecast (bukan env — pola `eoq_method`):
+   `rop_formula` = `standard` (μ·L + SS) | `with_buffer` (μ·L + SS + B, **default**) dan
+   `order_qty_policy` = `order_up_to` (max(MOQ, ceil(S − stok)), **default**) | `eoq`.
+   Default = perilaku tabel Reorder sebelum v3.3. Begitu docx terisi, cukup ganti default.
+2. **Sumber tunggal** di `reorder_service.py`: `compute_rop`, `compute_order_qty`, `OrderPolicy`.
+   Proyeksi Stok merekonstruksi kebijakan dari baris `reorder_recommendations` run itu
+   (`order_policy_from_rec`) — tidak menghitung ulang.
+3. Kebijakan `eoq` = **n × EOQ**, n ≥ 1 terkecil s.d. stok + n·EOQ ≥ ROP (bukan 1 × EOQ: bila
+   pemakaian sebulan > EOQ, proyeksi akan kekurangan stok terus). EOQ ≤ 0 → fallback
+   `order_up_to`. EOQ sudah dibulatkan ke MOQ, tidak dibulatkan ulang.
+4. Pembanding disatukan: **stok ≤ ROP** → pesan (proyeksi dulu `<`).
+5. Kolom audit + input proyeksi di `reorder_recommendations`: `rop_formula_used`,
+   `order_qty_policy_used`, `order_up_to_level`, `moq_used` (nullable). Baris sebelum v3.3 (NULL)
+   → proyeksi pakai `order_up_to`, S = 2·ROP − SS − B (rumus lama), MOQ 0.
+6. EOQ dihitung **sebelum** `compute_reorder` di `generate_for_run` (dulu sesudah).
+7. UI: satu kolom "Qty pesan" + label kebijakan; EOQ jadi kolom info; rumus ROP di bawah angka.
+   Export xlsx reorder: 2 kolom baru **di akhir** (kolom lama tidak bergeser).
+
+**Dampak (disadari):** angka **Proyeksi Stok berubah untuk semua setting** (level SS + B → ROP;
+n × EOQ → sesuai kebijakan) — memang tujuan penyatuan. Angka tabel Reorder tidak berubah dengan
+setting default. Migration `b5c6d7e8f9a0` (additive).
+
+**Masih terbuka (⛔ docx):** rumus ROP final; S = ROP + μ·L (= 2·μ·L + SS + B) tidak lazim — perlu
+konfirmasi; asumsi pesanan tiba dalam periode yang sama (lead time < 1 bulan) masuk batasan penelitian.
+
+### Fase 11.10 — Definisi metrik dikunci + istilah docx
+
+1. Definisi tidak berubah, dikunci dengan test & docstring (`inventory_metrics_service.py`):
+   fulfilment rate (β) = 1 − Σ kekurangan ÷ Σ demand (qty); stock out rate = periode kekurangan ÷
+   jumlah periode (periode, **bukan** qty); service level (α) = 1 − stock out rate. Scope produk &
+   material memakai definisi identik.
+2. MAPE memakai |A − F| (docx menulis tanpa absolut — dikoreksi di docx oleh penulis). Test baru:
+   A=[100,100], F=[90,110] → MAPE 10 %, bukan 0 %.
+3. Label UI "Fill Rate" → **"Fulfilment Rate (β)"**, "Service Level" → **"Service Level (α)"**,
+   "Stock Out" → "Stock Out Rate". Field API tetap `fill_rate` (tidak breaking). PDF export:
+   "Fulfilment" (ASCII — font core PDF tanpa β).
+4. White Box Excel 7 Nov menulis "Service level (%) / Fulfillment rate" sebagai satu metrik —
+   **keputusan user (7 Nov): tampilkan keduanya** (α & β terpisah); penulis memilih yang dikutip. Bila thesis ternyata memakai stock out rate berbasis qty → tambah opsi di Pengaturan Forecast,
+   **jangan** ganti definisi diam-diam.
+
+### Fase 11.11 — Seed & golden test data thesis
+
+1. Data riil dipindah ke **`app/scripts/thesis_data.py`** (konstanta murni, sumber tunggal untuk
+   seed & golden test). Data 2024 seed lama sudah identik dengan Excel 7 Nov; **2025 kini riil**
+   (dulu sintetis 2024 × 1,12) — juga di profil demo (2023 & H1 2026 tetap sintetis).
+2. `python -m app.scripts.seed_demo_data --profile thesis`: hanya 2024–2025 riil (24 periode),
+   material Cap ×6 / Bottle White / Preform White (lead time 7 hari), BOM level 1 (Cap warna +
+   Bottle) & level 2 (Bottle → Preform), kapasitas Preform 346 pallet × 1 CTN × 16.056 =
+   5.555.376 pcs, template biaya penyimpanan (6 elemen Excel, Rp 210.804.626/tahun) **tidak aktif**.
+3. **Keputusan user (7 Nov):** "Yoghurt SB" ambigu → **KBYST 200 & KBYSR 200 sama-sama Cap Red**
+   (+ Bottle White) — 7 SKU, 14 baris BOM, Cap Red material bersama. Lead time Bottle = 7 hari
+   (= Preform, asumsi assistant).
+4. **Keputusan user (7 Nov):** kapasitas Cap (Excel: satu angka group 12.825.000 pcs untuk 6 warna,
+   sistem per material) **tidak di-seed** sampai ada angka per warna — tidak ada angka karangan.
+   Belum ada di Excel (⛔): harga material/jual, MOQ, S, i (%), stok awal, kedatangan, pemakaian aktual.
+5. Golden test `tests/integration/test_thesis_golden.py`: 4 assertion berbasis sel Excel jalan,
+   7 di-skip (⛔) menunggu lembar hitung manual `docs/thesis_golden.xlsx`.
+
+**Temuan Excel 7 Nov:** Juni 2025 = 0 untuk 6 dari 7 SKU (keputusan user: dipakai apa adanya, dianggap tidak produksi); `#REF!` tabel gap
+2025 masih ada; Excel tidak memuat rak, fasilitas gudang, atau perawatan forklift (forklift masuk
+sebagai depresiasi 15 tahun).

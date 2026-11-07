@@ -42,6 +42,8 @@ def _factory(**kw):
             "ml_winsorize": False,
             "service_level_pct": 95.0,
             "eoq_method": "classic",
+            "rop_formula": "with_buffer",
+            "order_qty_policy": "order_up_to",
             "updated_at": None,
             "updated_by": None,
             **kw,
@@ -208,3 +210,25 @@ async def test_update_service_level_dan_eoq():
     await svc.update(ranking_metric="mad", user_id=ADMIN, service_level_pct=99, eoq_method="dynamic")
     assert await svc.service_level_pct() == 99
     assert await svc.eoq_method() == "dynamic"
+
+
+# ── Fase 11.9: rumus ROP & kebijakan qty pesan ──
+
+
+@pytest.mark.asyncio
+async def test_default_rop_formula_dan_policy_perilaku_lama():
+    svc = ForecastSettingsService(FakeSettingsRepo(), factory=_factory)
+    assert await svc.rop_formula() == "with_buffer"
+    assert await svc.order_qty_policy() == "order_up_to"
+
+
+@pytest.mark.asyncio
+async def test_update_rop_formula_dan_policy():
+    repo = FakeSettingsRepo(_factory(ranking_metric="mad"))
+    svc = ForecastSettingsService(repo, factory=_factory)
+    await svc.update(ranking_metric="mad", user_id=ADMIN, rop_formula="standard", order_qty_policy="eoq")
+    assert await svc.rop_formula() == "standard"
+    assert await svc.order_qty_policy() == "eoq"
+    # argumen None = tidak diubah
+    await svc.update(ranking_metric="mad", user_id=ADMIN)
+    assert repo.row.rop_formula == "standard" and repo.row.order_qty_policy == "eoq"

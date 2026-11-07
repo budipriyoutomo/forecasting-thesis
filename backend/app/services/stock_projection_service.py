@@ -4,9 +4,12 @@ material per periode horizon & utilisasi gudang (REVISI_V2 §3.2/§3.3, Keputusa
 
 Per periode t:
   pre      = opening + receipt − usage
-  order    = n × EOQ (n terkecil yang membuat pre + order ≥ reorder level) bila
-             pre < reorder level (= safety stock + buffer), else 0 — pesanan diasumsikan
-             tiba di periode yang sama (lead time < 1 periode bulanan; asumsi thesis)
+  order    = OrderPolicy.order_qty(pre) — bila pre ≤ ROP: qty sesuai `order_qty_policy`
+             (n × EOQ | order-up-to), else 0. ROP & qty pesan dari SUMBER TUNGGAL
+             `reorder_service` (baris `reorder_recommendations` run ini, Fase 11.9 v3.3),
+             jadi identik dengan tabel Reorder untuk stok yang sama.
+             ASUMSI: pesanan tiba di periode yang sama (lead time < 1 periode bulanan) —
+             batasan penelitian thesis.
   ending   = max(0, pre + order);  shortage = max(0, −(pre + order))
   opening[t+1] = ending[t]
   utilisasi = stok ÷ kapasitas material × 100% (stok awal & stok akhir)
@@ -15,7 +18,6 @@ Dua skenario (Keputusan #3): `proposed` — pemakaian = forecast ForecastIQ × B
 `baseline` — pemakaian = planning perusahaan × BOM pada periode yang sama (hanya bila
 planning untuk periode horizon tersedia). Kapasitas melebihi → flag, bukan error (#17).
 """
-import math
 from dataclasses import dataclass
 from datetime import date
 
@@ -23,6 +25,7 @@ import pandas as pd
 
 from app.models.stock_projection import StockProjection
 from app.services.bom_service import BomLine, breakdown_requirements_series
+from app.services.reorder_service import OrderPolicy, order_policy_from_rec
 from app.services.forecasting.preprocessing import future_timestamps, infer_period_delta
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
@@ -46,17 +49,15 @@ def _util(qty: float, capacity: float | None) -> float | None:
     return qty / capacity * 100 if capacity else None
 
 
-def project_stock(opening, receipts, usage, eoq_qty, reorder_level, capacity) -> list[ProjectionRow]:
+def project_stock(opening, receipts, usage, policy: OrderPolicy | None, capacity) -> list[ProjectionRow]:
+    """`policy` None (material tanpa rekomendasi reorder) → tidak pernah memesan."""
     rows: list[ProjectionRow] = []
     stock = float(opening)
-    eoq, level = float(eoq_qty or 0), float(reorder_level or 0)
     cap = float(capacity) if capacity else None
     for receipt, use in zip(receipts, usage):
         start = stock
         pre = start + float(receipt) - float(use)
-        order = 0.0
-        if eoq > 0 and pre < level:
-            order = math.ceil(round((level - pre) / eoq, 9)) * eoq
+        order = policy.order_qty(pre) if policy is not None else 0.0
         after = pre + order
         ending, shortage = max(0.0, after), max(0.0, -after)
         rows.append(
@@ -141,10 +142,9 @@ class StockProjectionService:
                     periods,
                     [(r.expected_date, r.qty) for r in receipt_rows if str(r.material_id) == material_id],
                 )
-                level = float(rec.safety_stock or 0) + float(getattr(rec, "buffer_stock", 0) or 0) if rec else 0.0
-                eoq = float(rec.eoq_qty or 0) if rec else 0.0
+                policy = order_policy_from_rec(rec) if rec else None
                 projected = project_stock(
-                    opening.get(material_id, (None, 0.0))[1], receipts, usage, eoq, level, capacity.get(material_id)
+                    opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, capacity.get(material_id)
                 )
                 for period, p in zip(periods, projected):
                     rows.append(

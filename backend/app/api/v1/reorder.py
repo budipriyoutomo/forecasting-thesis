@@ -44,6 +44,10 @@ def _out(rec) -> dict:
         ordering_cost=getattr(rec, "ordering_cost", None),
         holding_cost=getattr(rec, "holding_cost", None),
         total_inventory_cost=getattr(rec, "total_inventory_cost", None),
+        rop_formula_used=getattr(rec, "rop_formula_used", None),
+        order_qty_policy_used=getattr(rec, "order_qty_policy_used", None),
+        order_up_to_level=getattr(rec, "order_up_to_level", None),
+        moq_used=getattr(rec, "moq_used", None),
     ).model_dump(mode="json")
 
 

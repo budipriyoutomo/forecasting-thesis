@@ -205,6 +205,18 @@ Karena kode v2.0 sudah production-grade (bukan prototype), migrasi **tidak boleh
 
 ---
 
+## 13. Fase 11.9–11.13 — Sinkronisasi Dokumen Thesis 7 Nov 2026 (v3.3) — 🟡 sebagian, belum di-commit
+
+Checklist rinci: `docs/TODO-v3.md`. Keputusan: `RECONCILIATION.md` §"Rekonsiliasi v3.3".
+
+- [x] 11.9 Satukan ROP & qty pesan — ✅ `rop_formula`/`order_qty_policy` di Pengaturan Forecast, sumber tunggal `reorder_service`, migration `b5c6d7e8f9a0`, test konsistensi Reorder ↔ Proyeksi
+- [x] 11.10 Definisi metrik — ✅ test MAPE ±, definisi α/β/stock out dikunci, label UI istilah docx
+- [ ] 11.11 Seed & golden test — 🟡 `thesis_data.py`, `--profile thesis`, golden test kerangka; ⛔ data Excel yang belum ada
+- [ ] 11.12 Cek Excel 7 Nov — 🟡 sebagian; ⛔ `#REF!`, Juni 2025 = 0, mapping SB
+- [x] 11.13 Dokumen — ✅ RECONCILIATION, REVISI_V2 §9, PRD FR-4/11/12, ARCHITECTURE §4/§6.8/§6.10, AGENTS checklist; ⛔ docx thesis (penulis)
+
+---
+
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)
 
 1. Fase Migrasi 0 (setup & audit — wajib, jangan dilewati meski buru-buru, ini yang mencegah migrasi jadi rewrite liar)

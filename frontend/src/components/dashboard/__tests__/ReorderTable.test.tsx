@@ -66,3 +66,37 @@ describe("ReorderTable — Fase 11 (buffer, EOQ, status data)", () => {
     expect(screen.getByText(/stok erp/i)).toBeDefined();
   });
 });
+
+describe("ReorderTable — Fase 11.9 (sumber tunggal titik & qty pesan)", () => {
+  it("satu kolom Qty pesan + label kebijakan; EOQ sebagai info; rumus ROP ditampilkan", () => {
+    render(
+      <ReorderTable
+        recommendations={[
+          {
+            material_id: "m1", safety_stock: "20", reorder_point: "90", recommended_order_qty: "300",
+            status: "urgent", eoq_qty: "300", eoq_method: "dynamic",
+            rop_formula_used: "standard", order_qty_policy_used: "eoq", order_up_to_level: "160",
+          },
+          {
+            material_id: "m2", safety_stock: "20", reorder_point: "95", recommended_order_qty: "165",
+            status: "urgent", eoq_qty: "300", rop_formula_used: "with_buffer",
+            order_qty_policy_used: "order_up_to", order_up_to_level: "165",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /^qty pesan$/i })).toBeDefined();
+    expect(screen.queryByRole("columnheader", { name: /^order qty$/i })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: /eoq \(info\)/i })).toBeDefined();
+    expect(screen.getByText(/^kelipatan eoq$/i)).toBeDefined();
+    expect(screen.getByText(/order-up-to S = 165/i)).toBeDefined();
+    expect(screen.getByText("μ·L + SS")).toBeDefined();
+    expect(screen.getByText("μ·L + SS + B")).toBeDefined();
+  });
+
+  it("rekomendasi lama tanpa kolom kebijakan tetap tampil tanpa label", () => {
+    render(<ReorderTable recommendations={[RECS[0]]} />);
+    expect(screen.getByText("87")).toBeDefined();
+    expect(screen.queryByText(/kelipatan eoq/i)).toBeNull();
+  });
+});

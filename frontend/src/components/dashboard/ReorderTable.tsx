@@ -29,6 +29,11 @@ const ITEM_STATUS_NOTE: Record<string, string> = {
   MISSING_HOLDING_RATE: "i (%) template biaya belum diisi — EOQ dinamis",
 };
 
+const ROP_FORMULA_LABEL: Record<string, string> = {
+  standard: "μ·L + SS",
+  with_buffer: "μ·L + SS + B",
+};
+
 interface ReorderRow extends ReorderRecommendation {
   materialLabel: string;
 }
@@ -90,20 +95,36 @@ export function ReorderTable({
       {
         accessorKey: "reorder_point",
         header: "Reorder point",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.reorder_point)}</span>
-        ),
+        cell: ({ row }) => {
+          const formula = ROP_FORMULA_LABEL[row.original.rop_formula_used ?? ""];
+          return (
+            <span className="flex flex-col tabular-nums">
+              {formatNumber(row.original.reorder_point)}
+              {formula && <span className="text-xs text-muted-foreground">{formula}</span>}
+            </span>
+          );
+        },
       },
       {
+        // Fase 11.9 — SATU qty pesan sesuai kebijakan (sama dengan Proyeksi Stok).
         accessorKey: "recommended_order_qty",
-        header: "Order qty",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.recommended_order_qty)}</span>
-        ),
+        header: "Qty pesan",
+        cell: ({ row }) => {
+          const { order_qty_policy_used: policy, order_up_to_level: s } = row.original;
+          return (
+            <span className="flex flex-col tabular-nums">
+              {formatNumber(row.original.recommended_order_qty)}
+              {policy === "eoq" && <span className="text-xs text-muted-foreground">Kelipatan EOQ</span>}
+              {policy === "order_up_to" && (
+                <span className="text-xs text-muted-foreground">Order-up-to S = {formatNumber(s ?? null)}</span>
+              )}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "eoq_qty",
-        header: "EOQ",
+        header: "EOQ (info)",
         cell: ({ row }) => {
           const note = ITEM_STATUS_NOTE[row.original.item_status ?? ""];
           return (

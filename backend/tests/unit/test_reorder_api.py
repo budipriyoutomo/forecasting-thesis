@@ -95,3 +95,21 @@ async def test_list_recommendations_filter_status(client, auth_headers):
     data = res.json()["data"]
     assert all(r["status"] == "overstock" for r in data)
     assert len(data) >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_menyertakan_kebijakan_pesan(client, auth_headers):
+    # Fase 11.9: rumus ROP & kebijakan qty pesan yang dipakai ikut di response (audit).
+    _override(
+        _run(rid="r1", user=USER_SUB),
+        [_result("p1", [10, 12, 11, 9, 10, 11])],
+        {"p1": [_bom("p1", "m1", 1)]},
+        [_material("m1", "RM-001", lead=4)],
+    )
+    res = await client.post(
+        "/api/v1/reorder/recommendations", headers=auth_headers, json={"run_id": "r1", "current_stock": {"m1": 0}}
+    )
+    row = res.json()["data"][0]
+    assert row["rop_formula_used"] == "with_buffer"
+    assert row["order_qty_policy_used"] == "order_up_to"
+    assert float(row["order_up_to_level"]) > float(row["reorder_point"])

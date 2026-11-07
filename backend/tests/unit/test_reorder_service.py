@@ -2,6 +2,7 @@
 Swap v3.0 — ReorderService per MATERIAL dari breakdown BOM atas forecast produk.
 Repo/forecast/BOM/material di-mock.
 """
+import math
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -285,8 +286,15 @@ async def test_generate_tanpa_usage_buffer_nol():
 
 
 class FakePlanningSettings:
-    def __init__(self, eoq_method="classic", service_level_pct=95.0):
+    def __init__(self, eoq_method="classic", service_level_pct=95.0, rop_formula="with_buffer", policy="order_up_to"):
         self._m, self._sl = eoq_method, service_level_pct
+        self._rop, self._policy = rop_formula, policy
+
+    async def rop_formula(self):
+        return self._rop
+
+    async def order_qty_policy(self):
+        return self._policy
 
     async def eoq_method(self):
         return self._m
@@ -406,3 +414,59 @@ async def test_stok_snapshot_menang_atas_request():
     assert float(recs["M1"].current_stock_used) == 100000
     assert recs["M1"].stock_source == "snapshot"
     assert recs["M2"].stock_source == "request"  # belum ada snapshot → fallback request
+
+
+# ── Fase 11.9: rumus ROP & kebijakan qty pesan dari master data + kolom audit ──
+
+
+def _planning_svc(settings, moq=0, usage=None):
+    return ReorderService(
+        reorder_repo=FakeReorderRepo(),
+        forecast_repo=FakeForecastRepo(_run(), [_dated_result("p1", [900, 1000, 1100])]),
+        boms=FakeBomRepo({"p1": [_bom("p1", "M1", 1)]}),
+        materials=FakeMaterialRepo([_material("M1", "CAP", lead=7, moq=moq)]),
+        cost_templates=FakeCostTemplateRepo(_template(Decimal("250000"), Decimal("10"))),
+        usage=usage,
+        settings=settings,
+    )
+
+
+async def _one(settings, moq=0, usage=None, stock=0):
+    return (await _planning_svc(settings, moq, usage).generate_for_run(USER, "r1", current_stock={"M1": stock}))[0]
+
+
+@pytest.mark.asyncio
+async def test_default_tanpa_settings_audit_with_buffer_order_up_to():
+    r = await _one(None)
+    assert r.rop_formula_used == "with_buffer" and r.order_qty_policy_used == "order_up_to"
+    # S = ROP + μ·L = 2·ROP − SS − B
+    s_level = 2 * float(r.reorder_point) - float(r.safety_stock) - float(r.buffer_stock)
+    assert float(r.order_up_to_level) == pytest.approx(s_level, abs=1e-3)
+    assert float(r.recommended_order_qty) == math.ceil(round(float(r.order_up_to_level), 6))
+    assert float(r.moq_used) == 0
+
+
+@pytest.mark.asyncio
+async def test_policy_eoq_qty_pesan_kelipatan_eoq():
+    r = await _one(FakePlanningSettings("dynamic", policy="eoq"))
+    assert r.order_qty_policy_used == "eoq" and r.status == "urgent"
+    eoq = float(r.eoq_qty)
+    assert eoq > 0
+    n = max(1, math.ceil(float(r.reorder_point) / eoq))
+    assert float(r.recommended_order_qty) == pytest.approx(n * eoq)
+
+
+@pytest.mark.asyncio
+async def test_rop_standard_tanpa_buffer_dari_master_data():
+    usage = FakeUsage({"M1": 1.05})  # buffer = 0.05 × 1000 = 50
+    std = await _one(FakePlanningSettings(rop_formula="standard"), usage=usage)
+    buf = await _one(FakePlanningSettings(rop_formula="with_buffer"), usage=usage)
+    assert float(std.buffer_stock) == pytest.approx(50) == pytest.approx(float(buf.buffer_stock))
+    assert std.rop_formula_used == "standard" and buf.rop_formula_used == "with_buffer"
+    assert float(buf.reorder_point) == pytest.approx(float(std.reorder_point) + 50, abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_moq_dicatat_untuk_proyeksi():
+    r = await _one(None, moq=500)
+    assert float(r.moq_used) == 500

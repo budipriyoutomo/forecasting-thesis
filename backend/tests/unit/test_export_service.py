@@ -173,3 +173,17 @@ def _async(value):
         return value
 
     return _fn
+
+
+def test_build_reorder_xlsx_kolom_kebijakan_pesan_di_akhir():
+    # Fase 11.9: kolom kebijakan ditambah SETELAH total_inventory_cost (kolom lama tidak bergeser).
+    rec = SimpleNamespace(
+        material_id="m1", safety_stock=Decimal("6.6"), reorder_point=Decimal("46.6"),
+        recommended_order_qty=Decimal("300"), status="urgent", eoq_qty=Decimal("300"),
+        rop_formula_used="standard", order_qty_policy_used="eoq",
+    )
+    ws = load_workbook(io.BytesIO(build_reorder_xlsx([rec]))).active
+    headers = [ws.cell(row=1, column=c).value for c in range(1, ws.max_column + 1)]
+    assert headers[:10][-1] == "total_inventory_cost"
+    assert headers[10:] == ["rop_formula_used", "order_qty_policy_used"]
+    assert [ws.cell(row=2, column=c).value for c in (11, 12)] == ["standard", "eoq"]

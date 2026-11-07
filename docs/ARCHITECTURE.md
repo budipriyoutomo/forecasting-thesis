@@ -294,14 +294,20 @@ forecastiq/
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
 | material_id | UUID FK → materials | |
-| safety_stock | NUMERIC | SS = Z × σ_harian × √L (L hari). μ/σ deret forecast per periode dikonversi: μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast (Fase 11.0). Z = Φ⁻¹(`SERVICE_LEVEL_PCT`/100) |
-| buffer_stock | NUMERIC, nullable | Standar Pemakaian − Aktual Pemakaian (`bom_service.compute_buffer_stock`), dihitung di memori — tabel `material_requirements` sudah dihapus |
-| reorder_point | NUMERIC | |
-| eoq_qty | NUMERIC | hasil EOQ dinamis, dibulatkan ke kelipatan MOQ |
+| safety_stock | NUMERIC | SS = Z × σ_harian × √L (L hari). μ/σ deret forecast per periode dikonversi: μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast (Fase 11.0). Z = Φ⁻¹(`forecast_settings.service_level_pct`/100) — master data sejak Fase 11.4 |
+| buffer_stock | NUMERIC, nullable | max(0, faktor waste − 1) × μ_p (`bom_service.compute_buffer_qty`, Fase 11.1; `compute_buffer_stock` lama dihapus) |
+| waste_factor | NUMERIC, nullable | Σ aktual ÷ Σ standar pemakaian; NULL = belum ada data pemakaian aktual |
+| reorder_point | NUMERIC | `compute_rop`: μ_d·L + SS (`standard`) atau + B (`with_buffer`, default) — `forecast_settings.rop_formula` |
+| recommended_order_qty | NUMERIC | `compute_order_qty` sesuai `forecast_settings.order_qty_policy` (0 bila stok > ROP) — **satu** qty pesan, dipakai juga Proyeksi Stok |
+| eoq_qty | NUMERIC | hasil EOQ (klasik/dinamis), dibulatkan ke kelipatan MOQ — info, dan qty dasar kebijakan `eoq` |
 | ordering_cost | NUMERIC | biaya pesan yang dipakai di perhitungan EOQ |
 | holding_cost | NUMERIC | biaya simpan per unit per periode |
 | total_inventory_cost | NUMERIC | TIC = Ordering Cost + Holding Cost |
 | status | VARCHAR(20) | urgent / safe / overstock |
+| rop_formula_used | VARCHAR(20), nullable | v3.3 (Fase 11.9) — `standard` \| `with_buffer` yang dipakai (audit); NULL = baris sebelum v3.3 |
+| order_qty_policy_used | VARCHAR(20), nullable | `order_up_to` \| `eoq` yang dipakai |
+| order_up_to_level | NUMERIC, nullable | S = ROP + μ_d·L — input kebijakan `order_up_to` di Proyeksi Stok |
+| moq_used | NUMERIC, nullable | MOQ material saat generate — input Proyeksi Stok |
 
 > `current_stock` **bukan** kolom persisten di tabel ini — dikirim sebagai parameter request saat `POST /api/v1/reorder/recommendations` (lihat §5), karena stok aktual berubah-ubah dan sumber kebenarannya ada di luar ForecastIQ (belum ada integrasi ERP/WMS di MVP, lihat `PRD.md` §Out-of-scope).
 
@@ -358,6 +364,9 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | id | SMALLINT | PK, selalu 1 |
 | ranking_metric | VARCHAR(10) | `mad` \| `mfe_abs` \| `mape` (CHECK), default `mad` — metrik penentu pemenang Comparative Selection |
 | enabled_methods | VARCHAR(50)[], nullable | metode aktif (kunci `MODEL_REGISTRY`, terurut). NULL = seluruh metode terdaftar; array kosong ditolak CHECK. Pengganti env `FORECAST_ENGINES_ENABLED` |
+| es_alpha_grid, es_alpha_metric, ml_grid_search, ml_winsorize, service_level_pct, eoq_method | — | Fase 11.2/11.4, lihat §6.10 |
+| rop_formula | VARCHAR(20) | v3.3 — `standard` \| `with_buffer` (CHECK), default `with_buffer` |
+| order_qty_policy | VARCHAR(20) | v3.3 — `eoq` \| `order_up_to` (CHECK), default `order_up_to` |
 | updated_by | UUID, nullable | admin terakhir yang mengubah |
 | updated_at | TIMESTAMPTZ | |
 
@@ -821,6 +830,25 @@ def suggested_holding_cost(items, total_capacity_dus: float) -> float | None:
 `total_capacity_dus` = Σ `capacity_dus` seluruh baris `warehouse_config`. Saran H hanya
 ditampilkan di halaman template; planner yang memutuskan nilai `holding_cost`.
 
+**Titik pesan & qty pesan — sumber tunggal (v3.3, Fase 11.9).** Hanya `reorder_service`
+yang boleh merumuskan ROP & qty pesan; `stock_projection_service` memakainya lewat
+`order_policy_from_rec(rec)`.
+
+```python
+def compute_rop(mu_daily, lead_time_days, ss, buffer, formula) -> float:
+    rop = mu_daily * lead_time_days + ss          # standard
+    return rop + buffer if formula == "with_buffer" else rop
+
+def compute_order_qty(policy, current, rop, order_up_to, eoq_qty, moq) -> float:
+    if current > rop:
+        return 0
+    if policy == "eoq" and eoq_qty > 0:
+        return max(1, ceil((rop - current) / eoq_qty)) * eoq_qty   # n × EOQ
+    return max(moq, ceil(order_up_to - current))                    # order_up_to (fallback)
+
+# S = order_up_to = ROP + μ_d·L.  EOQ dihitung SEBELUM compute_reorder.
+```
+
 `cost-summary` mengembalikan `cost_source` (`template`/`env`) & `cost_template_name`.
 Catatan: TIC usulan memakai S & H saat reorder di-generate, baseline memakai template
 aktif saat ringkasan diminta — generate ulang reorder setelah mengganti template aktif.
@@ -849,6 +877,7 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 | `stock_snapshots`, `material_receipts` + `reorder_recommendations.current_stock_used/stock_source` | stok ERP & kedatangan | `d1e2f3a4b5c6` |
 | `warehouse_config.item_type/material_id` (product_id nullable, partial unique per target, CHECK tepat satu) + `stock_projections` | kapasitas material & proyeksi | `e2f3a4b5c6d7` |
 | `inventory_metrics.inventory_days/shortage_cost` | evaluasi material | `f3a4b5c6d7e8` |
+| `forecast_settings.rop_formula/order_qty_policy` + `reorder_recommendations.rop_formula_used/order_qty_policy_used/order_up_to_level/moq_used` | v3.3 kebijakan pesan satu sumber (§6.8) | `b5c6d7e8f9a0` |
 
 ### Endpoint baru
 ```
@@ -868,10 +897,10 @@ POST/PUT /warehouse/config                         # + item_type, material_id
 ```
 
 ### Rumus inti
-- SS = Z·σ_d·√L, ROP = μ_d·L + SS + buffer; μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast; Z = Φ⁻¹(service level).
+- SS = Z·σ_d·√L, ROP = μ_d·L + SS (+ buffer bila `rop_formula = with_buffer`, default); μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast; Z = Φ⁻¹(service level).
 - Buffer = max(0, Σaktual/Σstandar − 1) × μ_p.
 - EOQ klasik = √(2AS/iC), TC = (A/Q)S + (Q/2)iC, A = rata-rata kebutuhan periode × periode/tahun (bulanan 12). Baseline TIC memakai aturan `choose_eoq` yang sama per material.
-- Proyeksi: pre = opening + receipt − usage; order = n·EOQ bila pre < SS + buffer; ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
+- Proyeksi: pre = opening + receipt − usage; order = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
 - Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga jual (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
 - Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
 

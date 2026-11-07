@@ -151,4 +151,19 @@ describe("ForecastSettingsForm", () => {
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ service_level_pct: 99, eoq_method: "dynamic" }));
   });
+
+  it("kebijakan reorder: rumus titik pesan & qty pesan (default perilaku lama)", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <ForecastSettingsForm initial={{ ranking_metric: "mad", enabled_methods: null }} available={AVAILABLE} onSubmit={onSubmit} />,
+    );
+    expect((screen.getByRole("radio", { name: /μ·L \+ SS \+ B/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /^order-up-to/i }) as HTMLInputElement).checked).toBe(true);
+
+    await userEvent.click(screen.getByRole("radio", { name: /^standar/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /^kelipatan eoq/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ rop_formula: "standard", order_qty_policy: "eoq" }));
+  });
 });

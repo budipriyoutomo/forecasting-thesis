@@ -5,11 +5,20 @@ ReorderService — safety stock & reorder point (Fase 5), docs/ARCHITECTURE.md �
 
   SS  = manual_safety_stock jika diisi, else Z · σ_harian · sqrt(lead_time)
   B   = buffer stock = max(0, faktor waste − 1) × kebutuhan periode (Fase 11.1)
-  ROP = μ_harian · lead_time + SS + B
+  ROP = μ_harian · lead_time + SS (+ B)      ← `compute_rop`, rumus dari master data
   S   = order-up-to = ROP + μ_harian · lead_time
-  current ≤ ROP      → urgent   (qty = max(MOQ, ceil(S − current)))
+  current ≤ ROP      → urgent   (qty = `compute_order_qty`, kebijakan dari master data)
   ROP < current ≤ S  → safe     (qty = 0)
   current > S        → overstock (qty = 0)
+
+Fase 11.9 (v3.3) — SUMBER TUNGGAL titik pesan & qty pesan. Tabel Reorder dan Proyeksi
+Stok (`stock_projection_service`) sama-sama memakai `compute_rop` / `compute_order_qty`
+(via `OrderPolicy`), dikonfigurasi lewat Pengaturan Forecast:
+  rop_formula       standard (μ·L + SS) | with_buffer (μ·L + SS + B, default)
+  order_qty_policy  order_up_to (max(MOQ, ceil(S − current)), default)
+                    | eoq (n × EOQ, n ≥ 1 terkecil s.d. current + n·EOQ ≥ ROP;
+                           EOQ ≤ 0 → fallback order_up_to)
+Default = perilaku Reorder sebelum v3.3. Rumus final thesis menunggu docx (TODO-v3 ⛔).
 
 Orkestrasi (`ReorderService`) menghitung μ/σ dari deret kebutuhan material
 hasil breakdown BOM atas forecast produk, dan mengambil lead_time/MOQ/manual SS
@@ -70,6 +79,7 @@ class ReorderComputation:
     reorder_point: Decimal
     recommended_order_qty: Decimal
     status: str
+    order_up_to_level: Decimal | None = None
 
 
 @dataclass
@@ -225,6 +235,68 @@ def compute_savings_pct(tic_actual: float, tic_proposed: float) -> Decimal:
     return _dec((tic_actual - float(tic_proposed)) / tic_actual * 100)
 
 
+ROP_FORMULAS = ("standard", "with_buffer")
+ORDER_QTY_POLICIES = ("eoq", "order_up_to")
+DEFAULT_ROP_FORMULA = "with_buffer"
+DEFAULT_ORDER_QTY_POLICY = "order_up_to"
+
+
+def compute_rop(mu_daily: float, lead_time_days: float, ss: float, buffer: float, formula: str) -> float:
+    """Titik pesan. standard = μ·L + SS; with_buffer = μ·L + SS + B."""
+    if formula not in ROP_FORMULAS:
+        raise ValueError(f"rop_formula tidak dikenal: {formula}")
+    rop = float(mu_daily) * float(lead_time_days) + float(ss)
+    return rop + float(buffer) if formula == "with_buffer" else rop
+
+
+def compute_order_qty(
+    policy: str, current: float, rop: float, order_up_to: float, eoq_qty: float, moq: float
+) -> float:
+    """Qty pesan saat stok `current` (0 bila current > ROP). Dipakai Reorder & Proyeksi Stok."""
+    if policy not in ORDER_QTY_POLICIES:
+        raise ValueError(f"order_qty_policy tidak dikenal: {policy}")
+    current, rop, eoq = float(current), float(rop), float(eoq_qty or 0)
+    if current > rop:
+        return 0.0
+    if policy == "eoq" and eoq > 0:
+        # round sebelum ceil supaya galat float tidak menambah satu kelipatan
+        n = max(1, math.ceil(round((rop - current) / eoq, 9)))
+        return float(n * eoq)
+    need = round(float(order_up_to) - current, 6)
+    return max(float(moq or 0), float(math.ceil(need)))
+
+
+@dataclass(frozen=True)
+class OrderPolicy:
+    """Kebijakan pesan satu material — dibangun sekali, dipakai Reorder & Proyeksi Stok."""
+
+    policy: str
+    reorder_point: float
+    order_up_to: float
+    eoq_qty: float
+    moq: float
+
+    def order_qty(self, current: float) -> float:
+        return compute_order_qty(self.policy, current, self.reorder_point, self.order_up_to, self.eoq_qty, self.moq)
+
+
+def order_policy_from_rec(rec) -> OrderPolicy:
+    """OrderPolicy dari baris `reorder_recommendations`. Baris sebelum v3.3 (kolom NULL) →
+    order_up_to, S = 2·ROP − SS − B (rumus lama with_buffer), MOQ 0."""
+    rop = float(rec.reorder_point or 0)
+    s_level = getattr(rec, "order_up_to_level", None)
+    if s_level is None:
+        ss, buffer = float(rec.safety_stock or 0), float(getattr(rec, "buffer_stock", 0) or 0)
+        s_level = 2 * rop - ss - buffer
+    return OrderPolicy(
+        policy=getattr(rec, "order_qty_policy_used", None) or DEFAULT_ORDER_QTY_POLICY,
+        reorder_point=rop,
+        order_up_to=float(s_level),
+        eoq_qty=float(rec.eoq_qty or 0),
+        moq=float(getattr(rec, "moq_used", None) or 0),
+    )
+
+
 def compute_reorder(
     mu: float,
     sigma: float,
@@ -234,27 +306,28 @@ def compute_reorder(
     manual_ss: float | None,
     current_stock: float,
     buffer: float = 0.0,
+    formula: str = DEFAULT_ROP_FORMULA,
+    policy: str = DEFAULT_ORDER_QTY_POLICY,
+    eoq_qty: float = 0.0,
 ) -> ReorderComputation:
     mu, sigma = float(mu), float(sigma)
     lt, moq, current = float(lead_time_days), float(moq), float(current_stock)
 
     ss = float(manual_ss) if manual_ss is not None else z * sigma * math.sqrt(lt)
     demand_over_lt = mu * lt
-    # Buffer stock (antisipasi waste, Fase 11.1) disimpan di atas safety stock.
-    rop = demand_over_lt + ss + float(buffer)
+    # Buffer stock (antisipasi waste, Fase 11.1) disimpan di atas safety stock (with_buffer).
+    rop = compute_rop(mu, lt, ss, buffer, formula)
     order_up_to = rop + demand_over_lt
 
     if current <= rop:
         status = "urgent"
-        # round sebelum ceil supaya galat float (mis. 40.0000000001) tidak jadi 41
-        need = round(order_up_to - current, 6)
-        qty = max(moq, float(math.ceil(need)))
     elif current <= order_up_to:
-        status, qty = "safe", 0.0
+        status = "safe"
     else:
-        status, qty = "overstock", 0.0
+        status = "overstock"
+    qty = compute_order_qty(policy, current, rop, order_up_to, eoq_qty, moq)
 
-    return ReorderComputation(_dec(ss), _dec(rop), _dec(qty), status)
+    return ReorderComputation(_dec(ss), _dec(rop), _dec(qty), status, _dec(order_up_to))
 
 
 
@@ -296,6 +369,8 @@ class ReorderService:
         settings = get_settings()
         service_level = await self._settings.service_level_pct() if self._settings else DEFAULT_SERVICE_LEVEL_PCT
         eoq_method = await self._settings.eoq_method() if self._settings else DEFAULT_EOQ_METHOD
+        rop_formula = await self._settings.rop_formula() if self._settings else DEFAULT_ROP_FORMULA
+        qty_policy = await self._settings.order_qty_policy() if self._settings else DEFAULT_ORDER_QTY_POLICY
         z = z_from_service_level(service_level)
         cost = await load_cost_params(self._cost_templates, settings)
 
@@ -338,6 +413,13 @@ class ReorderService:
                 stock_qty, stock_source = float(current_stock.get(material_id, 0)), "request"
             waste_factor = waste.get(str(material_id))
             buffer = compute_buffer_qty(waste_factor, mu_p)
+            # EOQ dihitung DULU — kebijakan `eoq` memakainya sebagai qty pesan (Fase 11.9).
+            price = getattr(material, "unit_price", None)
+            eoq = choose_eoq(series, period_days, eoq_method, price, cost.holding_rate_pct, cost)
+            raw_qty = math.ceil(round(eoq.eoq_qty, 6)) if eoq.method == "classic" else eoq.eoq_qty
+            eoq_qty = round_to_moq(raw_qty, float(material.moq))
+            ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
+
             comp = compute_reorder(
                 mu=mu,
                 sigma=sigma,
@@ -349,13 +431,10 @@ class ReorderService:
                 else None,
                 current_stock=stock_qty,
                 buffer=buffer,
+                formula=rop_formula,
+                policy=qty_policy,
+                eoq_qty=float(eoq_qty),
             )
-
-            price = getattr(material, "unit_price", None)
-            eoq = choose_eoq(series, period_days, eoq_method, price, cost.holding_rate_pct, cost)
-            raw_qty = math.ceil(round(eoq.eoq_qty, 6)) if eoq.method == "classic" else eoq.eoq_qty
-            eoq_qty = round_to_moq(raw_qty, float(material.moq))
-            ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
 
             recommendations.append(
                 ReorderRecommendation(
@@ -378,6 +457,10 @@ class ReorderService:
                     holding_rate_used=cost.holding_rate_pct if eoq.method == "classic" else None,
                     current_stock_used=_dec(stock_qty),
                     stock_source=stock_source,
+                    rop_formula_used=rop_formula,
+                    order_qty_policy_used=qty_policy,
+                    order_up_to_level=comp.order_up_to_level,
+                    moq_used=_dec(material.moq),
                 )
             )
 

@@ -19,7 +19,7 @@ def _clear():
 @pytest.mark.asyncio
 async def test_generate_dan_get(client, auth_headers):
     svc, _ = _svc(run=SimpleNamespace(id="r1", user_id="00000000-0000-0000-0000-000000000001"),
-                  recs=[SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, eoq_qty=0)])
+                  recs=[SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)])
     app.dependency_overrides[get_stock_projection_service] = lambda: svc
 
     res = await client.post("/api/v1/forecast/runs/r1/stock-projection", headers=auth_headers)
