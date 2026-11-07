@@ -32,7 +32,7 @@ class ForecastResult(Base):
     # Kolom legacy v2.0 `material_id` & `data_profile` (kuadran ADI/CV²) sudah di-drop
     # di migration b8c9d0e1f2a3 (tidak lagi ditulis/dibaca jalur aktif v3.0).
     product_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="COMPLETED")
     method_used: Mapped[str | None] = mapped_column(String(30), nullable=True)  # v3.0: moving_average/.../lstm

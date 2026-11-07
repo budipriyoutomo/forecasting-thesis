@@ -29,7 +29,7 @@ class DemandHistory(Base):
     )
     product_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     product_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True
     )
     period: Mapped[date_type] = mapped_column(Date, nullable=False)  # biasanya awal bulan
     forecast_existing: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)

@@ -71,6 +71,11 @@ export default function ProductsPage() {
           <AlertDescription>Gagal memuat data produk.</AlertDescription>
         </Alert>
       )}
+      {remove.isError && (
+        <Alert variant="destructive">
+          <AlertDescription>Gagal menghapus produk: {remove.error.message}</AlertDescription>
+        </Alert>
+      )}
       {products && <ProductsTable products={products} onEdit={openEdit} onDelete={(p) => remove.mutate(p.id)} />}
 
       <Dialog open={open} onOpenChange={setOpen}>

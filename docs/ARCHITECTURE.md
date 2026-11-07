@@ -216,7 +216,7 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| product_id | UUID FK → products | |
+| product_id | UUID FK → products, ON DELETE CASCADE | |
 | material_id | UUID FK → materials | |
 | qty_per_unit | NUMERIC | jumlah material dibutuhkan per 1 unit produk jadi |
 | created_at / updated_at | TIMESTAMPTZ | |
@@ -245,7 +245,7 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| product_id | UUID FK → products, **nullable** | null bila produk sumber sudah dihapus/di-rename setelah histori diupload — pola sama seperti `consumption_history.material_id` di v2.0 |
+| product_id | UUID FK → products ON DELETE SET NULL, **nullable** | null bila produk sumber sudah dihapus/di-rename setelah histori diupload — pola sama seperti `consumption_history.material_id` di v2.0 |
 | product_code | VARCHAR | snapshot kode produk saat upload — fallback tampilan/laporan bila `product_id` null |
 | period | DATE | biasanya awal bulan |
 | forecast_existing | NUMERIC, nullable | angka forecast metode existing perusahaan (moving average manual) — dipakai sebagai baseline pembanding akurasi |
@@ -274,7 +274,7 @@ forecastiq/
 |---|---|---|
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
-| product_id | UUID FK → products | |
+| product_id | UUID FK → products ON DELETE SET NULL | |
 | method_used | VARCHAR(30) | moving_average / exponential_smoothing / random_forest / xgboost / lstm |
 | selection_mode | VARCHAR(10) | `auto` (comparative) / `manual` |
 | candidates_evaluated | JSONB | `[{method, mad, mfe, mse, mape}]` — hasil semua metode yang diuji, untuk transparansi & explanation |
@@ -320,7 +320,7 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| product_id | UUID FK → products, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
+| product_id | UUID FK → products ON DELETE CASCADE, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
 | capacity_mode | VARCHAR(10) | `PALLET` / `DUS` / `COMBINED` |
 | pallet_qty | NUMERIC(18,4) | jumlah pallet (0 bila mode `DUS`) |
 | dus_qty | NUMERIC(18,4) | jumlah dus lepas (0 bila mode `PALLET`) |
