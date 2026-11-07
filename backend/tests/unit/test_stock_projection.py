@@ -75,3 +75,19 @@ def test_tepat_di_rop_ikut_pesan():
     policy = OrderPolicy("eoq", reorder_point=200, order_up_to=400, eoq_qty=300, moq=0)
     r = project_stock(opening=600, receipts=[0], usage=[400], policy=policy, capacity=None)[0]
     assert r.order_qty == 300
+
+
+def test_override_planner_mengganti_pesanan_periode_pertama_saja():
+    # Fase 11.14: qty override = keputusan "pesan sekarang" → periode 1 = override (meski stok > ROP),
+    # periode berikutnya kembali ke kebijakan sistem.
+    policy = OrderPolicy("eoq", reorder_point=200, order_up_to=400, eoq_qty=300, moq=0)
+    rows = project_stock(opening=1000, receipts=[0, 0], usage=[100, 800], policy=policy, capacity=None,
+                         first_order=50)
+    assert rows[0].order_qty == 50 and rows[0].ending_qty == 950
+    assert rows[1].order_qty == 300  # pre 150 ≤ ROP 200 → kebijakan sistem (1 × EOQ)
+
+
+def test_override_nol_berarti_tidak_pesan_periode_pertama():
+    policy = OrderPolicy("eoq", reorder_point=200, order_up_to=400, eoq_qty=300, moq=0)
+    rows = project_stock(opening=100, receipts=[0], usage=[50], policy=policy, capacity=None, first_order=0)
+    assert rows[0].order_qty == 0 and rows[0].ending_qty == 50

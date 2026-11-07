@@ -129,6 +129,21 @@ Legenda: 🔴 P0 (salah/inkonsisten) · 🟡 P1 (wajib thesis) · 🟢 P2 (rapi-
 
 ---
 
+## Fase 11.14 — UI Override Planner ✅ (7 Nov 2026, kecuali forecast)
+
+> Temuan: `OverrideForm`/`AuditTrail`/`useOverrides` & endpoint `/overrides` sudah ada sejak Fase 6, tapi tidak dipasang di halaman mana pun, response reorder/forecast tidak membawa `id`, dan override tidak dipakai di mana pun.
+
+- [x] `ReorderRecommendationOut.id` + `override_qty/override_reason/override_at` (override yang berlaku)
+- [x] `overrides.run_id/material_id` (migration `c6d7e8f9a0b1`, additive + backfill); `GET /overrides/reorder?run_id&material_id`
+- [x] `ReorderTable`: kolom **Aksi** "Override"; qty override tampil di samping qty sistem
+- [x] **Baru** `ReorderOverrideDialog` (form qty + alasan wajib + riwayat per run+material), dipasang di halaman run
+- [x] Proyeksi Stok `proposed`: pesanan periode pertama = qty override (baseline tidak kena); export xlsx 2 kolom akhir
+- [x] Keputusan user: tampilkan + pakai di proyeksi; riwayat per (run, material); forecast override ditunda
+- [ ] Override **hasil forecast** via UI — ditunda (keputusan user)
+- [ ] `replace_for_run` masih menghapus baris lama (AGENTS §6) — riwayat aman via konteks; versioning rekomendasi bila dibutuhkan nanti
+
+---
+
 ## Urutan Kerja yang Disarankan
 
 | Urutan | Fase | Bisa mulai sekarang? | Estimasi |

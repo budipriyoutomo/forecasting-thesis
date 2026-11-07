@@ -8,6 +8,8 @@ Semua perhitungan lewat ReorderService (fungsi murni compute_reorder), tidak inl
 """
 from typing import Literal
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
@@ -24,8 +26,12 @@ from app.services.reorder_service import ReorderService
 router = APIRouter(prefix="/reorder", tags=["reorder"])
 
 
-def _out(rec) -> dict:
+def _out(rec, override=None) -> dict:
+    """`override` = (qty, Override) yang berlaku untuk material ini, atau None."""
+    rec_id = getattr(rec, "id", None)
+    ov_qty, ov = override if override else (None, None)
     return ReorderRecommendationOut(
+        id=str(rec_id) if rec_id is not None else None,
         material_id=str(rec.material_id),
         safety_stock=rec.safety_stock,
         reorder_point=rec.reorder_point,
@@ -48,6 +54,9 @@ def _out(rec) -> dict:
         order_qty_policy_used=getattr(rec, "order_qty_policy_used", None),
         order_up_to_level=getattr(rec, "order_up_to_level", None),
         moq_used=getattr(rec, "moq_used", None),
+        override_qty=Decimal(str(ov_qty)) if ov_qty is not None else None,
+        override_reason=getattr(ov, "reason", None),
+        override_at=ov.created_at.isoformat() if getattr(ov, "created_at", None) else None,
     ).model_dump(mode="json")
 
 
@@ -58,7 +67,9 @@ async def generate_recommendations(
     service: ReorderService = Depends(get_reorder_service),
 ):
     recs = await service.generate_for_run(current_user.user_id, payload.run_id, payload.current_stock)
-    return {"success": True, "data": [_out(r) for r in recs], "message": "Rekomendasi reorder dibuat"}
+    ovs = await service.override_map(payload.run_id)
+    data = [_out(r, ovs.get(str(r.material_id))) for r in recs]
+    return {"success": True, "data": data, "message": "Rekomendasi reorder dibuat"}
 
 
 @router.get("/recommendations/export")
@@ -84,4 +95,5 @@ async def list_recommendations(
     service: ReorderService = Depends(get_reorder_service),
 ):
     recs = await service.list_for_run(current_user.user_id, run_id, status)
-    return {"success": True, "data": [_out(r) for r in recs]}
+    ovs = await service.override_map(run_id)
+    return {"success": True, "data": [_out(r, ovs.get(str(r.material_id))) for r in recs]}

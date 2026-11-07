@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/format";
-import { useAuditTrail } from "@/hooks/useOverrides";
+import { useAuditTrail, useReorderAuditTrail } from "@/hooks/useOverrides";
 
 function nilai(value: Record<string, unknown> | null): string {
   if (!value) return "—";
@@ -13,9 +13,22 @@ function nilai(value: Record<string, unknown> | null): string {
     .join(", ");
 }
 
-// Riwayat override satu target (append-only): siapa, kapan, sebelum → sesudah, alasan.
-export function AuditTrail({ targetId }: { targetId: string }) {
-  const { data, isPending, isError } = useAuditTrail(targetId);
+// Riwayat override (append-only): siapa, kapan, sebelum → sesudah, alasan.
+// `targetId` = satu target; `runId` + `materialId` = seluruh override reorder material itu
+// dalam satu run (v3.3, tetap lengkap setelah rekomendasi di-generate ulang).
+export function AuditTrail({
+  targetId = null,
+  runId = null,
+  materialId = null,
+}: {
+  targetId?: string | null;
+  runId?: string | null;
+  materialId?: string | null;
+}) {
+  const byContext = Boolean(runId && materialId);
+  const single = useAuditTrail(byContext ? null : targetId);
+  const context = useReorderAuditTrail(byContext ? runId : null, byContext ? materialId : null);
+  const { data, isPending, isError } = byContext ? context : single;
 
   if (isPending) {
     return (

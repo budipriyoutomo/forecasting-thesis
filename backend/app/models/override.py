@@ -28,6 +28,10 @@ class Override(Base):
     # dipasang ForeignKey DB karena target-nya polimorfik.
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # v3.3 (Fase 11.14) — konteks target: reorder di-generate ulang mengganti id rekomendasi,
+    # jadi riwayat & qty override yang berlaku dicari per (run, material). NULL = baris lama.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    material_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     previous_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     new_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)

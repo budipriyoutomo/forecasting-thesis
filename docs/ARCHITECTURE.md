@@ -412,8 +412,11 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | new_value | JSONB | |
 | reason | TEXT NOT NULL | wajib diisi — `OVERRIDE_REASON_REQUIRED` jika kosong |
 | created_at | TIMESTAMPTZ | |
+| run_id | UUID, nullable | v3.3 (Fase 11.14) — run target; diisi dari target saat create (backfill di `c6d7e8f9a0b1`) |
+| material_id | UUID, nullable | v3.3 — material target (hanya `reorder_recommendation`) |
 
 > Override **tidak menghapus** data asli — hanya menambah entri baru di `overrides` sebagai revisi.
+> **Qty override yang berlaku (v3.3)** = override reorder terbaru untuk (run, material) yang `new_value.recommended_order_qty`-nya angka ≥ 0 (`override_service.latest_reorder_qty`). Dipakai: response reorder (`override_qty/override_reason/override_at`), Proyeksi Stok skenario `proposed` (pesanan **periode pertama** = qty override, periode berikutnya kebijakan sistem), export xlsx reorder (kolom akhir). TIC tetap berbasis EOQ. Dicari per (run, material) karena `replace_for_run` mengganti id rekomendasi saat generate ulang.
 
 ## 5. API Contract (`/api/v1`, v3.0)
 
@@ -474,6 +477,7 @@ GET    /api/v1/forecast/runs/{run_id}/cost-summary          # TIC & % penghemata
 
 POST   /api/v1/overrides
 GET    /api/v1/overrides?target_id=...
+GET    /api/v1/overrides/reorder?run_id=...&material_id=...   # v3.3 — riwayat per (run, material)
 
 GET    /api/v1/dashboard/summary
 ```

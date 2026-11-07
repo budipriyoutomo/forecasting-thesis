@@ -23,3 +23,5 @@ class OverrideOut(BaseModel):
     new_value: dict
     reason: str
     created_at: str | None = None
+    run_id: str | None = None  # v3.3 — konteks target (NULL = override sebelum v3.3)
+    material_id: str | None = None

@@ -2,6 +2,7 @@
 export type ReorderStatus = "urgent" | "safe" | "overstock";
 
 export interface ReorderRecommendation {
+  id?: string | null; // target_id override planner (v3.3); null = respons lama
   material_id: string;
   safety_stock: string; // Decimal sebagai string
   reorder_point: string;
@@ -21,4 +22,8 @@ export interface ReorderRecommendation {
   order_qty_policy_used?: "eoq" | "order_up_to" | null;
   order_up_to_level?: string | null;
   moq_used?: string | null;
+  // Fase 11.14 — override planner yang berlaku untuk (run, material); null = belum di-override
+  override_qty?: string | null;
+  override_reason?: string | null;
+  override_at?: string | null;
 }

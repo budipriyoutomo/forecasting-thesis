@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import type { ReorderRecommendation } from "@/types/reorder";
@@ -98,5 +98,45 @@ describe("ReorderTable — Fase 11.9 (sumber tunggal titik & qty pesan)", () => 
     render(<ReorderTable recommendations={[RECS[0]]} />);
     expect(screen.getByText("87")).toBeDefined();
     expect(screen.queryByText(/kelipatan eoq/i)).toBeNull();
+  });
+});
+
+describe("ReorderTable — override planner", () => {
+  const rec: ReorderRecommendation = {
+    id: "rec-1", material_id: "m1", safety_stock: "6.6", reorder_point: "46.6",
+    recommended_order_qty: "87", status: "urgent",
+  };
+
+  it("tanpa onOverride tidak ada kolom aksi", () => {
+    render(<ReorderTable recommendations={[rec]} />);
+    expect(screen.queryByRole("button", { name: /override/i })).toBeNull();
+  });
+
+  it("tombol Override per baris memanggil onOverride dengan rekomendasinya", async () => {
+    const onOverride = vi.fn();
+    render(<ReorderTable recommendations={[rec]} onOverride={onOverride} />);
+    await userEvent.click(screen.getByRole("button", { name: /override m1/i }));
+    expect(onOverride).toHaveBeenCalledWith(expect.objectContaining({ id: "rec-1" }), "m1");
+  });
+
+  it("rekomendasi tanpa id (respons lama) → tombol nonaktif", () => {
+    render(<ReorderTable recommendations={[{ ...rec, id: null }]} onOverride={vi.fn()} />);
+    expect((screen.getByRole("button", { name: /override m1/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("ReorderTable — qty override yang berlaku", () => {
+  it("menampilkan qty override + qty sistem sebagai pembanding", () => {
+    render(
+      <ReorderTable
+        recommendations={[{
+          id: "rec-1", material_id: "m1", safety_stock: "6.6", reorder_point: "46.6",
+          recommended_order_qty: "87", status: "urgent", override_qty: "150", override_reason: "Kontrak supplier",
+        }]}
+      />,
+    );
+    expect(screen.getByText("150")).toBeDefined();
+    const note = screen.getByText(/override · sistem 87/i);
+    expect(note.getAttribute("title")).toMatch(/kontrak supplier/i);
   });
 });

@@ -10,6 +10,9 @@ Per periode t:
              jadi identik dengan tabel Reorder untuk stok yang sama.
              ASUMSI: pesanan tiba di periode yang sama (lead time < 1 periode bulanan) —
              batasan penelitian thesis.
+             Override planner (Fase 11.14, skenario `proposed` saja): pesanan periode
+             PERTAMA = qty override yang berlaku untuk (run, material) — keputusan "pesan
+             sekarang" — periode berikutnya kembali ke kebijakan sistem.
   ending   = max(0, pre + order);  shortage = max(0, −(pre + order))
   opening[t+1] = ending[t]
   utilisasi = stok ÷ kapasitas material × 100% (stok awal & stok akhir)
@@ -49,15 +52,21 @@ def _util(qty: float, capacity: float | None) -> float | None:
     return qty / capacity * 100 if capacity else None
 
 
-def project_stock(opening, receipts, usage, policy: OrderPolicy | None, capacity) -> list[ProjectionRow]:
-    """`policy` None (material tanpa rekomendasi reorder) → tidak pernah memesan."""
+def project_stock(
+    opening, receipts, usage, policy: OrderPolicy | None, capacity, first_order: float | None = None
+) -> list[ProjectionRow]:
+    """`policy` None (material tanpa rekomendasi reorder) → tidak pernah memesan.
+    `first_order` (override planner) menggantikan pesanan periode pertama."""
     rows: list[ProjectionRow] = []
     stock = float(opening)
     cap = float(capacity) if capacity else None
-    for receipt, use in zip(receipts, usage):
+    for t, (receipt, use) in enumerate(zip(receipts, usage)):
         start = stock
         pre = start + float(receipt) - float(use)
-        order = policy.order_qty(pre) if policy is not None else 0.0
+        if t == 0 and first_order is not None:
+            order = float(first_order)
+        else:
+            order = policy.order_qty(pre) if policy is not None else 0.0
         after = pre + order
         ending, shortage = max(0.0, after), max(0.0, -after)
         rows.append(
@@ -98,7 +107,7 @@ def bucket_by_period(periods: list[date], items: list[tuple[date, float]]) -> li
 class StockProjectionService:
     def __init__(
         self, projection_repo, forecast_repo, reorder_repo, boms, demand_repo, products, warehouse_configs,
-        stock, receipts, reorder_service=None, factory=StockProjection,
+        stock, receipts, reorder_service=None, factory=StockProjection, overrides=None,
     ):
         self._repo = projection_repo
         self._forecast = forecast_repo
@@ -111,6 +120,7 @@ class StockProjectionService:
         self._receipts = receipts
         self._reorder_service = reorder_service
         self._factory = factory
+        self._overrides = overrides  # Fase 11.14 — OverrideService (qty override per material)
 
     async def generate_for_run(self, user_id: str, run_id: str) -> list:
         run = await self._require_run(user_id, run_id)
@@ -130,6 +140,7 @@ class StockProjectionService:
         }
         opening = await self._stock.latest_stock(as_of=periods[0])
         receipt_rows = await self._receipts.list(date_to=None)
+        overrides = await self._overrides.reorder_qty_by_material(run_id) if self._overrides else {}
 
         rows = []
         for scenario, product_series in (("proposed", forecast_series), ("baseline", planning_series)):
@@ -143,8 +154,10 @@ class StockProjectionService:
                     [(r.expected_date, r.qty) for r in receipt_rows if str(r.material_id) == material_id],
                 )
                 policy = order_policy_from_rec(rec) if rec else None
+                override = overrides.get(material_id) if scenario == "proposed" else None
                 projected = project_stock(
-                    opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, capacity.get(material_id)
+                    opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, capacity.get(material_id),
+                    first_order=override[0] if override else None,
                 )
                 for period, p in zip(periods, projected):
                     rows.append(

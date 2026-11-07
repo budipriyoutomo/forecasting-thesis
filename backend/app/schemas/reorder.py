@@ -14,6 +14,7 @@ class ReorderGenerateRequest(BaseModel):
 
 
 class ReorderRecommendationOut(BaseModel):
+    id: str | None = None  # target_id untuk override planner (v3.3)
     material_id: str
     safety_stock: Decimal
     reorder_point: Decimal
@@ -38,3 +39,8 @@ class ReorderRecommendationOut(BaseModel):
     order_qty_policy_used: str | None = None  # eoq | order_up_to
     order_up_to_level: Decimal | None = None
     moq_used: Decimal | None = None
+    # Fase 11.14 — override planner yang BERLAKU untuk (run, material); angka sistem tetap
+    # di `recommended_order_qty`. null = belum di-override.
+    override_qty: Decimal | None = None
+    override_reason: str | None = None
+    override_at: str | None = None

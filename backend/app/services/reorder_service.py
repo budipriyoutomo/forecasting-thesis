@@ -349,6 +349,7 @@ class ReorderService:
         usage=None,
         settings=None,
         stock=None,
+        overrides=None,
     ):
         self._repo = reorder_repo
         self._forecast = forecast_repo
@@ -362,6 +363,8 @@ class ReorderService:
         self._settings = settings
         # Fase 11.5: StockSnapshotService → stok terakhir dari ERP; `current_stock` request = fallback.
         self._stock = stock
+        # Fase 11.14: OverrideService → qty override planner yang berlaku per material.
+        self._overrides = overrides
 
     async def generate_for_run(self, user_id: str, run_id: str, current_stock: dict | None = None):
         run = await self._require_run(user_id, run_id)
@@ -466,6 +469,10 @@ class ReorderService:
 
         await self._repo.replace_for_run(str(run_id), recommendations)
         return recommendations
+
+    async def override_map(self, run_id: str) -> dict:
+        """{material_id: (qty, Override)} override reorder yang berlaku; {} tanpa OverrideService."""
+        return await self._overrides.reorder_qty_by_material(run_id) if self._overrides else {}
 
     async def list_for_run(self, user_id: str, run_id: str, status: str | None = None):
         await self._require_run(user_id, run_id)

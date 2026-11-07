@@ -138,3 +138,33 @@ async def test_list_audit_trail(client, auth_headers):
 
     assert res.status_code == 200
     assert len(res.json()["data"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_riwayat_reorder_per_run_material(client, auth_headers):
+    # v3.3: riwayat dicari per (run, material) supaya bertahan setelah reorder di-generate ulang.
+    from tests.unit.test_override_service import ContextRepo
+
+    t1, t2 = _target(), _target()
+    t2.id = "rec2"
+    for t in (t1, t2):
+        t.run_id, t.material_id = "r1", "m1"
+    store = {"rec1": t1, "rec2": t2}
+
+    async def resolver(tid):
+        return store.get(str(tid))
+
+    service = OverrideService(ContextRepo(), {"reorder_recommendation": resolver})
+    app.dependency_overrides[get_override_service] = lambda: service
+    await service.create("u", "reorder_recommendation", "rec1", {"recommended_order_qty": 100}, "a1")
+    await service.create("u", "reorder_recommendation", "rec2", {"recommended_order_qty": 120}, "a2")
+    for i, o in enumerate(service._repo.items):
+        from datetime import datetime, timezone
+        o.created_at = datetime(2026, 11, 1 + i, tzinfo=timezone.utc)
+
+    res = await client.get("/api/v1/overrides/reorder?run_id=r1&material_id=m1", headers=auth_headers)
+    assert res.status_code == 200
+    assert [o["reason"] for o in res.json()["data"]] == ["a2", "a1"]
+    assert res.json()["data"][0]["material_id"] == "m1"
+
+    assert (await client.get("/api/v1/overrides/reorder?run_id=r1", headers=auth_headers)).status_code == 422

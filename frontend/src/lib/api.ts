@@ -397,6 +397,13 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),
+
+    // Riwayat override reorder per (run, material) — bertahan setelah reorder di-generate ulang.
+    listReorder: (runId: string, materialId: string, token: string): Promise<ApiResponse<Override[]>> =>
+      request<Override[]>(
+        `/api/v1/overrides/reorder?run_id=${encodeURIComponent(runId)}&material_id=${encodeURIComponent(materialId)}`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      ),
   },
 
   uploads: {

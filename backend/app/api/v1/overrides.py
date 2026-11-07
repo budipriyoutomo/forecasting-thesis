@@ -3,6 +3,8 @@ Endpoint overrides — /api/v1/overrides (Fase 6), docs/ARCHITECTURE.md §5.
 
 POST /overrides            → buat override baru (append-only, reason wajib).
 GET  /overrides?target_id= → audit trail satu target.
+GET  /overrides/reorder?run_id=&material_id= → riwayat override reorder satu material dalam
+     satu run (v3.3) — tetap lengkap setelah rekomendasi di-generate ulang (id baru).
 """
 from fastapi import APIRouter, Depends, Query
 
@@ -23,6 +25,8 @@ def _out(ov) -> dict:
         new_value=ov.new_value,
         reason=ov.reason,
         created_at=ov.created_at.isoformat() if getattr(ov, "created_at", None) else None,
+        run_id=str(ov.run_id) if getattr(ov, "run_id", None) else None,
+        material_id=str(ov.material_id) if getattr(ov, "material_id", None) else None,
     ).model_dump()
 
 
@@ -45,4 +49,15 @@ async def list_overrides(
     service: OverrideService = Depends(get_override_service),
 ):
     trail = await service.list_for_target(target_id)
+    return {"success": True, "data": [_out(o) for o in trail]}
+
+
+@router.get("/reorder")
+async def list_reorder_overrides(
+    run_id: str = Query(...),
+    material_id: str = Query(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: OverrideService = Depends(get_override_service),
+):
+    trail = await service.list_for_reorder(run_id, material_id)
     return {"success": True, "data": [_out(o) for o in trail]}

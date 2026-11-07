@@ -177,6 +177,7 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         usage=_material_usage(session),
         settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
         stock=_stock(session),
+        overrides=get_override_service(session),
     )
 
 
@@ -195,6 +196,7 @@ def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService
         metrics_repo=SqlInventoryMetricsRepository(session),
         materials=SqlMaterialRepository(session),
         products=SqlProductRepository(session),
+        overrides=get_override_service(session),
     )
 
 
@@ -287,6 +289,7 @@ def get_stock_projection_service(session: AsyncSession = Depends(get_db)) -> Sto
         stock=_stock(session),
         receipts=SqlMaterialReceiptRepository(session),
         reorder_service=get_reorder_service(session),
+        overrides=get_override_service(session),
     )
 
 

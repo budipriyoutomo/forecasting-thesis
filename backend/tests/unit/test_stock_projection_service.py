@@ -169,3 +169,20 @@ async def test_rekomendasi_lama_tanpa_kolom_policy_fallback_order_up_to():
     svc, _ = _svc(recs=[rec])
     proposed = [r for r in await svc.generate_for_run(USER, "r1") if r.scenario == "proposed"]
     assert proposed[0].order_qty == 600  # S = 1600 − 300 = 1300 → 1300 − 700
+
+
+@pytest.mark.asyncio
+async def test_override_planner_dipakai_skenario_usulan_saja():
+    planning = [SimpleNamespace(period="2026-11-01", planning=600), SimpleNamespace(period="2026-12-01", planning=600)]
+    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
+
+    class Ovs:
+        async def reorder_qty_by_material(self, run_id):
+            return {"m1": (500.0, SimpleNamespace(reason="Kontrak"))}
+
+    svc, _ = _svc(planning=planning, recs=[rec])
+    svc._overrides = Ovs()
+    rows = await svc.generate_for_run(USER, "r1")
+    first = {r.scenario: r for r in rows if r.period == date(2026, 11, 1)}
+    assert first["proposed"].order_qty == 500  # pre 700 > ROP 0, tetap pesan sesuai override
+    assert first["baseline"].order_qty == 0  # baseline = perusahaan, tidak kena override

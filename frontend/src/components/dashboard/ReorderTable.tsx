@@ -40,13 +40,15 @@ interface ReorderRow extends ReorderRecommendation {
 
 // Tabel rekomendasi reorder dengan filter status (Fase 5).
 // `materials` opsional: bila diberikan, kolom Material menampilkan kode + nama
-// alih-alih UUID mentah.
+// alih-alih UUID mentah. `onOverride` opsional: menambah kolom Aksi (override planner).
 export function ReorderTable({
   recommendations,
   materials = [],
+  onOverride,
 }: {
   recommendations: ReorderRecommendation[];
   materials?: Material[];
+  onOverride?: (rec: ReorderRecommendation, materialLabel: string) => void;
 }) {
   const [filter, setFilter] = useState<ReorderStatus | "all">("all");
 
@@ -110,7 +112,21 @@ export function ReorderTable({
         accessorKey: "recommended_order_qty",
         header: "Qty pesan",
         cell: ({ row }) => {
-          const { order_qty_policy_used: policy, order_up_to_level: s } = row.original;
+          const { order_qty_policy_used: policy, order_up_to_level: s, override_qty: ov } = row.original;
+          if (ov != null) {
+            // Fase 11.14 — qty override planner yang berlaku; angka sistem tetap sebagai pembanding.
+            return (
+              <span className="flex flex-col tabular-nums">
+                <span className="font-semibold">{formatNumber(ov)}</span>
+                <span
+                  className="text-xs text-amber-700 dark:text-amber-400"
+                  title={row.original.override_reason ?? undefined}
+                >
+                  Override · sistem {formatNumber(row.original.recommended_order_qty)}
+                </span>
+              </span>
+            );
+          }
           return (
             <span className="flex flex-col tabular-nums">
               {formatNumber(row.original.recommended_order_qty)}
@@ -163,8 +179,28 @@ export function ReorderTable({
           </Badge>
         ),
       },
+      ...(onOverride
+        ? [
+            {
+              id: "actions",
+              header: "Aksi",
+              cell: ({ row }: { row: { original: ReorderRow } }) => (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Override ${row.original.materialLabel}`}
+                  disabled={!row.original.id}
+                  title={row.original.id ? undefined : "Generate ulang rekomendasi untuk mengaktifkan override"}
+                  onClick={() => onOverride(row.original, row.original.materialLabel)}
+                >
+                  Override
+                </Button>
+              ),
+            } satisfies ColumnDef<ReorderRow>,
+          ]
+        : []),
     ],
-    [],
+    [onOverride],
   );
 
   return (

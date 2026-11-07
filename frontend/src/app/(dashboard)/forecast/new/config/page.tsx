@@ -9,6 +9,7 @@ import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
+import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
 import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
 import { FormError } from "@/components/common/FormError";
@@ -28,6 +29,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useReorderList, useRunPlanning, useStockProjection } from "@/hooks/usePlanning";
 import { useGenerateReorder } from "@/hooks/useReorder";
 import { useWarehouseValidation } from "@/hooks/useWarehouse";
+import type { ReorderRecommendation } from "@/types/reorder";
 
 export default function ForecastConfigPage() {
   const { data: products } = useProducts();
@@ -42,8 +44,8 @@ export default function ForecastConfigPage() {
   const planning = useRunPlanning();
   const planned = Boolean(planning.data) && Boolean(runId);
   const projection = useStockProjection(planned ? (runId as string) : null);
-  const reorderList = useReorderList(planned ? (runId as string) : null);
-  const recommendations = reorder.data ?? reorderList.data;
+  const reorderList = useReorderList((planned || reorder.isSuccess) && runId ? runId : null);
+  const recommendations = reorderList.data ?? reorder.data;
 
   // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
   const metricsRunId = (reorder.data || planned) && runId ? runId : null;
@@ -53,6 +55,8 @@ export default function ForecastConfigPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [horizon, setHorizon] = useState(30);
   const [method, setMethod] = useState("");
+  // Override planner (AGENTS §5): rekomendasi yang sedang di-override + label materialnya.
+  const [overriding, setOverriding] = useState<{ rec: ReorderRecommendation; label: string } | null>(null);
 
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -231,7 +235,11 @@ export default function ForecastConfigPage() {
             <FormError message={reorder.isError ? reorder.error.message : null} />
             <FormError message={exporter.isError ? exporter.error.message : null} />
             {recommendations && (
-              <ReorderTable recommendations={recommendations} materials={materials ?? []} />
+              <ReorderTable
+                recommendations={recommendations}
+                materials={materials ?? []}
+                onOverride={(rec, label) => setOverriding({ rec, label })}
+              />
             )}
           </section>
 
@@ -288,6 +296,12 @@ export default function ForecastConfigPage() {
           )}
         </>
       )}
+      <ReorderOverrideDialog
+        runId={runId ?? null}
+        recommendation={overriding?.rec ?? null}
+        materialLabel={overriding?.label ?? ""}
+        onClose={() => setOverriding(null)}
+      />
     </div>
   );
 }

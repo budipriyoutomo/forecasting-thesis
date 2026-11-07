@@ -47,7 +47,16 @@ def build_forecast_xlsx(results) -> bytes:
     return buffer.getvalue()
 
 
-def build_reorder_xlsx(recommendations) -> bytes:
+def _override_cells(override) -> list:
+    if not override:
+        return [None, None]
+    qty, ov = override
+    return [float(qty), getattr(ov, "reason", None)]
+
+
+def build_reorder_xlsx(recommendations, overrides: dict | None = None) -> bytes:
+    """`overrides` = {material_id: (qty, Override)} yang berlaku (Fase 11.14)."""
+    overrides = overrides or {}
     wb = Workbook()
     ws = wb.active
     ws.title = "Reorder"
@@ -59,6 +68,8 @@ def build_reorder_xlsx(recommendations) -> bytes:
             "buffer_stock", "eoq_qty", "ordering_cost", "holding_cost", "total_inventory_cost",
             # Fase 11.9 — kebijakan pesan, juga ditambah di akhir (kolom lama tidak bergeser)
             "rop_formula_used", "order_qty_policy_used",
+            # Fase 11.14 — override planner yang berlaku (angka sistem tetap di recommended_order_qty)
+            "override_qty", "override_reason",
         ]
     )
     for rec in recommendations:
@@ -76,6 +87,7 @@ def build_reorder_xlsx(recommendations) -> bytes:
                 _num(getattr(rec, "total_inventory_cost", None)),
                 getattr(rec, "rop_formula_used", None),
                 getattr(rec, "order_qty_policy_used", None),
+                *_override_cells(overrides.get(str(rec.material_id))),
             ]
         )
     buffer = io.BytesIO()
@@ -231,7 +243,7 @@ def build_metrics_pdf(run, rows, labels: dict) -> bytes:
 class ExportService:
     def __init__(
         self, forecast_repo, reorder_repo, storage=None,
-        projections=None, metrics_repo=None, materials=None, products=None,
+        projections=None, metrics_repo=None, materials=None, products=None, overrides=None,
     ):
         self._forecast = forecast_repo
         self._reorder = reorder_repo
@@ -240,6 +252,7 @@ class ExportService:
         self._metrics = metrics_repo
         self._materials = materials
         self._products = products
+        self._overrides = overrides  # Fase 11.14 — OverrideService
 
     async def export_forecast(self, user_id: str, run_id: str):
         run = await self._require_run(user_id, run_id)
@@ -256,7 +269,8 @@ class ExportService:
             content = build_reorder_pdf(run, recs)
             filename, mime = f"reorder_{run_id}.pdf", PDF_MIME
         else:
-            content = build_reorder_xlsx(recs)
+            ovs = await self._overrides.reorder_qty_by_material(run_id) if self._overrides else {}
+            content = build_reorder_xlsx(recs, ovs)
             filename, mime = f"reorder_{run_id}.xlsx", XLSX_MIME
         self._archive(user_id, run_id, filename, content)
         return content, filename, mime

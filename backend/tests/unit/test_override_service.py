@@ -126,3 +126,64 @@ async def test_list_audit_trail_append_only():
     trail = await svc.list_for_target("rec1")
 
     assert len(trail) == 2  # kedua revisi tersimpan, tidak saling menimpa
+
+
+# ── v3.3 Fase 11.14: override reorder dikaitkan ke (run, material) & dipakai downstream ──
+from datetime import datetime, timezone  # noqa: E402
+
+from app.services.override_service import latest_reorder_qty  # noqa: E402
+
+
+class ContextRepo(FakeOverrideRepo):
+    async def list_by_context(self, run_id, material_id=None):
+        return sorted(
+            (o for o in self.items
+             if str(o.run_id) == str(run_id) and (material_id is None or str(o.material_id) == str(material_id))),
+            key=lambda o: o.created_at, reverse=True,
+        )
+
+
+def _rec(rid, run="r1", mat="m1"):
+    t = _reorder_target(rid)
+    t.run_id, t.material_id = run, mat
+    return t
+
+
+@pytest.mark.asyncio
+async def test_override_reorder_menyimpan_run_dan_material():
+    repo = ContextRepo()
+    svc = OverrideService(repo, {"reorder_recommendation": _make_resolver({"rec1": _rec("rec1")})})
+    ov = await svc.create(USER, "reorder_recommendation", "rec1", {"recommended_order_qty": 120}, "Kontrak")
+    assert (ov.run_id, ov.material_id) == ("r1", "m1")
+
+
+@pytest.mark.asyncio
+async def test_override_forecast_tanpa_konteks_material():
+    target = SimpleNamespace(id="f1", run_id="r1", method_used="ma", selection_mode="auto", mase=None,
+                             forecast_data=[], metrics=None)
+    svc = OverrideService(ContextRepo(), {"forecast_result": _make_resolver({"f1": target})})
+    ov = await svc.create(USER, "forecast_result", "f1", {"x": 1}, "alasan")
+    assert ov.run_id == "r1" and ov.material_id is None
+
+
+@pytest.mark.asyncio
+async def test_riwayat_per_run_material_bertahan_setelah_regenerate():
+    # Rekomendasi lama (rec1) diganti rec2 saat generate ulang — riwayat tetap ketemu via (run, material).
+    repo = ContextRepo()
+    store = {"rec1": _rec("rec1"), "rec2": _rec("rec2")}
+    svc = OverrideService(repo, {"reorder_recommendation": _make_resolver(store)})
+    await svc.create(USER, "reorder_recommendation", "rec1", {"recommended_order_qty": 100}, "a")
+    await svc.create(USER, "reorder_recommendation", "rec2", {"recommended_order_qty": 150}, "b")
+    for i, o in enumerate(repo.items):
+        o.created_at = datetime(2026, 11, 1 + i, tzinfo=timezone.utc)
+    trail = await svc.list_for_reorder("r1", "m1")
+    assert [o.reason for o in trail] == ["b", "a"]
+
+
+def test_latest_reorder_qty_override_terbaru_per_material():
+    def ov(mat, qty, day):
+        return SimpleNamespace(material_id=mat, new_value={"recommended_order_qty": qty}, reason=f"r{day}",
+                               created_at=datetime(2026, 11, day, tzinfo=timezone.utc))
+    rows = [ov("m1", 100, 1), ov("m1", 150, 3), ov("m2", "abc", 2), ov("m2", 80, 1), ov(None, 5, 9)]
+    got = latest_reorder_qty(rows)
+    assert {m: (q, o.reason) for m, (q, o) in got.items()} == {"m1": (150.0, "r3"), "m2": (80.0, "r1")}

@@ -10,6 +10,8 @@ export interface Override {
   new_value: Record<string, unknown>;
   reason: string;
   created_at: string | null;
+  run_id?: string | null; // v3.3 — konteks target
+  material_id?: string | null;
 }
 
 export interface OverrideInput {

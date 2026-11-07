@@ -20,6 +20,20 @@ export function useAuditTrail(targetId: string | null) {
   });
 }
 
+// Riwayat override reorder satu material dalam satu run (v3.3).
+export function useReorderAuditTrail(runId: string | null, materialId: string | null) {
+  const token = getToken();
+  return useQuery<Override[]>({
+    queryKey: ["overrides", "reorder", runId, materialId],
+    enabled: Boolean(token && runId && materialId),
+    queryFn: async () => {
+      const res = await api.overrides.listReorder(runId as string, materialId as string, token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+  });
+}
+
 export function useCreateOverride() {
   const qc = useQueryClient();
   return useMutation<Override, Error, OverrideInput>({
@@ -28,6 +42,10 @@ export function useCreateOverride() {
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },
-    onSuccess: (ov) => qc.invalidateQueries({ queryKey: ["overrides", ov.target_id] }),
+    onSuccess: (ov) => {
+      qc.invalidateQueries({ queryKey: ["overrides"] });
+      // Tabel Reorder menampilkan qty override yang berlaku (Fase 11.14).
+      if (ov.target_type === "reorder_recommendation") qc.invalidateQueries({ queryKey: ["reorder-list"] });
+    },
   });
 }

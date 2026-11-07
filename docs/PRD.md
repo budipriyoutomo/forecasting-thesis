@@ -145,6 +145,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-5.2 Setiap override wajib menyertakan alasan (tidak boleh kosong — ditolak dengan error jika kosong).
 - FR-5.3 Override disimpan sebagai revisi baru (append-only), tidak menghapus/menimpa hasil sistem asli.
 - FR-5.4 Riwayat override (siapa, kapan, nilai sebelum/sesudah, alasan) dapat dilihat kembali oleh Admin/Manajer.
+- FR-5.5 **[NEW 7 Nov 2026]** Override qty pesan dilakukan dari tabel Reorder (tombol per baris → dialog qty baru + alasan + riwayat). Qty override yang berlaku ditampilkan di samping qty sistem, dipakai Proyeksi Stok skenario usulan sebagai pesanan periode pertama, dan ikut di export. Riwayat tetap lengkap setelah rekomendasi di-generate ulang (dicari per run + material). Override hasil forecast via UI **belum** tersedia (ditunda).
 
 ### FR-6 Dashboard & Visualisasi
 - FR-6.1 **[CHANGED]** Dashboard ringkasan: jumlah item perlu reorder, akurasi forecast rata-rata (**MAPE**, bukan lagi MASE), tren demand total, **[NEW]** total biaya persediaan run terakhir, **[NEW]** indikator kapasitas gudang, **[NEW]** ringkasan metrik inventory per skenario.

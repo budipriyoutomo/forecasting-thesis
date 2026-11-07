@@ -113,3 +113,52 @@ async def test_generate_menyertakan_kebijakan_pesan(client, auth_headers):
     assert row["rop_formula_used"] == "with_buffer"
     assert row["order_qty_policy_used"] == "order_up_to"
     assert float(row["order_up_to_level"]) > float(row["reorder_point"])
+
+
+def test_out_menyertakan_id_untuk_target_override():
+    # Override planner butuh id rekomendasi sebagai target_id (UI override, v3.3).
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.api.v1.reorder import _out
+
+    rec = SimpleNamespace(
+        id="11111111-1111-1111-1111-111111111111", material_id="m1", safety_stock=Decimal("1"),
+        reorder_point=Decimal("2"), recommended_order_qty=Decimal("3"), status="urgent",
+    )
+    assert _out(rec)["id"] == "11111111-1111-1111-1111-111111111111"
+    rec.id = None  # rekomendasi belum di-flush (fake repo) → null, bukan crash
+    assert _out(rec)["id"] is None
+
+
+def test_out_menyertakan_qty_override_yang_berlaku():
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.api.v1.reorder import _out
+
+    rec = SimpleNamespace(id="rec-1", material_id="m1", safety_stock=Decimal("1"), reorder_point=Decimal("2"),
+                          recommended_order_qty=Decimal("87"), status="urgent")
+    ov = SimpleNamespace(reason="Kontrak supplier", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc))
+    out = _out(rec, (150.0, ov))
+    assert float(out["override_qty"]) == 150 and out["override_reason"] == "Kontrak supplier"
+    assert out["override_at"].startswith("2026-11-07")
+    assert float(out["recommended_order_qty"]) == 87  # angka sistem tidak berubah
+    assert _out(rec)["override_qty"] is None
+
+
+@pytest.mark.asyncio
+async def test_service_override_map_kosong_tanpa_dependency_dan_dari_override_service():
+    from tests.unit.test_reorder_service import FakeForecastRepo, _run
+
+    svc = ReorderService(reorder_repo=FakeReorderRepo(), forecast_repo=FakeForecastRepo(_run(), []), boms=None,
+                         materials=None)
+    assert await svc.override_map("r1") == {}
+
+    class Ovs:
+        async def reorder_qty_by_material(self, run_id):
+            return {"m1": (150.0, object())}
+
+    svc._overrides = Ovs()
+    assert (await svc.override_map("r1"))["m1"][0] == 150.0

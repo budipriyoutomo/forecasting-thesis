@@ -729,3 +729,25 @@ konfirmasi; asumsi pesanan tiba dalam periode yang sama (lead time < 1 bulan) ma
 **Temuan Excel 7 Nov:** Juni 2025 = 0 untuk 6 dari 7 SKU (keputusan user: dipakai apa adanya, dianggap tidak produksi); `#REF!` tabel gap
 2025 masih ada; Excel tidak memuat rak, fasilitas gudang, atau perawatan forklift (forklift masuk
 sebagai depresiasi 15 tahun).
+
+### Fase 11.14 — UI Override Planner (7 Nov 2026)
+
+**Temuan.** Komponen override (Fase 6) tidak pernah dipasang di halaman; response reorder &
+forecast tidak membawa `id`; override hanya tercatat, tidak dipakai di mana pun; dan generate
+ulang reorder menghapus rekomendasi (id baru) sehingga riwayat lama hilang dari UI.
+
+**Keputusan user (7 Nov):**
+1. Qty override **ditampilkan + dipakai di proyeksi** (bukan sekadar dicatat).
+2. Riwayat dikaitkan ke **(run, material)**, bukan versi/soft-delete rekomendasi.
+3. Override hasil forecast via UI **ditunda**.
+
+**Keputusan teknis (assistant):** kolom `overrides.run_id/material_id` (migration `c6d7e8f9a0b1`,
+additive + backfill); qty berlaku = override terbaru yang angka ≥ 0; Proyeksi Stok `proposed`
+memakai qty override sebagai pesanan **periode pertama** (keputusan "pesan sekarang"; boleh
+memesan walau stok > ROP, 0 = tidak pesan), periode berikutnya kebijakan sistem; baseline tidak
+kena override; TIC tetap berbasis EOQ (shortage cost & metrik ikut berubah lewat proyeksi). Proyeksi
+memakai override setelah "Jalankan perencanaan" diulang. Override yang dibuat sebelum generate
+ulang tetap berlaku (keputusan planner bertahan meski angka sistem berubah).
+
+**Tetap terbuka:** `replace_for_run` masih menghapus baris rekomendasi lama (AGENTS §6) — riwayat
+aman via konteks, tapi snapshot rekomendasi lama hanya tersisa di `previous_value` override.
