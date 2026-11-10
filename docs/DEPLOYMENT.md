@@ -257,8 +257,12 @@ make prod-up
 
 Yang terjadi berurutan:
 
-1. Image backend & frontend di-build. **Ini lama** — 5–15 menit di build pertama,
-   tergantung VPS (dependency ML backend dan `next build` keduanya berat).
+1. Image backend lalu frontend di-build (berurutan). **Ini lama** — 5–15 menit di build
+   pertama, tergantung VPS (dependency ML backend dan `next build` keduanya berat). Deploy
+   berikutnya jauh lebih cepat karena layer & cache mount BuildKit (pip, npm, `.next/cache`)
+   dipakai ulang — selama cache build tidak dihapus (§7, jangan `docker system prune -a`).
+   Lint & typecheck frontend **tidak** dijalankan saat build image (`SKIP_BUILD_CHECKS=1`) —
+   itu tugas CI, jadi pastikan CI hijau sebelum deploy.
 2. Postgres start, ditunggu sampai healthcheck-nya hijau.
 3. Backend start → entrypoint menjalankan `alembic upgrade head` → uvicorn.
    Kalau migrasi gagal, container **sengaja** ikut gagal start (lihat §8.3).
@@ -438,8 +442,13 @@ make prod-shell                    # shell di container backend
 make help                          # daftar lengkap target
 
 docker system df                   # pemakaian disk
-docker system prune -a             # bersihkan image lama (hati-hati: bukan volume)
+docker image prune -f              # bersihkan image lama yang tak bertag — cache build tetap ada
+docker builder prune --filter until=720h -f   # cache build > 30 hari saja, kalau disk mepet
 ```
+
+> **Jangan `docker system prune -a`** untuk bersih-bersih rutin: perintah itu ikut menghapus
+> seluruh cache build (layer pip/npm dan cache mount `.next/cache`), sehingga
+> `make prod-deploy` berikutnya build penuh dari nol (5–15 menit) alih-alih beberapa menit.
 
 > **Target development ditolak di server.** Selama `.env.prod` ada, `make up`, `make dev`,
 > `make migrate`, dan `make seed-*` menolak jalan — semuanya memakai `docker-compose.yml`
@@ -477,17 +486,9 @@ free -h
 dmesg | grep -i "out of memory" | tail
 ```
 
-Tambah swap (§2.4). Kalau tetap gagal, build satu per satu supaya puncak pemakaian
-memorinya tidak bertumpuk:
-
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml build backend
-docker compose --env-file .env.prod -f docker-compose.prod.yml build frontend
-make prod-up
-```
-
-(Dua baris pertama sengaja memakai perintah panjang — tidak ada target `make` untuk
-build per-service karena ini kasus darurat, bukan alur normal.)
+`make prod-up`/`make prod-deploy` sudah build backend lalu frontend **berurutan** (bukan
+paralel) supaya puncak memorinya tidak bertumpuk. Kalau tetap kena OOM, tambah swap (§2.4).
+Jangan pakai `docker compose ... up -d --build` langsung — itu build keduanya paralel.
 
 ### 8.3 Container backend gagal start / restart terus
 

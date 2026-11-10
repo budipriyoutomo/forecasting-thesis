@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 # Python 3.11 (bukan 3.14 seperti venv dev) — versi yang dipakai CI, dan satu-satunya
@@ -5,14 +6,17 @@ FROM python:3.11-slim
 # (lihat catatan di requirements.txt).
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 # requirements di-copy sendiri supaya layer pip ter-cache selama dependency tak berubah.
+# Cache mount BuildKit: wheel yang sudah pernah diunduh disimpan di luar image, jadi saat
+# requirements.txt berubah hanya paket yang berubah yang diunduh ulang (bukan semua paket
+# ML dari nol). Cache-nya tidak masuk ke layer image.
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 

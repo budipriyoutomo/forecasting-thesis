@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1
 # ---------- deps ----------
 FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-# `npm ci` (bukan install) supaya versi persis mengikuti lockfile.
-RUN npm ci
+# `npm ci` (bukan install) supaya versi persis mengikuti lockfile. Cache npm disimpan di
+# cache mount BuildKit supaya lockfile yang berubah tidak mengunduh ulang semua paket.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ---------- builder ----------
 FROM node:22-slim AS builder
@@ -21,7 +23,12 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Lint & typecheck sudah dijalankan CI (.github/workflows/ci.yml) sebelum kode masuk main,
+# jadi dilewati di sini — di CPU VPS keduanya memakan sebagian besar waktu `next build`.
+# `npm run build` di mesin dev tetap menjalankannya (lihat next.config.mjs).
+ENV SKIP_BUILD_CHECKS=1
+# `.next/cache` disimpan antar-build → `next build` inkremental, bukan selalu dari nol.
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 # ---------- runner ----------
 FROM node:22-slim AS runner

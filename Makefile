@@ -58,7 +58,7 @@ install-backend: venv
 	$(guard-dev)
 	@echo "📦 Install dependencies backend..."
 	$(PIP) install --upgrade pip
-	$(PIP) install -r backend/requirements.txt
+	$(PIP) install -r backend/requirements-dev.txt
 
 install-frontend:
 	@echo "📦 Install dependencies frontend..."
@@ -156,9 +156,18 @@ prod-check:
 	@grep -qE '^(DEFAULT_ORDERING_COST|DEFAULT_HOLDING_COST_RATE)=[0.]*$$' .env.prod && echo "⚠️  Biaya pesan/simpan masih 0 → EOQ & cost summary akan tampil 0 (DEPLOYMENT.md §3.2)" || true
 	@$(PROD) config >/dev/null && echo "✅ .env.prod & compose production valid"
 
+# Build backend lalu frontend BERURUTAN, bukan paralel: di VPS 2 vCPU / 4 GB, `pip install`
+# dependency ML dan `next build` yang jalan bersamaan saling berebut RAM → swap/OOM, dan
+# total waktunya justru lebih lama. Dipakai prod-up & prod-deploy.
+define prod-build
+$(PROD) build backend
+$(PROD) build frontend
+endef
+
 # Build + start. Migrasi alembic jalan otomatis di entrypoint backend.
 prod-up: prod-check
-	$(PROD) up -d --build
+	$(prod-build)
+	$(PROD) up -d
 
 prod-down:
 	$(PROD) down
@@ -173,10 +182,12 @@ prod-ps:
 prod-logs:
 	$(PROD) logs -f $(s)
 
-# Deploy ulang setelah git pull. `--build` wajib kalau NEXT_PUBLIC_* berubah:
-# nilainya di-inline ke bundel frontend saat build, bukan dibaca saat runtime.
+# Deploy ulang setelah git pull. Selalu build ulang — wajib kalau NEXT_PUBLIC_* berubah:
+# nilainya di-inline ke bundel frontend saat build, bukan dibaca saat runtime. Layer yang
+# tidak berubah & cache mount pip/npm/.next diambil dari cache BuildKit.
 prod-deploy: prod-check
-	$(PROD) up -d --build
+	$(prod-build)
+	$(PROD) up -d
 	@$(PROD) ps
 
 # --- Production: database ----------------------------------------------------
