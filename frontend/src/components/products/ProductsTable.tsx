@@ -33,15 +33,8 @@ export function ProductsTable({
       },
       { accessorKey: "unit", header: "Satuan" },
       {
-        accessorKey: "cost_price",
-        header: "HPP",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatMoney(row.original.cost_price ?? null)}</span>
-        ),
-      },
-      {
         accessorKey: "selling_price",
-        header: "Harga jual",
+        header: "Harga produk",
         cell: ({ row }) => (
           <span className="tabular-nums">{formatMoney(row.original.selling_price ?? null)}</span>
         ),

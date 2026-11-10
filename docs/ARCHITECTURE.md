@@ -193,8 +193,7 @@ forecastiq/
 | name | VARCHAR | mis. "KIN Yogurt Original 200ml" |
 | category | VARCHAR | mis. "RTD Yogurt" |
 | unit | VARCHAR | UOM, mis. "PCS" — juga menentukan konversi kapasitas gudang (unit dus-like vs lainnya, §6.7) |
-| cost_price | NUMERIC(18,4), nullable | HPP / harga pokok per unit, IDR (2 Okt 2026) |
-| selling_price | NUMERIC(18,4), nullable | harga jual per unit, IDR (2 Okt 2026) |
+| selling_price | NUMERIC(18,4), nullable | **harga produk** per unit, IDR (2 Okt 2026) — satu-satunya harga produk sejak 10 Nov 2026 (`cost_price`/HPP di-drop, migration `e8f9a0b1c2d3`) |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `materials`
@@ -221,7 +220,7 @@ forecastiq/
 | qty_per_unit | NUMERIC | jumlah material dibutuhkan per 1 unit produk jadi |
 | created_at / updated_at | TIMESTAMPTZ | |
 
-> Biaya material per unit produk (read-only, tidak dipersist) = Σ `qty_per_unit × materials.unit_price` — ditampilkan berdampingan dengan `products.cost_price` sebagai pembanding (2 Okt 2026).
+> Biaya material per unit produk (read-only, tidak dipersist) = Σ `qty_per_unit × materials.unit_price` — ditampilkan berdampingan dengan `products.selling_price` (harga produk) sebagai pembanding (2 Okt 2026; sebelum 10 Nov 2026 pembandingnya HPP).
 
 > Satu `product` bisa punya banyak baris `boms` (banyak komponen material). Dipakai `bom_service.py` untuk menurunkan deret kebutuhan material yang jadi input reorder & cost (di memori, tidak dipersist), dan untuk hitung Standar Pemakaian Material (buffer stock, FR-4.2). **Hasil forecast sendiri tidak menyentuh BOM.**
 
@@ -486,7 +485,7 @@ GET    /api/v1/dashboard/summary
 
 > **Perubahan 2 Oktober 2026 (Konsolidasi Master Data):**
 > - `POST/PUT /warehouse/config` menerima `capacity_mode`, `pallet_qty`, `dus_qty`, `dus_per_pallet`, `pcs_per_dus`; `capacity_qty` & `uom` di response jadi turunan server (§6.7).
-> - `products` menerima/mengembalikan `cost_price`, `selling_price`; `materials` menerima/mengembalikan `unit_price` (nullable, ≥ 0; juga kolom opsional di import CSV).
+> - `products` menerima/mengembalikan `selling_price` (harga produk; `cost_price` dihapus 10 Nov 2026 — bila masih dikirim klien/CSV lama, diabaikan); `materials` menerima/mengembalikan `unit_price` (nullable, ≥ 0; juga kolom opsional di import CSV).
 > - `GET /boms` menambah field read-only `line_cost` (= `qty_per_unit × unit_price`, null bila material tanpa harga).
 > - `GET /forecast/runs/{run_id}/cost-summary` menambah `purchase_cost`, `n_materials_without_price`, dan `cost_source` (`template` / `env`) — additive, TIC tidak berubah.
 
@@ -917,7 +916,7 @@ POST/PUT /warehouse/config                         # + item_type, material_id
 - Buffer = max(0, Σaktual/Σstandar − 1) × μ_p.
 - EOQ klasik = √(2AS/iC), TC = (A/Q)S + (Q/2)iC, A = rata-rata kebutuhan periode × periode/tahun (bulanan 12). Baseline TIC memakai aturan `choose_eoq` yang sama per material.
 - Proyeksi: pre = opening + receipt − usage; order = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
-- Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga jual (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
+- Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga produk (`selling_price`) (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
 - Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
 
 ## 7. Storage Flow — Object Storage (S3-compatible)

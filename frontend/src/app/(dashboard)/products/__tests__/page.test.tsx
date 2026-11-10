@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 
 vi.mock("@/lib/auth", () => ({ getToken: () => "tok" }));
 
-const product = { id: "p1", code: "KBYPL 200", name: "Produk A", category: null, unit: "PCS", cost_price: null, selling_price: null };
+const product = { id: "p1", code: "KBYPL 200", name: "Produk A", category: null, unit: "PCS", selling_price: null };
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

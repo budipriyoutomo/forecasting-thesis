@@ -33,25 +33,24 @@ describe("ProductForm", () => {
       name: "KIN Yogurt 200ml",
       category: null,
       unit: "PCS",
-      cost_price: null,
       selling_price: null,
     });
   });
 
-  it("mengirim HPP & harga jual sebagai angka (Rupiah)", async () => {
+  it("hanya ada satu isian harga produk (tanpa HPP), dikirim sebagai angka", async () => {
     const onSubmit = vi.fn();
     render(<ProductForm onSubmit={onSubmit} />);
 
     await userEvent.type(screen.getByLabelText(/kode sku/i), "KBYPL 200");
     await userEvent.type(screen.getByLabelText(/^nama$/i), "KIN Yogurt 200ml");
     await userEvent.type(screen.getByLabelText(/^satuan$/i), "PCS");
-    await userEvent.type(screen.getByLabelText(/hpp/i), "4500");
-    await userEvent.type(screen.getByLabelText(/harga jual/i), "6000");
+    expect(screen.queryByLabelText(/hpp/i)).toBeNull();
+    await userEvent.type(screen.getByLabelText(/harga produk/i), "6000");
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ cost_price: 4500, selling_price: 6000 }),
-    );
+    const sent = onSubmit.mock.calls[0][0];
+    expect(sent.selling_price).toBe(6000);
+    expect(sent).not.toHaveProperty("cost_price");
   });
 
   it("harga negatif ditolak", async () => {
@@ -61,7 +60,7 @@ describe("ProductForm", () => {
     await userEvent.type(screen.getByLabelText(/kode sku/i), "A");
     await userEvent.type(screen.getByLabelText(/^nama$/i), "A");
     await userEvent.type(screen.getByLabelText(/^satuan$/i), "PCS");
-    await userEvent.type(screen.getByLabelText(/harga jual/i), "-1");
+    await userEvent.type(screen.getByLabelText(/harga produk/i), "-1");
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
     expect(await screen.findByText(/tidak boleh negatif/i)).toBeDefined();
@@ -75,13 +74,11 @@ describe("ProductForm", () => {
       name: "KIN Yogurt 700ml",
       category: "RTD Yogurt",
       unit: "PCS",
-      cost_price: "4500.0000",
-      selling_price: null,
+      selling_price: "6000.0000",
     };
     render(<ProductForm initial={product} onSubmit={vi.fn()} />);
 
-    expect((screen.getByLabelText(/hpp/i) as HTMLInputElement).value).toBe("4500");
-    expect((screen.getByLabelText(/harga jual/i) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(/harga produk/i) as HTMLInputElement).value).toBe("6000");
 
     expect((screen.getByLabelText(/kode sku/i) as HTMLInputElement).value).toBe("KBYPL 700");
     expect((screen.getByLabelText(/^nama$/i) as HTMLInputElement).value).toBe("KIN Yogurt 700ml");

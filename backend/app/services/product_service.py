@@ -116,7 +116,6 @@ class ProductService:
                 name=name,
                 category=(row.get("category") or "").strip() or None,
                 unit=unit,
-                cost_price=num("cost_price"),
                 selling_price=num("selling_price"),
             )
         except ValidationError as exc:

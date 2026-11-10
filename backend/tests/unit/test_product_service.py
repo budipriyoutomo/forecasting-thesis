@@ -20,7 +20,6 @@ class FakeProduct:
         self.name = kw.get("name", "")
         self.category = kw.get("category")
         self.unit = kw.get("unit", "PCS")
-        self.cost_price = kw.get("cost_price")
         self.selling_price = kw.get("selling_price")
 
 
@@ -112,26 +111,28 @@ async def test_import_duplikat_dalam_file():
 
 
 @pytest.mark.asyncio
-async def test_create_produk_dengan_hpp_dan_harga_jual():
+async def test_create_produk_dengan_harga_produk():
     svc = _service()
-    p = await svc.create(
-        ProductCreate(code="A", name="A", unit="PCS", cost_price=Decimal("4500"), selling_price=Decimal("6000"))
-    )
-    assert p.cost_price == Decimal("4500")
+    p = await svc.create(ProductCreate(code="A", name="A", unit="PCS", selling_price=Decimal("6000")))
     assert p.selling_price == Decimal("6000")
+
+
+def test_schema_produk_tanpa_hpp():
+    # Satu harga saja (harga produk = selling_price); HPP/cost_price dihapus.
+    assert "cost_price" not in ProductCreate.model_fields
+    assert "cost_price" not in ProductUpdate.model_fields
 
 
 @pytest.mark.asyncio
 async def test_create_produk_tanpa_harga_tetap_valid():
     svc = _service()
     p = await svc.create(ProductCreate(code="A", name="A", unit="PCS"))
-    assert p.cost_price is None
     assert p.selling_price is None
 
 
 def test_harga_produk_negatif_ditolak_schema():
     with pytest.raises(ValidationError):
-        ProductCreate(code="A", name="A", unit="PCS", cost_price=Decimal("-1"))
+        ProductCreate(code="A", name="A", unit="PCS", selling_price=Decimal("-1"))
     with pytest.raises(ValidationError):
         ProductUpdate(selling_price=Decimal("-1"))
 
@@ -139,8 +140,7 @@ def test_harga_produk_negatif_ditolak_schema():
 @pytest.mark.asyncio
 async def test_update_harga_produk():
     svc = _service([FakeProduct(id="p1", code="A")])
-    p = await svc.update("p1", ProductUpdate(cost_price=Decimal("5000"), selling_price=Decimal("7500")))
-    assert p.cost_price == Decimal("5000")
+    p = await svc.update("p1", ProductUpdate(selling_price=Decimal("7500")))
     assert p.selling_price == Decimal("7500")
 
 
@@ -148,22 +148,34 @@ async def test_update_harga_produk():
 async def test_import_csv_kolom_harga_opsional():
     svc = _service()
     csv = (
-        b"code,name,category,unit,cost_price,selling_price\n"
-        b"A,Produk A,RTD,PCS,4500,6000\n"
-        b"B,Produk B,RTD,PCS,,\n"
+        b"code,name,category,unit,selling_price\n"
+        b"A,Produk A,RTD,PCS,6000\n"
+        b"B,Produk B,RTD,PCS,\n"
     )
     assert (await svc.import_csv(csv))["imported"] == 2
     a = await svc._repo.get_by_code("A")
     b = await svc._repo.get_by_code("B")
-    assert a.cost_price == Decimal("4500") and a.selling_price == Decimal("6000")
-    assert b.cost_price is None and b.selling_price is None
+    assert a.selling_price == Decimal("6000")
+    assert b.selling_price is None
+
+
+@pytest.mark.asyncio
+async def test_import_csv_lama_dengan_kolom_cost_price_tetap_diterima():
+    # Backward-compat: file CSV lama yang masih punya kolom cost_price tidak ditolak;
+    # kolom itu diabaikan.
+    svc = _service()
+    csv = b"code,name,unit,cost_price,selling_price\nA,A,PCS,4500,6000\n"
+    assert (await svc.import_csv(csv))["imported"] == 1
+    a = await svc._repo.get_by_code("A")
+    assert a.selling_price == Decimal("6000")
+    assert not hasattr(a, "cost_price")
 
 
 @pytest.mark.asyncio
 async def test_import_csv_harga_bukan_angka_invalid_format():
     svc = _service()
     with pytest.raises(UploadInvalidFormatError):
-        await svc.import_csv(b"code,name,unit,cost_price\nA,A,PCS,mahal\n")
+        await svc.import_csv(b"code,name,unit,selling_price\nA,A,PCS,mahal\n")
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """
 Pydantic schemas endpoint products (v3.0) — docs/ARCHITECTURE.md §4/§5.
-Fase 10: `cost_price` (HPP) & `selling_price` per unit, IDR, opsional.
+Fase 10: `selling_price` = harga produk per unit, IDR, opsional. HPP (`cost_price`) dihapus
+10 Nov 2026 — field itu di payload lama diabaikan (bukan ditolak).
 """
 from decimal import Decimal
 
@@ -12,7 +13,6 @@ class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=100)
     unit: str = Field(min_length=1, max_length=20)
-    cost_price: Decimal | None = Field(default=None, ge=0)
     selling_price: Decimal | None = Field(default=None, ge=0)
 
 
@@ -21,7 +21,6 @@ class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=100)
     unit: str | None = Field(default=None, min_length=1, max_length=20)
-    cost_price: Decimal | None = Field(default=None, ge=0)
     selling_price: Decimal | None = Field(default=None, ge=0)
 
 
@@ -33,5 +32,4 @@ class ProductResponse(BaseModel):
     name: str
     category: str | None
     unit: str
-    cost_price: Decimal | None = None
     selling_price: Decimal | None = None

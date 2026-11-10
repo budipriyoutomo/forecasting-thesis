@@ -110,7 +110,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-2.2 Import master data material via Excel/CSV.
 - FR-2.3 **[NEW]** CRUD + import master data **produk** (SKU): kode unik, nama. Kode duplikat ditolak dengan `PRODUCT_CODE_EXISTS`.
 - FR-2.4 **[NEW]** CRUD + import **BOM**: relasi produk → material dengan qty per unit produk. Referensi produk/material yang tidak ada ditolak dengan `BOM_NOT_FOUND`.
-- FR-2.5 **[NEW 2 Okt 2026]** Harga (IDR, opsional, ≥ 0): material punya **harga beli per unit** (`unit_price`); produk punya **HPP** (`cost_price`) dan **harga jual** (`selling_price`). Halaman BOM menampilkan biaya material per unit produk (Σ qty × harga material) berdampingan dengan HPP sebagai pembanding.
+- FR-2.5 **[NEW 2 Okt 2026]** Harga (IDR, opsional, ≥ 0): material punya **harga beli per unit** (`unit_price`); produk punya **satu harga: Harga produk** (`selling_price`). Halaman BOM menampilkan biaya material per unit produk (Σ qty × harga material) berdampingan dengan harga produk sebagai pembanding. *[10 Nov 2026] HPP (`cost_price`) dihapus — lihat RECONCILIATION §"Satu Harga Produk".*
 - FR-2.6 **[NEW 2 Okt 2026]** Seluruh master data dikelompokkan dalam satu menu **Master Data**: Produk, Material, BOM, Kapasitas Gudang, Template Biaya.
 - FR-2.7 **[NEW 2 Okt 2026]** **Master template biaya**: admin dapat membuat beberapa template, **tepat satu aktif**. Isi template: biaya pesan per pesanan (**S**), biaya simpan per unit per bulan (**H**, diisi manual), daftar **overhead** bulanan (listrik, dll), dan daftar **aset penyimpanan** (pallet, rak, alat handling) dengan harga beli, nilai sisa, umur ekonomis, dan jumlah. Sistem menghitung depresiasi bulanan (garis lurus) dan menampilkan **saran H** = (Σ depresiasi + Σ overhead) ÷ total kapasitas gudang (dus) sebagai referensi. Biaya pembelian material ditampilkan dari harga master material (informasi).
 
@@ -195,7 +195,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-12.6 **EOQ klasik** √(2AS/iC) per material bila harga & i (%) tersedia (i diturunkan otomatis dari biaya simpan tahunan ÷ rata-rata nilai persediaan, bisa di-override di template biaya); selain itu EOQ dinamis dengan status per item.
 - FR-12.7 **Stok ERP & kedatangan**: upload snapshot stok, input/upload estimasi kedatangan. Stok untuk reorder = snapshot terakhir (`current_stock` request jadi fallback).
 - FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan + pesanan − pemakaian (pesanan = kebijakan qty pesan FR-4.3 bila stok ≤ ROP, diasumsikan tiba di periode yang sama); utilisasi stok awal & akhir; dua skenario (forecast vs planning).
-- FR-12.9 **Evaluasi material**: fulfilment rate (β)/service level (α), stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga jual).
+- FR-12.9 **Evaluasi material**: fulfilment rate (β)/service level (α), stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga produk).
 - FR-12.10 Tombol **Jalankan perencanaan** menjalankan tahap 2→4 berurutan (`POST /forecast/runs/{id}/plan`).
 
 ## 6. Metode Forecasting yang Didukung

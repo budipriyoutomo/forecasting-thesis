@@ -784,3 +784,22 @@ dan user memilih opsi "hapus pemenang sepenuhnya".
 - `forecast_runs.ranking_metric` tetap (riwayat run lama), run baru NULL.
 - Run lama (sebelum 11.15) tetap memakai `method_used` pemenangnya; ganti metode di run lama
   tidak bisa karena deret forecast kandidat tidak tersimpan.
+
+### Fase 11.16 — Satu Harga Produk (10 Nov 2026)
+
+**Permintaan user.** Master produk tidak perlu HPP. Cukup **satu harga = "Harga produk"**.
+
+**Temuan sebelum diubah.** `products.cost_price` (HPP, Fase 10 Q2) tidak dipakai di perhitungan
+mana pun (forecast, EOQ/reorder, TIC, purchase cost, shortage cost). Satu-satunya pemakaiannya
+adalah pembanding di ringkasan biaya BOM (`BomCostSummary`). Shortage cost sudah memakai
+`selling_price`.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- Kolom yang dipertahankan = `selling_price` (nama API/DB tidak diganti). Supaya klien, CSV, dan
+  shortage cost yang sudah ada tidak berubah. Label UI menjadi **"Harga produk"**.
+- `products.cost_price` di-drop (migration `e8f9a0b1c2d3`). Nilai HPP **tidak** disalin ke
+  `selling_price` karena maknanya beda dan akan mengubah shortage cost diam-diam. Downgrade
+  menambah kolom kembali sebagai NULL.
+- Backward-compat: `cost_price` di payload API atau kolom CSV lama **diabaikan**, tidak ditolak.
+- Ringkasan biaya BOM: "Harga produk − biaya material" menggantikan "HPP − biaya material".
+- Mengubah Q2 Fase 10 (§"Konsolidasi Master Data"): produk sekarang hanya punya `selling_price`.

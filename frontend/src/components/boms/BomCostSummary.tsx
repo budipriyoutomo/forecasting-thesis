@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils";
 import type { Bom } from "@/types/bom";
 import type { Product } from "@/types/product";
 
-// Biaya material per unit produk (Σ qty × harga material) dibanding HPP (Fase 10).
-// Hanya pembanding — HPP tetap isian master produk, tidak ditimpa angka ini.
+// Biaya material per unit produk (Σ qty × harga material) dibanding harga produk (Fase 10).
+// Hanya pembanding — harga produk tetap isian master produk, tidak ditimpa angka ini.
 export function BomCostSummary({ boms, products }: { boms: Bom[]; products: Product[] }) {
   const rows = useMemo(() => summarizeBomCosts(boms, products), [boms, products]);
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
@@ -35,8 +35,8 @@ export function BomCostSummary({ boms, products }: { boms: Bom[]; products: Prod
             <TableRow>
               <TableHead>Produk</TableHead>
               <TableHead className="text-right">Biaya material</TableHead>
-              <TableHead className="text-right">HPP</TableHead>
-              <TableHead className="text-right">HPP − biaya material</TableHead>
+              <TableHead className="text-right">Harga produk</TableHead>
+              <TableHead className="text-right">Harga produk − biaya material</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -56,15 +56,15 @@ export function BomCostSummary({ boms, products }: { boms: Bom[]; products: Prod
                     {formatMoney(r.material_cost, 2)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(r.cost_price, 2)}
+                    {formatMoney(r.product_price, 2)}
                   </TableCell>
                   <TableCell
                     className={cn(
                       "text-right tabular-nums",
-                      r.margin_vs_hpp !== null && r.margin_vs_hpp < 0 && "text-destructive",
+                      r.margin !== null && r.margin < 0 && "text-destructive",
                     )}
                   >
-                    {formatMoney(r.margin_vs_hpp, 2)}
+                    {formatMoney(r.margin, 2)}
                   </TableCell>
                 </TableRow>
               );

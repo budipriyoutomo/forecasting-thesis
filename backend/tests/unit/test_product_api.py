@@ -120,11 +120,12 @@ async def test_import_products_admin(client):
 @pytest.mark.asyncio
 async def test_create_product_dengan_harga_201(client):
     _override([])
+    # cost_price (HPP) sudah dihapus — klien lama yang masih mengirimnya tidak ditolak, diabaikan.
     body = {"code": "A", "name": "A", "unit": "PCS", "cost_price": 4500, "selling_price": 6000}
     res = await client.post("/api/v1/products", headers=_headers("admin"), json=body)
     assert res.status_code == 201
     data = res.json()["data"]
-    assert float(data["cost_price"]) == 4500
+    assert "cost_price" not in data
     assert float(data["selling_price"]) == 6000
 
 
@@ -133,7 +134,7 @@ async def test_list_product_harga_null_bila_kosong(client):
     _override([FakeProduct(id="p1", code="A", name="A", unit="PCS")])
     res = await client.get("/api/v1/products", headers=_headers("viewer"))
     item = res.json()["data"][0]
-    assert item["cost_price"] is None
+    assert "cost_price" not in item
     assert item["selling_price"] is None
 
 

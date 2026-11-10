@@ -5,16 +5,16 @@ export interface ProductBomCost {
   product_id: string;
   /** Σ line_cost baris BOM yang materialnya punya harga (Rp per unit produk). */
   material_cost: number;
-  /** HPP produk, null bila belum diisi. */
-  cost_price: number | null;
-  /** HPP − biaya material; null bila HPP kosong. */
-  margin_vs_hpp: number | null;
+  /** Harga produk (`selling_price`), null bila belum diisi. */
+  product_price: number | null;
+  /** Harga produk − biaya material; null bila harga produk kosong. */
+  margin: number | null;
   /** Jumlah baris BOM yang materialnya belum punya harga — total jadi belum lengkap. */
   n_without_price: number;
 }
 
 // Ringkasan biaya material per unit produk dari baris BOM (Fase 10). Dihitung di
-// klien dari `line_cost` backend — tidak dipersist, tidak menimpa HPP.
+// klien dari `line_cost` backend — tidak dipersist, tidak menimpa harga produk.
 export function summarizeBomCosts(boms: Bom[], products: Product[]): ProductBomCost[] {
   const byProduct = new Map<string, { cost: number; missing: number }>();
   for (const b of boms) {
@@ -27,13 +27,13 @@ export function summarizeBomCosts(boms: Bom[], products: Product[]): ProductBomC
   const productById = new Map(products.map((p) => [p.id, p]));
   return [...byProduct.entries()]
     .map(([product_id, { cost, missing }]) => {
-      const raw = productById.get(product_id)?.cost_price;
-      const cost_price = raw == null ? null : Number(raw);
+      const raw = productById.get(product_id)?.selling_price;
+      const product_price = raw == null ? null : Number(raw);
       return {
         product_id,
         material_cost: cost,
-        cost_price,
-        margin_vs_hpp: cost_price === null ? null : cost_price - cost,
+        product_price,
+        margin: product_price === null ? null : product_price - cost,
         n_without_price: missing,
       };
     })

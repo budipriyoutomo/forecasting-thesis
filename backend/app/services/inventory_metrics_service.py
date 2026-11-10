@@ -21,7 +21,7 @@ Pengaturan Forecast, JANGAN ganti definisi diam-diam (TODO-v3 Fase 11.10).
 
 Fase 11.7 (REVISI_V2 §3.9): scope MATERIAL dari proyeksi stok (tahap 4 thesis) —
 fulfillment/service level, stockout rate, turnover, inventory days, shortage cost.
-Shortage cost = qty produk tak terpenuhi × harga jual. Kekurangan material bersama
+Shortage cost = qty produk tak terpenuhi × harga produk (`selling_price`). Kekurangan material bersama
 (mis. Bottle untuk 6 SKU) dialokasikan ke produk proporsional porsi kebutuhannya
 sepanjang horizon, lalu dibagi qty BOM → unit produk (asumsi dicatat di thesis).
 """
@@ -55,7 +55,7 @@ def inventory_days(avg_inventory: float, avg_daily_usage: float) -> float | None
 
 
 def shortage_cost(units_by_product: dict, selling_price: dict) -> float:
-    """Σ qty produk tak terpenuhi × harga jual; produk tanpa harga jual dilewati."""
+    """Σ qty produk tak terpenuhi × harga produk; produk tanpa harga dilewati."""
     return sum(
         float(units) * float(selling_price[pid])
         for pid, units in units_by_product.items()

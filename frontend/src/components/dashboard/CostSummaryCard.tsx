@@ -50,7 +50,7 @@ export function CostSummaryCard({ summary }: { summary: CostSummary }) {
             label="Biaya kekurangan ForecastIQ"
             value={formatMoney(summary.shortage_cost)}
             tone={Number(summary.shortage_cost) > 0 ? "urgent" : "default"}
-            hint="Qty produk tak terpenuhi × harga jual"
+            hint="Qty produk tak terpenuhi × harga produk"
           />
           <StatTile
             label="Biaya kekurangan existing"

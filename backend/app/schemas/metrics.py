@@ -33,4 +33,4 @@ class InventoryMetricOut(BaseModel):
     stock_out_rate: Decimal
     inventory_turnover: Decimal
     inventory_days: Decimal | None = None  # Fase 11.7 — turnover dalam hari (thesis)
-    shortage_cost: Decimal | None = None  # Fase 11.7 — qty tak terpenuhi × harga jual
+    shortage_cost: Decimal | None = None  # Fase 11.7 — qty tak terpenuhi × harga produk (selling_price)

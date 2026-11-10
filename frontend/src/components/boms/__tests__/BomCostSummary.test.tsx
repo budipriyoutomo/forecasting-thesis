@@ -6,11 +6,11 @@ import type { Bom } from "@/types/bom";
 import type { Product } from "@/types/product";
 
 const products: Product[] = [
-  { id: "p1", code: "KBYPL 200", name: "KIN Yogurt", category: null, unit: "PCS", cost_price: "4500" },
+  { id: "p1", code: "KBYPL 200", name: "KIN Yogurt", category: null, unit: "PCS", selling_price: "4500" },
 ];
 
 describe("BomCostSummary", () => {
-  it("menampilkan total biaya material, HPP, dan selisih per produk", () => {
+  it("menampilkan total biaya material, harga produk, dan selisih per produk", () => {
     const boms: Bom[] = [
       { id: "b1", product_id: "p1", material_id: "m1", qty_per_unit: "1", line_cost: "1500" },
       { id: "b2", product_id: "p1", material_id: "m2", qty_per_unit: "1", line_cost: "1000" },
@@ -21,6 +21,8 @@ describe("BomCostSummary", () => {
     expect(screen.getByText("Rp 2.500")).toBeDefined();
     expect(screen.getByText("Rp 4.500")).toBeDefined();
     expect(screen.getByText("Rp 2.000")).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: "Harga produk" })).toBeDefined();
+    expect(screen.queryByText(/hpp/i)).toBeNull();
   });
 
   it("memberi peringatan bila ada material tanpa harga", () => {

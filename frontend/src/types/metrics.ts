@@ -30,5 +30,5 @@ export interface InventoryMetric {
   stock_out_rate: string;
   inventory_turnover: string;
   inventory_days?: string | null; // Fase 11.7 — rata-rata persediaan ÷ pemakaian per hari
-  shortage_cost?: string | null; // qty tak terpenuhi × harga jual (Rp)
+  shortage_cost?: string | null; // qty tak terpenuhi × harga produk (Rp)
 }

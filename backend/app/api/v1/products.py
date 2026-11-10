@@ -22,7 +22,6 @@ def _to_response(product) -> dict:
             "name": product.name,
             "category": product.category,
             "unit": product.unit,
-            "cost_price": getattr(product, "cost_price", None),
             "selling_price": getattr(product, "selling_price", None),
         }
     ).model_dump(mode="json")
