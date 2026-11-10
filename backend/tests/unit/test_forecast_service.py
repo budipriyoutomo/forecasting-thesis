@@ -1,5 +1,5 @@
 """
-Test orkestrasi forecast_service v3.0 — Comparative Selection vs manual
+Test orkestrasi forecast_service — mode otomatis (semua metode, tanpa pemenang, Fase 11.15) vs manual
 (AGENTS.md §5, docs/ARCHITECTURE.md §6.1). Tidak ada lagi klasifikasi kuadran.
 """
 import pytest
@@ -10,27 +10,44 @@ from app.utils.exceptions import UnsupportedForecastMethodError
 _ACTIVE = {"moving_average", "exponential_smoothing", "random_forest", "xgboost"}
 
 
-def test_auto_mode_membandingkan_semua_metode(smooth_df):
-    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None, ranking_metric="mape")
+def test_auto_mode_menjalankan_semua_metode_tanpa_pemenang(smooth_df):
+    """Fase 11.15: mode otomatis TIDAK memilih metode — planner yang memilih per produk."""
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
 
     assert record.status == "COMPLETED"
     assert record.selection_mode == "auto"
-    assert record.method_used in _ACTIVE  # lstm auto-excluded (TF absen)
-    assert len(record.forecast) == 7
-    # candidates_evaluated menyimpan SEMUA kandidat yang berhasil (transparansi)
-    methods = {c["method"] for c in record.candidates_evaluated}
-    assert methods == _ACTIVE
-    # pemenang = MAPE terendah (metrik ranking eksplisit)
-    best = min(record.candidates_evaluated, key=lambda c: c["mape"])
-    assert record.method_used == best["method"]
+    assert record.method_used is None
+    assert record.forecast is None
+    assert record.mad is None and record.mape is None
+    # candidates_evaluated menyimpan SEMUA kandidat yang berhasil (lstm auto-excluded, TF absen)
+    assert {c["method"] for c in record.candidates_evaluated} == _ACTIVE
 
 
-def test_auto_mode_metrik_pemenang_terisi(erratic_df):
-    record = run_forecast_for_product(erratic_df, horizon=5)
-    assert record.status == "COMPLETED"
-    for m in (record.mad, record.mfe, record.mse, record.mape):
-        assert m is not None
-    assert record.mase is not None  # COMPUTE_MASE default true
+def test_auto_mode_kandidat_membawa_deret_forecast_dan_penjelasan(smooth_df):
+    """Deret forecast tiap kandidat disimpan supaya planner bisa memilih metode setelah run."""
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    for c in record.candidates_evaluated:
+        assert len(c["forecast"]) == 7
+        assert {"date", "value", "lower", "upper"} <= set(c["forecast"][0])
+        assert "interpretasi mape" in c["explanation"].lower()
+        for key in ("mad", "mfe", "mse", "mape"):
+            assert c[key] is not None
+
+
+def test_auto_mode_tanpa_peringkat(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    for c in record.candidates_evaluated:
+        assert not any(k.startswith("rank_") for k in c)
+
+
+def test_auto_mode_explanation_meminta_planner_memilih(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    exp = record.explanation.lower()
+    assert "pilih" in exp
+    assert "menang" not in exp and "terbaik" not in exp
 
 
 def test_manual_mode_memaksa_metode(smooth_df):
@@ -65,22 +82,6 @@ def test_insufficient_data_status(too_short_df):
     assert record.status == "INSUFFICIENT_DATA"
 
 
-def test_auto_mode_explanation_menyebut_dasar_perbandingan(smooth_df):
-    """Mode otomatis harus menjelaskan MENGAPA pemenang menang, bukan cuma
-    menyalin penjelasan engine — `candidates_evaluated` disimpan justru untuk
-    transparansi ini (docs/ARCHITECTURE.md §4 kolom candidates_evaluated)."""
-    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None, ranking_metric="mape")
-
-    assert record.explanation
-    exp = record.explanation.lower()
-    assert record.method_used in exp  # pemenang disebut
-    assert "mape" in exp  # metrik ranking yang dipakai
-    assert str(len(record.candidates_evaluated)) in exp  # berapa metode dibandingkan
-    # runner-up disebut agar planner tahu selisihnya tipis atau jauh
-    runner_up = sorted(record.candidates_evaluated, key=lambda c: c["mape"])[1]
-    assert runner_up["method"] in exp
-
-
 def test_manual_mode_explanation_tidak_mengaku_membandingkan(smooth_df):
     """Mode manual tidak membandingkan apa pun — jangan tempel narasi perbandingan."""
     record = run_forecast_for_product(smooth_df, horizon=7, requested_method="moving_average")
@@ -89,36 +90,11 @@ def test_manual_mode_explanation_tidak_mengaku_membandingkan(smooth_df):
     assert "dibandingkan" not in record.explanation.lower()
 
 
-# ── Metrik ranking dari master data + 3 kolom peringkat (Fase 11.2a, Keputusan #6) ──
-
-
-def test_auto_mode_default_ranking_mad(smooth_df):
-    record = run_forecast_for_product(smooth_df, horizon=7)
-
-    best = min(record.candidates_evaluated, key=lambda c: c["mad"])
-    assert record.method_used == best["method"]
-    assert "mad" in record.explanation.lower()
-
-
-@pytest.mark.parametrize("metric,key", [("mad", "rank_mad"), ("mape", "rank_mape"), ("mfe_abs", "rank_mfe")])
-def test_auto_mode_pemenang_peringkat_1_di_kolom_metrik_aktif(smooth_df, metric, key):
-    record = run_forecast_for_product(smooth_df, horizon=7, ranking_metric=metric)
-
-    winner = next(c for c in record.candidates_evaluated if c["method"] == record.method_used)
-    assert winner[key] == 1
-
-
-def test_auto_mode_kandidat_punya_tiga_kolom_peringkat(smooth_df):
-    record = run_forecast_for_product(smooth_df, horizon=7)
-
-    for c in record.candidates_evaluated:
-        assert {"rank_mad", "rank_mfe", "rank_mape"} <= set(c)
-
-
-def test_manual_mode_tanpa_peringkat(smooth_df):
+def test_manual_mode_kandidat_membawa_deret_forecast(smooth_df):
     record = run_forecast_for_product(smooth_df, horizon=7, requested_method="moving_average")
 
-    assert "rank_mad" not in record.candidates_evaluated[0]  # tak ada yang dibandingkan
+    assert len(record.candidates_evaluated[0]["forecast"]) == 7
+    assert len(record.forecast) == 7
 
 
 # ── Metode aktif dari master data (Fase 11.2a) ──
@@ -176,5 +152,7 @@ def test_kandidat_otomatis_membawa_feature_importance():
 
 
 def test_explanation_menyertakan_interpretasi_mape():
-    record = run_forecast_for_product(_monthly([10 + (i % 4) for i in range(20)]), horizon=3)
+    record = run_forecast_for_product(
+        _monthly([10 + (i % 4) for i in range(20)]), horizon=3, requested_method="moving_average"
+    )
     assert "interpretasi mape" in record.explanation.lower()

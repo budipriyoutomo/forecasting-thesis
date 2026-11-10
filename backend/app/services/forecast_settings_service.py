@@ -1,9 +1,11 @@
 """
 ForecastSettingsService (Fase 11.2a, 29 Oktober 2026) — master data Pengaturan Forecast.
 
-Metrik ranking pemenang Comparative Selection dibaca dari sini, BUKAN env
-(Keputusan #6, docs/REVISI_V2.md §6.1). Belum ada baris → default `mad`, tidak
-dipersist sampai admin menyimpan. Validasi nilai di schema (Literal) + CHECK DB.
+Pengaturan dibaca dari sini, BUKAN env (Keputusan #6, docs/REVISI_V2.md §6.1). Belum ada
+baris → default, tidak dipersist sampai admin menyimpan. Validasi nilai di schema (Literal).
+
+Fase 11.15: `display_metrics` = metrik yang ditampilkan di hasil forecast (checkbox). Tidak
+ada lagi metrik penentu pemenang — planner memilih metode per produk.
 
 Daftar metode aktif (`enabled_methods`, pengganti env FORECAST_ENGINES_ENABLED): None =
 seluruh metode di registry. Nama di luar registry → UNSUPPORTED_FORECAST_METHOD.
@@ -18,14 +20,13 @@ Argumen `update` yang None = nilai lama dipertahankan.
 from collections.abc import Callable
 from types import SimpleNamespace
 
-from app.models.forecast_setting import ForecastSetting
+from app.models.forecast_setting import DISPLAY_METRICS, ForecastSetting
 from app.services.forecasting import registry
-from app.services.forecasting.forecast_service import DEFAULT_RANKING_METRIC
 from app.services.forecasting.types import THESIS_ALPHA_GRID, EngineOptions
 from app.utils.exceptions import UnsupportedForecastMethodError
 
 _DEFAULTS = {
-    "ranking_metric": DEFAULT_RANKING_METRIC,
+    "display_metrics": list(DISPLAY_METRICS),
     "enabled_methods": None,
     "es_alpha_grid": None,
     "es_alpha_metric": "mad",
@@ -49,8 +50,8 @@ class ForecastSettingsService:
             return row
         return SimpleNamespace(**_DEFAULTS, updated_by=None, updated_at=None)
 
-    async def ranking_metric(self) -> str:
-        return (await self.get()).ranking_metric
+    async def display_metrics(self) -> list[str]:
+        return list((await self.get()).display_metrics or DISPLAY_METRICS)
 
     async def enabled_methods(self) -> set[str]:
         return registry.get_enabled_methods((await self.get()).enabled_methods)
@@ -78,8 +79,8 @@ class ForecastSettingsService:
 
     async def update(
         self,
-        ranking_metric: str,
         user_id: str,
+        display_metrics: list[str] | None = None,
         enabled_methods: list[str] | None = None,
         es_alpha_grid: list[float] | None = None,
         es_alpha_metric: str | None = None,
@@ -100,8 +101,10 @@ class ForecastSettingsService:
         row = await self._repo.get()
         if row is None:
             row = self._factory(id=1, **_DEFAULTS)
-        row.ranking_metric = ranking_metric
         changes = {
+            "display_metrics": [m for m in DISPLAY_METRICS if m in set(display_metrics)]
+            if display_metrics is not None
+            else None,
             "enabled_methods": methods,
             "es_alpha_grid": sorted({float(a) for a in es_alpha_grid}) if es_alpha_grid is not None else None,
             "es_alpha_metric": es_alpha_metric,

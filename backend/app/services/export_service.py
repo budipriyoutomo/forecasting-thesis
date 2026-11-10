@@ -29,7 +29,11 @@ def build_forecast_xlsx(results) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Forecast"
-    ws.append(["product_id", "status", "method_used", "selection_mode", "mape", "mase", "explanation"])
+    # Fase 11.15 — method_used = metode berlaku (pilihan planner); selection_status menandai
+    # hasil otomatis yang metodenya belum dipilih (PENDING_SELECTION).
+    ws.append(
+        ["product_id", "status", "method_used", "selection_mode", "selection_status", "mape", "mase", "explanation"]
+    )
     for r in results:
         ws.append(
             [
@@ -37,6 +41,7 @@ def build_forecast_xlsx(results) -> bytes:
                 r.status,
                 r.method_used,
                 r.selection_mode,
+                getattr(r, "selection_status", None),
                 _num(r.mape),
                 _num(r.mase),
                 r.explanation,

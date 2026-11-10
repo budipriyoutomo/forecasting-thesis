@@ -4,7 +4,10 @@ Keputusan #6, RECONCILIATION §"Rekonsiliasi v3.2".
 
 `forecast_settings`: SATU baris global (id = 1, dijaga CHECK). Menyimpan pengaturan
 metode forecast sebagai master data — bukan env — supaya admin bisa mengubahnya dari
-UI. Belum ada baris → default di kode (`ranking_metric = mad`, seluruh metode aktif).
+UI. Belum ada baris → default di kode (semua metrik tampil, seluruh metode aktif).
+
+Fase 11.15 (10 Nov 2026): `ranking_metric` (metrik penentu pemenang) dihapus — sistem tidak
+lagi memilih pemenang. `display_metrics` = metrik yang DITAMPILKAN di hasil forecast.
 """
 import uuid
 from datetime import datetime
@@ -15,18 +18,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-RANKING_METRICS = ("mad", "mfe_abs", "mape")
+DISPLAY_METRICS = ("mad", "mfe", "mse", "mape")  # urutan baku tampilan
 
 
 class ForecastSetting(Base):
     __tablename__ = "forecast_settings"
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_forecast_settings_singleton"),
-        CheckConstraint("ranking_metric IN ('mad', 'mfe_abs', 'mape')", name="ck_forecast_settings_ranking_metric"),
     )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
-    ranking_metric: Mapped[str] = mapped_column(String(10), nullable=False, default="mad")
+    # Fase 11.15 — checkbox metrik yang tampil di hasil forecast. NULL = semua (DISPLAY_METRICS).
+    display_metrics: Mapped[list[str] | None] = mapped_column(ARRAY(String(10)), nullable=True)
     # Metode aktif Comparative Selection (pengganti env FORECAST_ENGINES_ENABLED).
     # NULL = belum diatur → seluruh metode di MODEL_REGISTRY.
     enabled_methods: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)

@@ -30,7 +30,7 @@ async def test_get_baris_singleton_id_1():
 @pytest.mark.asyncio
 async def test_save_add_flush_refresh():
     session = _session()
-    row = ForecastSetting(id=1, ranking_metric="mape")
+    row = ForecastSetting(id=1, display_metrics=["mape"])
 
     assert await SqlForecastSettingsRepository(session).save(row) is row
     session.add.assert_called_once_with(row)

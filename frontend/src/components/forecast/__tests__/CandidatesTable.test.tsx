@@ -1,107 +1,96 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CandidatesTable } from "@/components/forecast/CandidatesTable";
 import type { ForecastCandidate } from "@/types/forecast";
 
+const POINT = [{ date: "2026-09-01", value: 100, lower: 90, upper: 110 }];
+
 const candidates: ForecastCandidate[] = [
-  { method: "moving_average", mad: 12.5, mfe: -2.1, mse: 240.4, mape: 11.42, mase: 0.98 },
-  { method: "xgboost", mad: 8.2, mfe: 0.4, mse: 120.9, mape: 8.2, mase: 0.71 },
-  { method: "random_forest", mad: 9.9, mfe: 1.2, mse: 160.2, mape: 9.75, mase: null },
+  { method: "moving_average", mad: 12.5, mfe: -2.1, mse: 240.4, mape: 11.42, mase: 0.98, forecast: POINT },
+  { method: "xgboost", mad: 8.2, mfe: 0.4, mse: 120.9, mape: 8.2, mase: 0.71, forecast: POINT },
+  { method: "random_forest", mad: 9.9, mfe: 1.2, mse: 160.2, mape: 9.75, mase: null, forecast: POINT },
 ];
 
-// Perbandingan sekarang dibungkus Collapsible: isinya baru dipasang ke DOM setelah
-// dibuka, tidak seperti <details> yang selalu merender isinya.
-async function bukaPerbandingan() {
-  await userEvent.click(screen.getByRole("button", { name: /dasar perbandingan/i }));
+const ALL = ["mad", "mfe", "mse", "mape"] as const;
+
+async function buka() {
+  await userEvent.click(screen.getByRole("button", { name: /perbandingan metode/i }));
 }
 
-describe("CandidatesTable", () => {
-  it("menyembunyikan detail sampai dibuka", () => {
-    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
+describe("CandidatesTable (Fase 11.15 — tanpa pemenang)", () => {
+  it("menyembunyikan detail sampai dibuka bila metode sudah dipilih", () => {
+    render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={[...ALL]} />);
 
-    expect(screen.getByRole("button", { name: /dasar perbandingan \(3 metode diuji\)/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /perbandingan metode \(3 metode\)/i })).toBeDefined();
     expect(screen.queryByText("moving_average")).toBeNull();
   });
 
-  it("menampilkan seluruh metode yang dibandingkan beserta metriknya", async () => {
-    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
-    await bukaPerbandingan();
+  it("langsung terbuka bila metode belum dipilih", () => {
+    render(
+      <CandidatesTable candidates={candidates} selectedMethod={null} displayMetrics={[...ALL]} onSelect={vi.fn()} />,
+    );
 
     expect(screen.getByText("moving_average")).toBeDefined();
-    expect(screen.getByText("xgboost")).toBeDefined();
-    expect(screen.getByText("random_forest")).toBeDefined();
-    expect(screen.getByText("8.20%")).toBeDefined(); // MAPE pemenang
   });
 
-  it("mengurutkan dari metrik ranking terbaik dan menandai pemenang", async () => {
-    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
-    await bukaPerbandingan();
+  it("hanya kolom metrik yang dicentang, tanpa kolom rank", async () => {
+    render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={["mad", "mape"]} />);
+    await buka();
 
-    const rows = screen.getAllByRole("row").slice(1); // buang header
-    expect(rows[0].textContent).toContain("xgboost"); // MAPE terendah di atas
-    expect(rows[0].textContent).toMatch(/terpilih/i);
-    expect(rows[1].textContent).toContain("random_forest");
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual(["Metode", "MAD", "MAPE"]);
+    expect(screen.queryByText(/rank/i)).toBeNull();
+    expect(screen.getByText("11.42%")).toBeDefined();
+    expect(screen.queryByText("240.40")).toBeNull(); // MSE tidak dicentang
   });
 
-  it("menampilkan strip untuk metrik yang tak terdefinisi", async () => {
-    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mape" />);
-    await bukaPerbandingan();
+  it("MFE ditampilkan bertanda (arah bias)", async () => {
+    render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={["mfe"]} />);
+    await buka();
 
-    expect(screen.queryByText(/null|NaN/)).toBeNull();
+    expect(screen.getByText("-2.10")).toBeDefined();
   });
 
-  it("tidak merender apa pun bila hanya satu kandidat (tak ada yang dibandingkan)", () => {
-    const { container } = render(
-      <CandidatesTable candidates={[candidates[1]]} winner="xgboost" rankingMetric="mape" />,
-    );
-
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("menampilkan 3 kolom peringkat MAD, |MFE|, MAPE sebagai acuan", async () => {
-    render(<CandidatesTable candidates={ranked} winner="xgboost" rankingMetric="mad" />);
-    await bukaPerbandingan();
-
-    expect(screen.getByRole("columnheader", { name: /rank mad/i })).toBeDefined();
-    expect(screen.getByRole("columnheader", { name: /rank \|mfe\|/i })).toBeDefined();
-    expect(screen.getByRole("columnheader", { name: /rank mape/i })).toBeDefined();
-    const ma = screen.getAllByRole("row").find((r) => r.textContent?.includes("moving_average"));
-    expect(ma?.textContent).toContain("#3"); // rank MAD & MAPE moving_average
-    expect(ma?.textContent).toContain("#2"); // rank |MFE| moving_average
-  });
-
-  it("mengurutkan & menandai kolom peringkat sesuai metrik ranking aktif", async () => {
-    render(<CandidatesTable candidates={ranked} winner="random_forest" rankingMetric="mfe_abs" />);
-    await bukaPerbandingan();
+  it("urutan kandidat tidak diurutkan menurut metrik (tidak ada penilaian)", async () => {
+    render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={[...ALL]} />);
+    await buka();
 
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows[0].textContent).toContain("random_forest"); // |MFE| terkecil
-    const header = screen.getByRole("columnheader", { name: /rank \|mfe\|/i });
-    expect(header.getAttribute("aria-sort")).toBe("ascending");
-    expect(screen.getByText(/pemenang ditentukan oleh \|mfe\|/i)).toBeDefined();
+    expect(rows.map((r) => within(r).getAllByRole("cell")[0].textContent)).toEqual([
+      "moving_average",
+      "xgboostdipakai",
+      "random_forest",
+    ]);
   });
 
-  it("default metrik ranking MAD", async () => {
-    render(<CandidatesTable candidates={ranked} winner="xgboost" />);
-    await bukaPerbandingan();
-
-    expect(screen.getByRole("columnheader", { name: /rank mad/i }).getAttribute("aria-sort")).toBe(
-      "ascending",
+  it("tombol Pilih memanggil onSelect dengan metodenya", async () => {
+    const onSelect = vi.fn();
+    render(
+      <CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={[...ALL]} onSelect={onSelect} />,
     );
+    await buka();
+
+    expect(screen.queryByRole("button", { name: /pilih xgboost/i })).toBeNull(); // sudah dipakai
+    await userEvent.click(screen.getByRole("button", { name: /pilih random_forest/i }));
+
+    expect(onSelect).toHaveBeenCalledWith("random_forest");
   });
 
-  it("run lama tanpa kolom peringkat menampilkan strip", async () => {
-    render(<CandidatesTable candidates={candidates} winner="xgboost" rankingMetric="mad" />);
-    await bukaPerbandingan();
+  it("kandidat tanpa deret forecast (run lama) tidak bisa dipilih", async () => {
+    const old = candidates.map(({ forecast: _f, ...c }) => c);
+    render(<CandidatesTable candidates={old} selectedMethod="xgboost" displayMetrics={[...ALL]} onSelect={vi.fn()} />);
+    await buka();
 
-    expect(screen.queryByText(/#\d/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^pilih /i })).toBeNull();
+  });
+
+  it("mode manual (satu kandidat, tanpa onSelect) tidak menampilkan tabel", () => {
+    const { container } = render(
+      <CandidatesTable candidates={[candidates[0]]} selectedMethod="moving_average" displayMetrics={[...ALL]} />,
+    );
+
+    expect(container.innerHTML).toBe("");
   });
 });
-
-const ranked: ForecastCandidate[] = [
-  { ...candidates[0], rank_mad: 3, rank_mfe: 2, rank_mape: 3 },
-  { ...candidates[1], mfe: 4.0, rank_mad: 1, rank_mfe: 3, rank_mape: 1 },
-  { ...candidates[2], rank_mad: 2, rank_mfe: 1, rank_mape: 2 },
-];

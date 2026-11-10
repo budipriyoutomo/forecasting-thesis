@@ -9,6 +9,7 @@ import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
 import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
+import { MethodSelectionDialog } from "@/components/forecast/MethodSelectionDialog";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
 import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
@@ -22,7 +23,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
 import { useExport } from "@/hooks/useExport";
-import { useCreateForecastRun } from "@/hooks/useForecast";
+import {
+  useCreateForecastRun,
+  useForecastRun,
+  useSelectForecastMethod,
+  useSelectForecastMethodForRun,
+} from "@/hooks/useForecast";
+import { useForecastSettings } from "@/hooks/useForecastSettings";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
 import { useProducts } from "@/hooks/useProducts";
@@ -39,6 +46,31 @@ export default function ForecastConfigPage() {
   const warehouse = useWarehouseValidation();
   const exporter = useExport();
   const runId = run.data?.run.run_id;
+  // Fase 11.15 — hasil dengan metode pilihan planner; diperbarui setiap kali planner memilih.
+  const runView = useForecastRun(runId ?? null, run.data);
+  const runData = runView.data ?? run.data;
+  const nPendingSelection = runData?.run.n_pending_selection ?? 0;
+  const { data: forecastSettings } = useForecastSettings();
+  const selectMethod = useSelectForecastMethod(runId ?? null);
+  const selectAll = useSelectForecastMethodForRun(runId ?? null);
+  const [choosing, setChoosing] = useState<{ resultId: string | null; method: string; label: string } | null>(
+    null,
+  );
+  const selecting = choosing?.resultId ? selectMethod : selectAll;
+  const closeChoosing = () => {
+    setChoosing(null);
+    selectMethod.reset();
+    selectAll.reset();
+  };
+  const onChooseReason = (reason: string) => {
+    if (!choosing) return;
+    const done = { onSuccess: closeChoosing };
+    if (choosing.resultId) {
+      selectMethod.mutate({ resultId: choosing.resultId, method: choosing.method, reason }, done);
+    } else {
+      selectAll.mutate({ method: choosing.method, reason }, done);
+    }
+  };
 
   // Fase 11.8: pipeline tahap 2→4 (reorder → proyeksi stok → evaluasi → biaya) sekali klik.
   const planning = useRunPlanning();
@@ -157,7 +189,20 @@ export default function ForecastConfigPage() {
                 Export forecast (Excel)
               </Button>
             </div>
-            <ForecastResults data={run.data} products={products ?? []} />
+            <ForecastResults
+              data={runData ?? run.data}
+              products={products ?? []}
+              displayMetrics={forecastSettings?.display_metrics}
+              onSelectMethod={(result, method) => {
+                const product = products?.find((p) => p.id === result.product_id);
+                setChoosing({
+                  resultId: result.id,
+                  method,
+                  label: product ? `${product.code} — ${product.name}` : result.product_id,
+                });
+              }}
+              onSelectAll={(method) => setChoosing({ resultId: null, method, label: "semua produk di run ini" })}
+            />
           </section>
 
           <section className="flex flex-col gap-3">
@@ -173,6 +218,12 @@ export default function ForecastConfigPage() {
                 {planning.isPending ? "Menjalankan…" : "Jalankan perencanaan"}
               </Button>
             </div>
+            {nPendingSelection > 0 && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                {nPendingSelection} produk belum dipilih metodenya dan akan dilewati. Pilih metode di
+                bagian Hasil, lalu jalankan perencanaan lagi.
+              </p>
+            )}
             <FormError message={planning.isError ? planning.error.message : null} />
             {planning.data && <PlanningSummaryCard summary={planning.data} />}
             {projection.data && projection.data.length > 0 && (
@@ -296,6 +347,13 @@ export default function ForecastConfigPage() {
           )}
         </>
       )}
+      <MethodSelectionDialog
+        target={choosing}
+        onSubmit={onChooseReason}
+        onClose={closeChoosing}
+        pending={selecting.isPending}
+        error={selecting.error?.message ?? null}
+      />
       <ReorderOverrideDialog
         runId={runId ?? null}
         recommendation={overriding?.rec ?? null}

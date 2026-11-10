@@ -1,8 +1,8 @@
 """
 Fase 11.2a — master data Pengaturan Forecast (Keputusan #6, docs/REVISI_V2.md §6.1).
 
-Satu baris global (singleton). Metrik ranking pemenang dibaca dari sini, BUKAN env.
-Belum ada baris → default `mad` (tidak dipersist sampai admin menyimpan).
+Satu baris global (singleton), BUKAN env. Fase 11.15: `display_metrics` (checkbox metrik
+yang tampil di hasil, tanpa pemenang). Belum ada baris → default (tidak dipersist).
 """
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -35,6 +35,7 @@ def _factory(**kw):
     return SimpleNamespace(
         **{
             "id": 1,
+            "display_metrics": None,
             "enabled_methods": None,
             "es_alpha_grid": None,
             "es_alpha_metric": "mad",
@@ -52,49 +53,61 @@ def _factory(**kw):
 
 
 @pytest.mark.asyncio
-async def test_get_tanpa_baris_default_mad():
+async def test_get_tanpa_baris_default_semua_metrik_tampil():
     repo = FakeSettingsRepo()
     s = await ForecastSettingsService(repo, factory=_factory).get()
 
-    assert s.ranking_metric == "mad"
+    assert s.display_metrics == ["mad", "mfe", "mse", "mape"]
     assert s.updated_at is None
     assert repo.saved == 0  # default tidak dipersist
 
 
 @pytest.mark.asyncio
 async def test_get_baris_tersimpan():
-    repo = FakeSettingsRepo(_factory(ranking_metric="mape"))
+    repo = FakeSettingsRepo(_factory(display_metrics=["mape"]))
     s = await ForecastSettingsService(repo, factory=_factory).get()
 
-    assert s.ranking_metric == "mape"
+    assert s.display_metrics == ["mape"]
 
 
 @pytest.mark.asyncio
 async def test_update_membuat_baris_pertama():
     repo = FakeSettingsRepo()
-    s = await ForecastSettingsService(repo, factory=_factory).update(ranking_metric="mfe_abs", user_id=ADMIN)
+    s = await ForecastSettingsService(repo, factory=_factory).update(user_id=ADMIN, display_metrics=["mad"])
 
-    assert s.ranking_metric == "mfe_abs"
+    assert s.display_metrics == ["mad"]
     assert str(s.updated_by) == ADMIN
     assert s.updated_at is not None
     assert repo.saved == 1
 
 
 @pytest.mark.asyncio
-async def test_update_mengubah_baris_yang_ada():
-    existing = _factory(ranking_metric="mad")
+async def test_update_display_metrics_urutan_baku_tanpa_duplikat():
+    existing = _factory(display_metrics=["mad"])
     repo = FakeSettingsRepo(existing)
-    s = await ForecastSettingsService(repo, factory=_factory).update(ranking_metric="mape", user_id=ADMIN)
+    s = await ForecastSettingsService(repo, factory=_factory).update(
+        user_id=ADMIN, display_metrics=["mape", "mad", "mape", "mfe"]
+    )
 
     assert s is existing
-    assert existing.ranking_metric == "mape"
+    assert existing.display_metrics == ["mad", "mfe", "mape"]
 
 
 @pytest.mark.asyncio
-async def test_ranking_metric_helper():
-    svc = ForecastSettingsService(FakeSettingsRepo(_factory(ranking_metric="mape")), factory=_factory)
-    assert await svc.ranking_metric() == "mape"
-    assert await ForecastSettingsService(FakeSettingsRepo(), factory=_factory).ranking_metric() == "mad"
+async def test_update_tanpa_display_metrics_nilai_lama_tetap():
+    existing = _factory(display_metrics=["mse"])
+    await ForecastSettingsService(FakeSettingsRepo(existing), factory=_factory).update(user_id=ADMIN)
+
+    assert existing.display_metrics == ["mse"]
+
+
+@pytest.mark.asyncio
+async def test_display_metrics_helper():
+    svc = ForecastSettingsService(FakeSettingsRepo(_factory(display_metrics=["mape"])), factory=_factory)
+    assert await svc.display_metrics() == ["mape"]
+    assert await ForecastSettingsService(FakeSettingsRepo(), factory=_factory).display_metrics() == [
+        "mad", "mfe", "mse", "mape"
+    ]
 
 
 # ── Daftar metode aktif (pindah dari env FORECAST_ENGINES_ENABLED) ──
@@ -111,7 +124,7 @@ async def test_enabled_methods_default_seluruh_registry():
 @pytest.mark.asyncio
 async def test_enabled_methods_tersimpan():
     svc = ForecastSettingsService(
-        FakeSettingsRepo(_factory(ranking_metric="mad", enabled_methods=["moving_average", "xgboost"])),
+        FakeSettingsRepo(_factory(enabled_methods=["moving_average", "xgboost"])),
         factory=_factory,
     )
     assert await svc.enabled_methods() == {"moving_average", "xgboost"}
@@ -121,17 +134,17 @@ async def test_enabled_methods_tersimpan():
 async def test_update_enabled_methods_diurutkan_tanpa_duplikat():
     repo = FakeSettingsRepo()
     s = await ForecastSettingsService(repo, factory=_factory).update(
-        ranking_metric="mad", user_id=ADMIN, enabled_methods=["xgboost", "moving_average", "xgboost"]
+        user_id=ADMIN, enabled_methods=["xgboost", "moving_average", "xgboost"]
     )
     assert s.enabled_methods == ["moving_average", "xgboost"]
 
 
 @pytest.mark.asyncio
 async def test_update_tanpa_enabled_methods_mempertahankan_nilai_lama():
-    existing = _factory(ranking_metric="mad", enabled_methods=["moving_average"])
+    existing = _factory(enabled_methods=["moving_average"])
     svc = ForecastSettingsService(FakeSettingsRepo(existing), factory=_factory)
 
-    await svc.update(ranking_metric="mape", user_id=ADMIN)
+    await svc.update(user_id=ADMIN)
 
     assert existing.enabled_methods == ["moving_average"]
 
@@ -141,7 +154,7 @@ async def test_update_metode_tak_dikenal_ditolak():
     repo = FakeSettingsRepo()
     with pytest.raises(UnsupportedForecastMethodError):
         await ForecastSettingsService(repo, factory=_factory).update(
-            ranking_metric="mad", user_id=ADMIN, enabled_methods=["moving_average", "prophet"]
+            user_id=ADMIN, enabled_methods=["moving_average", "prophet"]
         )
     assert repo.saved == 0
 
@@ -161,7 +174,7 @@ async def test_engine_options_default_thesis():
 
 @pytest.mark.asyncio
 async def test_engine_options_tersimpan():
-    row = _factory(ranking_metric="mad", es_alpha_grid=[0.2, 0.8], es_alpha_metric="mape", ml_grid_search=True)
+    row = _factory(es_alpha_grid=[0.2, 0.8], es_alpha_metric="mape", ml_grid_search=True)
     opts = await ForecastSettingsService(FakeSettingsRepo(row), factory=_factory).engine_options()
     assert opts.es_alpha_grid == (0.2, 0.8)
     assert opts.es_alpha_metric == "mape"
@@ -172,7 +185,6 @@ async def test_engine_options_tersimpan():
 async def test_update_opsi_engine():
     repo = FakeSettingsRepo()
     s = await ForecastSettingsService(repo, factory=_factory).update(
-        ranking_metric="mad",
         user_id=ADMIN,
         es_alpha_grid=[0.8, 0.2, 0.2],
         es_alpha_metric="mape",
@@ -186,9 +198,9 @@ async def test_update_opsi_engine():
 
 @pytest.mark.asyncio
 async def test_update_tanpa_opsi_engine_mempertahankan_nilai_lama():
-    existing = _factory(ranking_metric="mad", es_alpha_grid=[0.5], ml_grid_search=True)
+    existing = _factory(es_alpha_grid=[0.5], ml_grid_search=True)
     await ForecastSettingsService(FakeSettingsRepo(existing), factory=_factory).update(
-        ranking_metric="mape", user_id=ADMIN
+        user_id=ADMIN
     )
     assert existing.es_alpha_grid == [0.5] and existing.ml_grid_search is True
 
@@ -207,7 +219,7 @@ async def test_default_service_level_dan_eoq():
 async def test_update_service_level_dan_eoq():
     repo = FakeSettingsRepo()
     svc = ForecastSettingsService(repo, factory=_factory)
-    await svc.update(ranking_metric="mad", user_id=ADMIN, service_level_pct=99, eoq_method="dynamic")
+    await svc.update(user_id=ADMIN, service_level_pct=99, eoq_method="dynamic")
     assert await svc.service_level_pct() == 99
     assert await svc.eoq_method() == "dynamic"
 
@@ -224,11 +236,11 @@ async def test_default_rop_formula_dan_policy_perilaku_lama():
 
 @pytest.mark.asyncio
 async def test_update_rop_formula_dan_policy():
-    repo = FakeSettingsRepo(_factory(ranking_metric="mad"))
+    repo = FakeSettingsRepo(_factory())
     svc = ForecastSettingsService(repo, factory=_factory)
-    await svc.update(ranking_metric="mad", user_id=ADMIN, rop_formula="standard", order_qty_policy="eoq")
+    await svc.update(user_id=ADMIN, rop_formula="standard", order_qty_policy="eoq")
     assert await svc.rop_formula() == "standard"
     assert await svc.order_qty_policy() == "eoq"
     # argumen None = tidak diubah
-    await svc.update(ranking_metric="mad", user_id=ADMIN)
+    await svc.update(user_id=ADMIN)
     assert repo.row.rop_formula == "standard" and repo.row.order_qty_policy == "eoq"

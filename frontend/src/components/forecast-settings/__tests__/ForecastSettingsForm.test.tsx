@@ -7,30 +7,51 @@ import { ForecastSettingsForm } from "@/components/forecast-settings/ForecastSet
 const AVAILABLE = ["exponential_smoothing", "lstm", "moving_average", "random_forest", "xgboost"];
 
 describe("ForecastSettingsForm", () => {
-  it("menampilkan 3 pilihan metrik ranking dengan nilai tersimpan terpilih", () => {
-    render(<ForecastSettingsForm initial={{ ranking_metric: "mape", enabled_methods: null }}
-        available={AVAILABLE} onSubmit={vi.fn()} />);
+  it("metrik tampil berupa checkbox (bukan radio), semua tercentang bila belum diatur", () => {
+    render(<ForecastSettingsForm initial={{ enabled_methods: null }} available={AVAILABLE} onSubmit={vi.fn()} />);
 
-    expect(screen.getByRole("radio", { name: /^mad rata/i })).toBeDefined();
-    expect(screen.getByRole("radio", { name: /^\|mfe\|/i })).toBeDefined();
-    expect((screen.getByRole("radio", { name: /^mape galat/i }) as HTMLInputElement).checked).toBe(true);
+    const group = screen.getByRole("group", { name: /metrik yang ditampilkan/i });
+    expect(within(group).queryAllByRole("radio")).toHaveLength(0);
+    const boxes = within(group).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes.map((b) => b.value)).toEqual(["mad", "mfe", "mse", "mape"]);
+    expect(boxes.every((b) => b.checked)).toBe(true);
+    expect(screen.queryByText(/metrik penentu metode pemenang/i)).toBeNull();
   });
 
-  it("submit metrik yang dipilih", async () => {
+  it("submit hanya metrik yang dicentang, urutan baku", async () => {
     const onSubmit = vi.fn();
-    render(<ForecastSettingsForm initial={{ ranking_metric: "mad", enabled_methods: null }}
-        available={AVAILABLE} onSubmit={onSubmit} />);
+    render(
+      <ForecastSettingsForm
+        initial={{ display_metrics: ["mape", "mad"], enabled_methods: null }}
+        available={AVAILABLE}
+        onSubmit={onSubmit}
+      />,
+    );
 
-    await userEvent.click(screen.getByRole("radio", { name: /^\|mfe\|/i }));
+    expect((screen.getByRole("checkbox", { name: /^mse/i }) as HTMLInputElement).checked).toBe(false);
+    await userEvent.click(screen.getByRole("checkbox", { name: /^mfe/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^mape/i }));
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ ranking_metric: "mfe_abs", enabled_methods: AVAILABLE }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ display_metrics: ["mad", "mfe"], enabled_methods: AVAILABLE }),
+    );
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty("ranking_metric");
+  });
+
+  it("minimal satu metrik tampil", async () => {
+    render(<ForecastSettingsForm initial={{ display_metrics: ["mad"], enabled_methods: null }} available={AVAILABLE} onSubmit={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /^mad/i }));
+
+    expect(screen.getByText(/pilih minimal satu metrik/i)).toBeDefined();
+    expect((screen.getByRole("button", { name: /simpan/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("tombol simpan nonaktif selama menyimpan & menampilkan error", () => {
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: null }}
+        initial={{ enabled_methods: null }}
         available={AVAILABLE}
         onSubmit={vi.fn()}
         pending
@@ -45,7 +66,7 @@ describe("ForecastSettingsForm", () => {
   it("belum diatur (null) → semua metode tercentang", () => {
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: null }}
+        initial={{ enabled_methods: null }}
         available={AVAILABLE}
         onSubmit={vi.fn()}
       />,
@@ -63,7 +84,7 @@ describe("ForecastSettingsForm", () => {
     const onSubmit = vi.fn();
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: ["moving_average", "xgboost", "lstm"] }}
+        initial={{ enabled_methods: ["moving_average", "xgboost", "lstm"] }}
         available={AVAILABLE}
         onSubmit={onSubmit}
       />,
@@ -74,7 +95,7 @@ describe("ForecastSettingsForm", () => {
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ ranking_metric: "mad", enabled_methods: ["moving_average", "xgboost"] }),
+      expect.objectContaining({ enabled_methods: ["moving_average", "xgboost"] }),
     );
   });
 
@@ -82,7 +103,7 @@ describe("ForecastSettingsForm", () => {
     const onSubmit = vi.fn();
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: ["moving_average"] }}
+        initial={{ enabled_methods: ["moving_average"] }}
         available={AVAILABLE}
         onSubmit={onSubmit}
       />,
@@ -98,7 +119,7 @@ describe("ForecastSettingsForm", () => {
     const onSubmit = vi.fn();
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: null, es_alpha_grid: [0.2, 0.8] }}
+        initial={{ enabled_methods: null, es_alpha_grid: [0.2, 0.8] }}
         available={AVAILABLE}
         onSubmit={onSubmit}
       />,
@@ -125,7 +146,7 @@ describe("ForecastSettingsForm", () => {
 
   it("grid α di luar (0, 1) ditolak", async () => {
     render(
-      <ForecastSettingsForm initial={{ ranking_metric: "mad", enabled_methods: null }} available={AVAILABLE} onSubmit={vi.fn()} />,
+      <ForecastSettingsForm initial={{ enabled_methods: null }} available={AVAILABLE} onSubmit={vi.fn()} />,
     );
     const grid = screen.getByLabelText(/grid α/i);
     await userEvent.clear(grid);
@@ -139,7 +160,7 @@ describe("ForecastSettingsForm", () => {
     const onSubmit = vi.fn();
     render(
       <ForecastSettingsForm
-        initial={{ ranking_metric: "mad", enabled_methods: null, service_level_pct: 95, eoq_method: "classic" }}
+        initial={{ enabled_methods: null, service_level_pct: 95, eoq_method: "classic" }}
         available={AVAILABLE}
         onSubmit={onSubmit}
       />,
@@ -155,7 +176,7 @@ describe("ForecastSettingsForm", () => {
   it("kebijakan reorder: rumus titik pesan & qty pesan (default perilaku lama)", async () => {
     const onSubmit = vi.fn();
     render(
-      <ForecastSettingsForm initial={{ ranking_metric: "mad", enabled_methods: null }} available={AVAILABLE} onSubmit={onSubmit} />,
+      <ForecastSettingsForm initial={{ enabled_methods: null }} available={AVAILABLE} onSubmit={onSubmit} />,
     );
     expect((screen.getByRole("radio", { name: /μ·L \+ SS \+ B/ }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("radio", { name: /^order-up-to/i }) as HTMLInputElement).checked).toBe(true);

@@ -9,9 +9,9 @@ Baca seluruh dokumen ini — dan `docs/PRD.md` + `docs/ARCHITECTURE.md` — sebe
 
 ## 1. Tentang Project Ini
 
-**ForecastIQ** adalah platform forecasting berbasis AI untuk kebutuhan **produk jadi (minuman RTD) dan material/packaging turunannya**, ditujukan untuk business user non-teknis (planner PPIC). User upload data historis **Forecast (existing) / Planning / Actual** per SKU produk jadi. Sistem **membandingkan 5 metode forecasting** (Moving Average, Exponential Smoothing, Random Forest, XGBoost, LSTM), memilih yang paling akurat berdasarkan backtest (MAD/MFE/MSE/MAPE), menurunkan **kebutuhan material via Bill of Materials (BOM)**, menghitung **safety stock, buffer stock, dan EOQ dinamis**, memvalidasi terhadap **kapasitas gudang**, dan mengoptimalkan **total biaya persediaan** — semua disajikan dengan **penjelasan bahasa natural**. Planner tetap bisa **override** rekomendasi sistem, dengan alasan & audit trail wajib.
+**ForecastIQ** adalah platform forecasting berbasis AI untuk kebutuhan **produk jadi (minuman RTD) dan material/packaging turunannya**, ditujukan untuk business user non-teknis (planner PPIC). User upload data historis **Forecast (existing) / Planning / Actual** per SKU produk jadi. Sistem **membandingkan 5 metode forecasting** (Moving Average, Exponential Smoothing, Random Forest, XGBoost, LSTM) dan menampilkan akurasi backtest tiap metode berdampingan (MAD/MFE/MSE/MAPE) — **planner yang memilih metode per SKU**, sistem tidak memilih pemenang (Fase 11.15, 10 Nov 2026), menurunkan **kebutuhan material via Bill of Materials (BOM)**, menghitung **safety stock, buffer stock, dan EOQ dinamis**, memvalidasi terhadap **kapasitas gudang**, dan mengoptimalkan **total biaya persediaan** — semua disajikan dengan **penjelasan bahasa natural**. Planner tetap bisa **override** rekomendasi sistem, dengan alasan & audit trail wajib.
 
-Value proposition inti: **mesin forecasting yang secara sistematis membuktikan metode mana paling akurat untuk tiap SKU (dibanding metode existing perusahaan)**, terintegrasi dengan keputusan inventory yang **realistis secara fisik** (muat di gudang) dan **optimal secara biaya**.
+Value proposition inti: **mesin forecasting yang secara sistematis mengukur akurasi tiap metode untuk tiap SKU (dibanding metode existing perusahaan) sebagai dasar keputusan planner**, terintegrasi dengan keputusan inventory yang **realistis secara fisik** (muat di gudang) dan **optimal secara biaya**.
 
 **Monorepo structure:**
 ```
@@ -126,10 +126,10 @@ MATERIAL_COMPONENT_NOT_FOUND   STOCK_SNAPSHOT_NOT_FOUND       MATERIAL_RECEIPT_N
 
 ### Prinsip utama
 - **Semua proses forecasting harus melalui `app/services/forecasting/forecast_service.py`** — tidak boleh inline di router manapun.
-- User **boleh memilih metode secara manual sebelum generate** (field `method` di request — lihat `docs/ARCHITECTURE.md` §6.6). Kalau `method` diisi, **skip** perbandingan, langsung panggil fungsi metode itu. Kalau kosong/`null`, jalankan **Comparative Selection** penuh (bandingkan seluruh metode aktif).
+- User **boleh memilih metode secara manual sebelum generate** (field `method` di request — lihat `docs/ARCHITECTURE.md` §6.6). Kalau `method` diisi, **skip** perbandingan, langsung panggil fungsi metode itu (langsung berlaku). Kalau kosong/`null`, jalankan **seluruh metode aktif** dan simpan semuanya — **tanpa pemenang**; planner memilih metode per produk setelah run (`forecast_selection_service.py`, `docs/ARCHITECTURE.md` §6.1a).
 - Kegagalan pada **mode manual TIDAK di-fallback** ke metode lain — user sudah memilih sadar, errornya harus jelas (`MODEL_SELECTION_FAILED` atau `UNSUPPORTED_FORECAST_METHOD`), bukan diam-diam diganti metode.
-- **Tidak ada klasifikasi pola demand (ADI/CV²/kuadran Syntetos-Boylan) di v3.0.** Comparative Selection menjalankan seluruh metode aktif dan memilih berdasarkan metrik akurasi (master data **Pengaturan Forecast** `forecast_settings.ranking_metric`: `mad` | `mfe_abs` | `mape`, default MAD terendah menang — **bukan env**, sejak Fase 11.2a) — mengikuti metodologi Bab III thesis. Jangan tambahkan klasifikasi kuadran kembali tanpa didiskusikan dengan user dan dicatat di `RECONCILIATION.md`.
-- Nama/daftar metode aktif **tidak boleh hardcode tersebar di kode** — baca dari master data **Pengaturan Forecast** (`forecast_settings.enabled_methods` & `ranking_metric`, sejak Fase 11.2a — **bukan env**), bisa diubah admin dari UI tanpa ubah kode. Nama metode yang boleh dipilih = kunci `MODEL_REGISTRY`.
+- **Tidak ada klasifikasi pola demand (ADI/CV²/kuadran Syntetos-Boylan) di v3.0.** Mode otomatis menjalankan seluruh metode aktif dan menyimpan metrik akurasinya. **Sejak Fase 11.15 (10 Nov 2026, keputusan user) sistem TIDAK memilih pemenang dan tidak memberi peringkat** — `forecast_settings.ranking_metric` dihapus, diganti `display_metrics` (checkbox metrik yang ditampilkan). Jangan tambahkan klasifikasi kuadran maupun pemilihan pemenang otomatis kembali tanpa didiskusikan dengan user dan dicatat di `RECONCILIATION.md`.
+- Nama/daftar metode aktif **tidak boleh hardcode tersebar di kode** — baca dari master data **Pengaturan Forecast** (`forecast_settings.enabled_methods` & `display_metrics`, sejak Fase 11.2a — **bukan env**), bisa diubah admin dari UI tanpa ubah kode. Nama metode yang boleh dipilih = kunci `MODEL_REGISTRY`.
 - **Setiap metode forecasting (Moving Average, Exponential Smoothing, Random Forest, XGBoost, LSTM) adalah SATU FUNGSI MURNI** — bukan class/Protocol. Signature seragam: `def forecast_<method>(df: pd.DataFrame, horizon: int) -> EngineResult`. Fungsi itu sendiri yang melakukan backtest (untuk MAD/MFE/MSE/MAPE), fit ulang di seluruh data, predict horizon, dan generate explanation — semua self-contained di satu fungsi, satu file. Lihat `docs/ARCHITECTURE.md` §6.0/§6.4.
 - Registry adalah `dict[str, Callable]` sederhana (`registry.py`).
 - Engine legacy (ETS/ARIMA/LightGBM/Croston/Prophet dari arsitektur v2.0) **tidak dihapus**, dipindah ke `engines/legacy/` dan nonaktif default — lihat `docs/ARCHITECTURE.md` §6.9. Jangan hapus file-file ini; cukup biarkan tidak terdaftar di `MODEL_REGISTRY` aktif.
@@ -139,8 +139,8 @@ MATERIAL_COMPONENT_NOT_FOUND   STOCK_SNAPSHOT_NOT_FOUND       MATERIAL_RECEIPT_N
 2. **Mode manual**: panggil langsung 1 fungsi metode yang diminta, tanpa fallback.
 3. **Mode otomatis**: jalankan seluruh metode aktif di `forecast_settings.enabled_methods` (NULL = seluruh `MODEL_REGISTRY`; dibaca sekali per run) — tiap fungsi melakukan holdout backtest sendiri dan mengembalikan MAD/MFE/MSE/MAPE.
 4. **Exclude yang gagal** — metode yang error saat backtest/fit dikeluarkan dari perbandingan, proses lanjut dengan sisanya.
-5. **Ranking** — pilih metode dengan nilai `ranking_metric` (master data Pengaturan Forecast, dibaca sekali per run & dicatat di `forecast_runs.ranking_metric`) terbaik (default: MAD terendah). Tiap kandidat juga diberi `rank_mad`, `rank_mfe` (|MFE|), `rank_mape` sebagai acuan.
-6. **Generate hasil final** dari metode terpilih → simpan seluruh `candidates_evaluated` (bukan cuma pemenang) untuk transparansi → generate natural language explanation yang membandingkan pemenang dengan kandidat lain.
+5. **Tanpa ranking (Fase 11.15)** — tidak ada pemenang & tidak ada kolom peringkat. Simpan seluruh `candidates_evaluated` beserta **deret forecast + penjelasan tiap metode**; `forecast_results.method_used`/`forecast_data` NULL.
+6. **Planner memilih metode** per produk (atau satu metode untuk semua produk) lewat override append-only (`target_type = forecast_result`, alasan wajib). Semua service hilir membaca hasil lewat `ForecastSelectionService` (metode berlaku diterapkan); produk yang belum dipilih **dilewati** di reorder/proyeksi/cost/gudang/metrik.
 
 ### Struktur forecasting service (function registry, 1 fungsi = 1 metode)
 ```
@@ -292,7 +292,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 
 | # | Larangan | Alasan |
 |---|---|---|
-| 1 | ❌ Hardcode daftar engine/metrik ranking di kode | Harus bisa ganti/tuning tanpa ubah kode |
+| 1 | ❌ Hardcode daftar engine/metrik tampil di kode | Harus bisa ganti/tuning tanpa ubah kode |
 | 2 | ❌ Panggil logic forecasting langsung dari router | Semua proses harus melalui `forecast_service.py` |
 | 3 | ❌ Modifikasi data historis asli tanpa jejak | Data & Model Integrity — dataset asli tidak boleh silent mutation |
 | 4 | ❌ Expose stack trace ke client response | Log di server, return error code yang bersih ke client |
@@ -311,6 +311,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 | 17 | ❌ Blocking rekomendasi yang melebihi kapasitas gudang sebagai hard error | Harus tetap flag & serahkan ke keputusan planner (override), bukan block otomatis |
 | 18 | ❌ Membuat resource turunan (mis. reorder recommendation) hanya dengan `GET` tanpa `POST` generate | Resource yang dihitung dari forecast+BOM+request-time input (`current_stock`) wajib punya `POST` generate & persist dulu — lihat `ARCHITECTURE.md` §5 |
 | 19 | ❌ Membuat `code` produk/material tanpa cek unik | Duplikat harus ditolak dengan `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS`, bukan dibiarkan lolos ke database constraint error |
+| 20 | ❌ Memilih metode pemenang otomatis / menambah peringkat metrik di mode otomatis, atau service hilir membaca `forecast_results` mentah (bukan lewat `ForecastSelectionService`) | Keputusan user Fase 11.15: planner yang memilih metode; hasil yang belum dipilih harus dilewati, bukan diam-diam diisi metode lain |
 
 ---
 
@@ -319,7 +320,7 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Semua test baru berjalan dengan status PASSED
 - [ ] Coverage tidak turun di bawah minimum per layer
 - [ ] Semua response mengikuti format Section 4
-- [ ] Tidak ada hardcode daftar engine/metrik ranking di kode
+- [ ] Tidak ada hardcode daftar engine/metrik tampil di kode
 - [ ] Proses forecasting dilakukan melalui `forecast_service.py`, bukan inline
 - [ ] Error handling mengikuti aturan Section 5 (failure per engine & per produk)
 - [ ] Tidak ada modifikasi silent pada data historis asli
@@ -331,6 +332,6 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Mode manual (`method` diisi user) sudah diuji: sukses, error saat metode tidak dikenal (`UNSUPPORTED_FORECAST_METHOD`), dan tidak fallback saat gagal
 - [ ] Konversi satuan periode ↔ hari (SS/ROP, annualisasi EOQ) dites dengan data bulanan (Fase 11.0)
 - [ ] Rumus titik pesan (ROP) & qty pesan **hanya** dari `reorder_service` (`compute_rop`, `compute_order_qty`, `OrderPolicy`) — modul lain (proyeksi stok, cost, export) tidak merumuskan ulang (v3.3, Fase 11.9)
-- [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap, ranking sesuai `forecast_settings.ranking_metric`, 3 kolom peringkat terisi
+- [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap (metrik + deret forecast tiap metode), **tanpa pemenang & tanpa peringkat**; pilihan planner (override, alasan wajib) yang menentukan metode berlaku; hasil belum dipilih dilewati hilir
 - [ ] Field `code` pada resource baru (produk/material/dsb) sudah dicek unik sebelum insert, dan pesan error mengikuti pola `*_CODE_EXISTS`
 - [ ] Resource yang di-generate dari perhitungan (bukan CRUD murni) menyediakan endpoint `POST` untuk generate & persist sebelum `GET` untuk membaca — lihat `ARCHITECTURE.md` §5

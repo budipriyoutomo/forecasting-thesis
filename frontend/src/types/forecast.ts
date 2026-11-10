@@ -1,5 +1,3 @@
-import type { RankingMetric } from "@/types/forecastSettings";
-
 // Cocok dengan backend/app/schemas/forecast.py
 export interface ForecastPoint {
   date: string;
@@ -8,7 +6,7 @@ export interface ForecastPoint {
   upper: number;
 }
 
-// Satu metode yang ikut dibandingkan di mode otomatis (Comparative Selection).
+// Satu metode yang dijalankan di mode otomatis (Fase 11.15: tanpa pemenang & tanpa peringkat).
 // Mode manual mengisi satu entri saja: metode yang dipaksa user.
 export interface ForecastCandidate {
   method: string;
@@ -17,16 +15,23 @@ export interface ForecastCandidate {
   mse: number | null;
   mape: number | null;
   mase: number | null;
-  // Fase 11.2a: peringkat 1 = terbaik; null = metrik tak terdefinisi. Absen di run lama/manual.
-  rank_mad?: number | null;
-  rank_mfe?: number | null;
-  rank_mape?: number | null;
+  /** Deret forecast metode ini — absen di run sebelum Fase 11.15 (metode tak bisa diganti). */
+  forecast?: ForecastPoint[];
+  explanation?: string | null;
 }
 
+export type SelectionStatus = "SELECTED" | "PENDING_SELECTION";
+
 export interface ForecastResult {
+  id: string;
   product_id: string;
   status: "COMPLETED" | "INSUFFICIENT_DATA" | "MODEL_SELECTION_FAILED";
+  /** Metode yang BERLAKU (pilihan planner / mode manual / run lama); null = belum dipilih. */
   method_used: string | null;
+  /** null untuk hasil gagal. */
+  selection_status?: SelectionStatus | null;
+  selection_reason?: string | null;
+  selected_at?: string | null;
   selection_mode: "auto" | "manual" | null;
   mad: number | null;
   mfe: number | null;
@@ -46,10 +51,22 @@ export interface ForecastRunSummary {
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
   horizon: number;
   horizon_unit: string;
-  ranking_metric?: RankingMetric | null;
   n_products: number;
   n_completed: number;
   n_failed: number;
+  /** Fase 11.15 — produk yang metodenya belum dipilih planner (dilewati di perencanaan). */
+  n_pending_selection?: number;
+}
+
+export interface MethodSelectionInput {
+  method: string;
+  reason: string;
+}
+
+export interface RunSelectionResult {
+  n_selected: number;
+  skipped_product_ids: string[];
+  results: ForecastResult[];
 }
 
 export interface ForecastRunResponse {

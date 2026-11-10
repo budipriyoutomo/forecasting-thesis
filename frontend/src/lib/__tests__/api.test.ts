@@ -150,6 +150,27 @@ describe("api.forecast", () => {
 
     expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/v1\/forecast\/runs\/r1$/);
   });
+
+  it("selectMethod POST /forecast/results/:id/selection (Fase 11.15)", async () => {
+    const spy = mockFetch({ success: true, data: {} });
+
+    await api.forecast.selectMethod("res1", { method: "xgboost", reason: "musiman" }, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/forecast\/results\/res1\/selection$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ method: "xgboost", reason: "musiman" });
+  });
+
+  it("selectMethodForRun POST /forecast/runs/:id/selection", async () => {
+    const spy = mockFetch({ success: true, data: { n_selected: 1, skipped_product_ids: [], results: [] } });
+
+    await api.forecast.selectMethodForRun("r1", { method: "moving_average", reason: "standar" }, "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/forecast\/runs\/r1\/selection$/);
+    expect(init?.method).toBe("POST");
+  });
 });
 
 describe("api.reorder", () => {

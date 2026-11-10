@@ -7,23 +7,30 @@ import { Button } from "@/components/ui/button";
 import { methodLabel } from "@/lib/methods";
 import type {
   AlphaMetric,
+  DisplayMetric,
   EoqMethod,
   ForecastSettingsInput,
   OrderQtyPolicy,
-  RankingMetric,
   RopFormula,
 } from "@/types/forecastSettings";
 
-export const RANKING_OPTIONS: { value: RankingMetric; label: string; description: string }[] = [
+// Fase 11.15 — metrik yang DITAMPILKAN di hasil forecast (checkbox). Tidak ada lagi metrik
+// penentu pemenang: planner membandingkan nilainya lalu memilih metode per produk.
+export const DISPLAY_METRIC_OPTIONS: { value: DisplayMetric; label: string; description: string }[] = [
   {
     value: "mad",
     label: "MAD",
     description: "Rata-rata selisih absolut (unit). Konsisten dengan pemilihan α Exponential Smoothing.",
   },
   {
-    value: "mfe_abs",
-    label: "|MFE|",
-    description: "Bias forecast terkecil. MFE positif = under-estimate, negatif = over-estimate.",
+    value: "mfe",
+    label: "MFE",
+    description: "Bias forecast. Positif = under-estimate, negatif = over-estimate.",
+  },
+  {
+    value: "mse",
+    label: "MSE",
+    description: "Rata-rata kuadrat selisih — lebih menghukum galat besar.",
   },
   {
     value: "mape",
@@ -31,6 +38,7 @@ export const RANKING_OPTIONS: { value: RankingMetric; label: string; description
     description: "Galat relatif (%) — mudah dibandingkan antar-SKU dengan volume berbeda.",
   },
 ];
+export const ALL_DISPLAY_METRICS: DisplayMetric[] = DISPLAY_METRIC_OPTIONS.map((o) => o.value);
 
 // Fase 11.9 — satu setting untuk tabel Reorder DAN Proyeksi Stok (sumber tunggal).
 export const ROP_FORMULA_OPTIONS: { value: RopFormula; label: string; description: string }[] = [
@@ -72,9 +80,8 @@ export function parseAlphaGrid(text: string): number[] | null {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
-// Ketiga peringkat selalu ditampilkan di hasil forecast sebagai acuan; pilihan metrik di
-// sini hanya menentukan metode PEMENANG otomatis untuk run berikutnya. Metode aktif =
-// kandidat mode otomatis sekaligus pilihan mode manual.
+// Metrik tampil = kolom metrik di hasil forecast (Fase 11.15, tanpa pemenang). Metode aktif =
+// metode yang dijalankan di mode otomatis sekaligus pilihan mode manual.
 export function ForecastSettingsForm({
   initial,
   available,
@@ -88,7 +95,10 @@ export function ForecastSettingsForm({
   pending?: boolean;
   error?: string | null;
 }) {
-  const [metric, setMetric] = useState<RankingMetric>(initial.ranking_metric);
+  const [metrics, setMetrics] = useState<Set<DisplayMetric>>(
+    () => new Set(initial.display_metrics ?? ALL_DISPLAY_METRICS),
+  );
+  const noMetric = metrics.size === 0;
   const [enabled, setEnabled] = useState<Set<string>>(
     () => new Set(initial.enabled_methods ?? available),
   );
@@ -102,6 +112,14 @@ export function ForecastSettingsForm({
   const [eoqMethod, setEoqMethod] = useState<EoqMethod>(initial.eoq_method ?? "classic");
   const [ropFormula, setRopFormula] = useState<RopFormula>(initial.rop_formula ?? "with_buffer");
   const [qtyPolicy, setQtyPolicy] = useState<OrderQtyPolicy>(initial.order_qty_policy ?? "order_up_to");
+
+  const toggleMetric = (metric: DisplayMetric) =>
+    setMetrics((prev) => {
+      const next = new Set(prev);
+      if (next.has(metric)) next.delete(metric);
+      else next.add(metric);
+      return next;
+    });
 
   const toggle = (method: string) =>
     setEnabled((prev) => {
@@ -117,7 +135,7 @@ export function ForecastSettingsForm({
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({
-          ranking_metric: metric,
+          display_metrics: ALL_DISPLAY_METRICS.filter((m) => metrics.has(m)),
           enabled_methods: available.filter((m) => enabled.has(m)),
           es_alpha_grid: alphaGrid ?? undefined,
           es_alpha_metric: alphaMetric,
@@ -131,29 +149,35 @@ export function ForecastSettingsForm({
       }}
     >
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm font-medium">Metrik penentu metode pemenang</legend>
-        {RANKING_OPTIONS.map((opt) => (
-          <label
-            key={opt.value}
-            className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary has-[:checked]:bg-muted/50"
-          >
-            <input
-              type="radio"
-              name="ranking_metric"
-              value={opt.value}
-              checked={metric === opt.value}
-              onChange={() => setMetric(opt.value)}
-              aria-describedby={`ranking-${opt.value}-desc`}
-              className="mt-1"
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium">{opt.label}</span>
-              <span id={`ranking-${opt.value}-desc`} className="text-sm text-muted-foreground">
-                {opt.description}
+        <legend className="mb-2 text-sm font-medium">Metrik yang ditampilkan</legend>
+        <p className="text-sm text-muted-foreground">
+          Ditampilkan berdampingan untuk tiap metode di hasil forecast. Sistem tidak memilih metode
+          pemenang — planner memilih metode per produk.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {DISPLAY_METRIC_OPTIONS.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary has-[:checked]:bg-muted/50"
+            >
+              <input
+                type="checkbox"
+                value={opt.value}
+                checked={metrics.has(opt.value)}
+                onChange={() => toggleMetric(opt.value)}
+                aria-describedby={`metric-${opt.value}-desc`}
+                className="mt-1"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">{opt.label}</span>
+                <span id={`metric-${opt.value}-desc`} className="text-sm text-muted-foreground">
+                  {opt.description}
+                </span>
               </span>
-            </span>
-          </label>
-        ))}
+            </label>
+          ))}
+        </div>
+        {noMetric && <p className="text-sm text-destructive">Pilih minimal satu metrik.</p>}
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">
@@ -293,7 +317,7 @@ export function ForecastSettingsForm({
       )}
 
       <div>
-        <Button type="submit" disabled={pending || noneEnabled || !alphaGrid}>
+        <Button type="submit" disabled={pending || noneEnabled || noMetric || !alphaGrid}>
           {pending ? "Menyimpan…" : "Simpan pengaturan"}
         </Button>
       </div>

@@ -16,7 +16,7 @@ export default function ForecastSettingsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Pengaturan Forecast"
-        description="Metode forecasting yang aktif dan metrik penentu metode pemenang Comparative Selection. Hasil forecast tetap menampilkan peringkat MAD, |MFE|, dan MAPE berdampingan sebagai acuan."
+        description="Metode forecasting yang aktif dan metrik yang ditampilkan di hasil forecast. Sistem tidak memilih metode pemenang — planner memilih metode per produk setelah membandingkan metriknya."
       />
 
       {isError && (
@@ -27,10 +27,10 @@ export default function ForecastSettingsPage() {
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-base">Metode & metrik ranking</CardTitle>
+          <CardTitle className="text-base">Metode & metrik</CardTitle>
           <CardDescription>
-            Berlaku untuk forecast run berikutnya (mode otomatis). Run yang sudah ada tetap memakai
-            metrik saat run dibuat.
+            Metode aktif berlaku untuk forecast run berikutnya; metrik tampil langsung berlaku di
+            hasil forecast.
             {data?.updated_at && <> Terakhir diubah {formatDate(data.updated_at)}.</>}
           </CardDescription>
         </CardHeader>

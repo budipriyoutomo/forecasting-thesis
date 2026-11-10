@@ -751,3 +751,36 @@ ulang tetap berlaku (keputusan planner bertahan meski angka sistem berubah).
 
 **Tetap terbuka:** `replace_for_run` masih menghapus baris rekomendasi lama (AGENTS §6) — riwayat
 aman via konteks, tapi snapshot rekomendasi lama hanya tersisa di `previous_value` override.
+
+### Fase 11.15 — Tanpa Metode Pemenang: Planner Memilih Metode per Produk (10 Nov 2026)
+
+**Permintaan user (7–10 Nov).** "Metrik penentu metode pemenang" di Pengaturan Forecast harus
+checkbox, bukan radio, dan **semua metrik tampil tanpa penilaian** — setiap metode dipakai
+untuk analisa lain, jadi sistem **tidak lagi memilih pemenang**. Ini membalik AGENTS.md §1/§5
+langkah 5–6 (Comparative Selection memilih metrik terbaik); konflik sudah dilaporkan ke user
+dan user memilih opsi "hapus pemenang sepenuhnya".
+
+**Keputusan user:**
+1. Mode otomatis **tidak memilih metode**. Semua metode aktif dijalankan & ditampilkan berdampingan.
+2. Sebelum planner memilih metode untuk suatu produk, produk itu **dilewati** di Reorder / Proyeksi
+   Stok / Cost / Validasi Gudang / Metrik Inventori (status "Metode belum dipilih"). Tersedia
+   aksi "pakai metode X untuk semua produk" di hasil forecast.
+3. Kolom peringkat (`rank_mad`/`rank_mfe`/`rank_mape`) **dihapus** — hanya nilai metrik.
+
+**Keputusan teknis (assistant):**
+- `forecast_settings.ranking_metric` (satu nilai) → `display_metrics` (array ⊂ `mad`, `mfe`, `mse`,
+  `mape`; default keempatnya, minimal satu): **hanya** mengatur kolom metrik yang tampil di hasil.
+  MFE ditampilkan bertanda (arah bias), bukan |MFE|, karena tidak dipakai mengurutkan.
+- Mode otomatis menyimpan **deret forecast + penjelasan tiap kandidat** di `candidates_evaluated`
+  (sebelumnya hanya metrik). `forecast_results.method_used`/`forecast_data` NULL sampai dipilih.
+- Pilihan planner = **override append-only** (`overrides`, `target_type = forecast_result`,
+  `new_value = {"method_used": ...}`, alasan wajib) — pola sama dengan qty override Fase 11.14,
+  audit trail otomatis. Metode yang berlaku = override terbaru yang metodenya ada di kandidat;
+  tanpa override → `method_used` hasil (mode manual / run lama sebelum 11.15). Metode di luar
+  kandidat → `UNSUPPORTED_FORECAST_METHOD`.
+- Konsumen hilir (reorder, proyeksi stok, cost, gudang, metrik inventori, export) membaca hasil lewat
+  adapter `SelectedForecastReader` — tidak ada service hilir yang menafsirkan pilihan sendiri.
+- Mode manual (metode dipilih sebelum generate) tetap ada; metode itu otomatis berlaku.
+- `forecast_runs.ranking_metric` tetap (riwayat run lama), run baru NULL.
+- Run lama (sebelum 11.15) tetap memakai `method_used` pemenangnya; ganti metode di run lama
+  tidak bisa karena deret forecast kandidat tidak tersimpan.

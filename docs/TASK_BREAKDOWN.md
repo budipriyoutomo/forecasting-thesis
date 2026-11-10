@@ -214,6 +214,8 @@ Checklist rinci: `docs/TODO-v3.md`. Keputusan: `RECONCILIATION.md` §"Rekonsilia
 - [ ] 11.11 Seed & golden test — 🟡 `thesis_data.py`, `--profile thesis`, golden test kerangka; ⛔ data Excel yang belum ada
 - [ ] 11.12 Cek Excel 7 Nov — 🟡 sebagian; ⛔ `#REF!`, Juni 2025 = 0, mapping SB
 - [x] 11.13 Dokumen — ✅ RECONCILIATION, REVISI_V2 §9, PRD FR-4/11/12, ARCHITECTURE §4/§6.8/§6.10, AGENTS checklist; ⛔ docx thesis (penulis)
+- [x] 11.14 UI override planner — ✅ qty override reorder ditampilkan + dipakai proyeksi
+- [x] 11.15 Tanpa metode pemenang — ✅ 10 Nov 2026: mode otomatis tanpa pemenang/peringkat, deret tiap kandidat disimpan, planner memilih metode per produk/massal (override append-only, `forecast_selection_service`, hilir dilewati bila belum dipilih), `display_metrics` checkbox (migration `d7e8f9a0b1c2`). 861 test backend (cov 95%) + 257 test frontend hijau, build bersih
 
 ---
 

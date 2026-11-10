@@ -1,8 +1,10 @@
-// Master data Pengaturan Forecast (Fase 11.2a) — metrik penentu metode pemenang.
-export type RankingMetric = "mad" | "mfe_abs" | "mape";
+// Master data Pengaturan Forecast (Fase 11.2a).
+// Fase 11.15: tidak ada metode pemenang — `display_metrics` hanya mengatur metrik yang
+// DITAMPILKAN di hasil forecast; planner memilih metode per produk.
+export type DisplayMetric = "mad" | "mfe" | "mse" | "mape";
 
 export interface ForecastSettings {
-  ranking_metric: RankingMetric;
+  display_metrics: DisplayMetric[];
   /** null = belum diatur → seluruh `available_methods` aktif. */
   enabled_methods: string[] | null;
   available_methods: string[];
@@ -26,7 +28,7 @@ export type RopFormula = "standard" | "with_buffer";
 export type OrderQtyPolicy = "eoq" | "order_up_to";
 
 export interface ForecastSettingsInput {
-  ranking_metric: RankingMetric;
+  display_metrics?: DisplayMetric[];
   enabled_methods?: string[] | null;
   es_alpha_grid?: number[];
   es_alpha_metric?: AlphaMetric;

@@ -1,7 +1,13 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
 import type { DashboardSummary } from "@/types/dashboard";
-import type { ForecastRunInput, ForecastRunResponse } from "@/types/forecast";
+import type {
+  ForecastResult,
+  ForecastRunInput,
+  ForecastRunResponse,
+  MethodSelectionInput,
+  RunSelectionResult,
+} from "@/types/forecast";
 import type { Bom, BomInput } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { CostSummary, InventoryMetric } from "@/types/metrics";
@@ -355,6 +361,21 @@ export const api = {
       request<ForecastRunResponse>(`/api/v1/forecast/runs/${runId}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
+      }),
+
+    // Fase 11.15 — planner memilih metode (override append-only, alasan wajib).
+    selectMethod: (resultId: string, input: MethodSelectionInput, token: string) =>
+      request<ForecastResult>(`/api/v1/forecast/results/${resultId}/selection`, {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    selectMethodForRun: (runId: string, input: MethodSelectionInput, token: string) =>
+      request<RunSelectionResult>(`/api/v1/forecast/runs/${runId}/selection`, {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
       }),
   },
 

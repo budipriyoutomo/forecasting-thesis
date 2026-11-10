@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-RankingMetric = Literal["mad", "mfe_abs", "mape"]
+DisplayMetric = Literal["mad", "mfe", "mse", "mape"]  # Fase 11.15 — tampilan, bukan penentu pemenang
 AlphaMetric = Literal["mad", "mape"]
 EoqMethod = Literal["classic", "dynamic"]
 RopFormula = Literal["standard", "with_buffer"]
@@ -15,7 +15,7 @@ Alpha = Annotated[float, Field(gt=0, lt=1)]
 
 
 class ForecastSettingsUpdate(BaseModel):
-    ranking_metric: RankingMetric
+    display_metrics: list[DisplayMetric] | None = Field(default=None, min_length=1)  # None = tidak diubah
     enabled_methods: list[str] | None = Field(default=None, min_length=1)  # None = tidak diubah
     es_alpha_grid: list[Alpha] | None = Field(default=None, min_length=1)  # 0 < α < 1
     es_alpha_metric: AlphaMetric | None = None
@@ -28,7 +28,7 @@ class ForecastSettingsUpdate(BaseModel):
 
 
 class ForecastSettingsOut(BaseModel):
-    ranking_metric: RankingMetric
+    display_metrics: list[DisplayMetric]  # efektif: tersimpan, atau semua metrik bila belum diatur
     enabled_methods: list[str] | None = None  # None = belum diatur → seluruh available_methods aktif
     available_methods: list[str]  # seluruh metode terdaftar di registry
     es_alpha_grid: list[float]  # efektif: tersimpan, atau grid thesis bila belum diatur

@@ -48,7 +48,8 @@ async def test_get_default(client):
     assert res.status_code == 200
     body = res.json()
     assert body["success"] is True
-    assert body["data"]["ranking_metric"] == "mad"
+    assert body["data"]["display_metrics"] == ["mad", "mfe", "mse", "mape"]
+    assert "ranking_metric" not in body["data"]
     assert body["data"]["updated_at"] is None
     assert body["data"]["enabled_methods"] is None  # belum diatur = semua metode
     assert "moving_average" in body["data"]["available_methods"]
@@ -65,18 +66,18 @@ async def test_get_tanpa_token_401(client):
 @pytest.mark.asyncio
 async def test_put_admin(client):
     repo = _override()
-    res = await client.put(BASE, json={"ranking_metric": "mape"}, headers=_headers("admin"))
+    res = await client.put(BASE, json={"display_metrics": ["mape", "mad"]}, headers=_headers("admin"))
 
     assert res.status_code == 200
-    assert res.json()["data"]["ranking_metric"] == "mape"
+    assert res.json()["data"]["display_metrics"] == ["mad", "mape"]
     assert res.json()["data"]["updated_at"] is not None
-    assert repo.row.ranking_metric == "mape"
+    assert repo.row.display_metrics == ["mad", "mape"]
 
 
 @pytest.mark.asyncio
 async def test_put_non_admin_403(client):
     _override()
-    res = await client.put(BASE, json={"ranking_metric": "mape"}, headers=_headers("viewer"))
+    res = await client.put(BASE, json={"display_metrics": ["mape"]}, headers=_headers("viewer"))
 
     assert res.status_code == 403
     assert res.json()["error"]["code"] == "AUTH_FORBIDDEN"
@@ -85,15 +86,15 @@ async def test_put_non_admin_403(client):
 @pytest.mark.asyncio
 async def test_put_tanpa_token_401(client):
     _override()
-    res = await client.put(BASE, json={"ranking_metric": "mape"})
+    res = await client.put(BASE, json={"display_metrics": ["mape"]})
     assert res.status_code == 401
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("metric", ["mse", "rmse", "", None])
-async def test_put_metrik_tidak_valid_422(client, metric):
+@pytest.mark.parametrize("metrics", [[], ["rmse"], ["mfe_abs"], [""], "mad"])
+async def test_put_display_metrics_tidak_valid_422(client, metrics):
     repo = _override()
-    res = await client.put(BASE, json={"ranking_metric": metric}, headers=_headers("admin"))
+    res = await client.put(BASE, json={"display_metrics": metrics}, headers=_headers("admin"))
 
     assert res.status_code == 422
     assert repo.saved == 0
@@ -104,7 +105,7 @@ async def test_put_enabled_methods(client):
     repo = _override()
     res = await client.put(
         BASE,
-        json={"ranking_metric": "mad", "enabled_methods": ["xgboost", "moving_average"]},
+        json={"enabled_methods": ["xgboost", "moving_average"]},
         headers=_headers("admin"),
     )
 
@@ -116,7 +117,7 @@ async def test_put_enabled_methods(client):
 @pytest.mark.asyncio
 async def test_put_enabled_methods_kosong_422(client):
     repo = _override()
-    res = await client.put(BASE, json={"ranking_metric": "mad", "enabled_methods": []}, headers=_headers("admin"))
+    res = await client.put(BASE, json={"enabled_methods": []}, headers=_headers("admin"))
 
     assert res.status_code == 422
     assert repo.saved == 0
@@ -126,7 +127,7 @@ async def test_put_enabled_methods_kosong_422(client):
 async def test_put_metode_tak_dikenal_400(client):
     _override()
     res = await client.put(
-        BASE, json={"ranking_metric": "mad", "enabled_methods": ["prophet"]}, headers=_headers("admin")
+        BASE, json={"enabled_methods": ["prophet"]}, headers=_headers("admin")
     )
 
     assert res.status_code == 400
@@ -149,7 +150,7 @@ async def test_put_opsi_engine(client):
     repo = _override()
     res = await client.put(
         BASE,
-        json={"ranking_metric": "mad", "es_alpha_grid": [0.2, 0.8], "ml_grid_search": True},
+        json={"es_alpha_grid": [0.2, 0.8], "ml_grid_search": True},
         headers=_headers("admin"),
     )
     assert res.status_code == 200
@@ -161,7 +162,7 @@ async def test_put_opsi_engine(client):
 @pytest.mark.parametrize("grid", [[], [0], [1], [1.5], [-0.1]])
 async def test_put_alpha_di_luar_0_1_422(client, grid):
     repo = _override()
-    res = await client.put(BASE, json={"ranking_metric": "mad", "es_alpha_grid": grid}, headers=_headers("admin"))
+    res = await client.put(BASE, json={"es_alpha_grid": grid}, headers=_headers("admin"))
     assert res.status_code == 422
     assert repo.saved == 0
 
@@ -173,7 +174,7 @@ async def test_get_dan_put_perencanaan(client):
     assert data["service_level_pct"] == 95 and data["eoq_method"] == "classic"
 
     res = await client.put(
-        BASE, json={"ranking_metric": "mad", "service_level_pct": 99, "eoq_method": "dynamic"}, headers=_headers("admin")
+        BASE, json={"service_level_pct": 99, "eoq_method": "dynamic"}, headers=_headers("admin")
     )
     assert res.json()["data"]["service_level_pct"] == 99
     assert repo.row.eoq_method == "dynamic"
@@ -183,7 +184,7 @@ async def test_get_dan_put_perencanaan(client):
 @pytest.mark.parametrize("body", [{"service_level_pct": 50}, {"service_level_pct": 100}, {"eoq_method": "wilson"}])
 async def test_put_perencanaan_invalid_422(client, body):
     _override()
-    res = await client.put(BASE, json={"ranking_metric": "mad", **body}, headers=_headers("admin"))
+    res = await client.put(BASE, json={**body}, headers=_headers("admin"))
     assert res.status_code == 422
 
 
@@ -194,7 +195,7 @@ async def test_get_dan_put_kebijakan_reorder(client):
     assert data["rop_formula"] == "with_buffer" and data["order_qty_policy"] == "order_up_to"
 
     res = await client.put(
-        BASE, json={"ranking_metric": "mad", "rop_formula": "standard", "order_qty_policy": "eoq"},
+        BASE, json={"rop_formula": "standard", "order_qty_policy": "eoq"},
         headers=_headers("admin"),
     )
     assert res.status_code == 200
@@ -206,6 +207,6 @@ async def test_get_dan_put_kebijakan_reorder(client):
 @pytest.mark.parametrize("body", [{"rop_formula": "wilson"}, {"order_qty_policy": "lot4lot"}])
 async def test_put_kebijakan_reorder_invalid_422(client, body):
     repo = _override()
-    res = await client.put(BASE, json={"ranking_metric": "mad", **body}, headers=_headers("admin"))
+    res = await client.put(BASE, json={**body}, headers=_headers("admin"))
     assert res.status_code == 422
     assert repo.saved == 0

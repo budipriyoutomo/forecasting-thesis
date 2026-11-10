@@ -10,8 +10,9 @@ Hasil run berhenti di level produk — tidak ada turunan ke BOM/material di sini
 Kegagalan satu produk dicatat per-baris & TIDAK menggagalkan run (AGENTS.md §5).
 Metode manual tak dikenal ditolak di awal (400) sebelum run dibuat (§6.6).
 
-Metrik ranking mode otomatis dibaca SEKALI per run dari master data Pengaturan
-Forecast (`settings`, Fase 11.2a) dan dicatat di `forecast_runs.ranking_metric`.
+Metode aktif & opsi engine dibaca SEKALI per run dari master data Pengaturan Forecast
+(`settings`, Fase 11.2a). Fase 11.15: mode otomatis tidak memilih pemenang —
+`forecast_runs.ranking_metric` hanya riwayat run lama (run baru NULL).
 Variabel eksternal aktif (`external`, Fase 11.2b) disusun per produk → `options.exog`.
 """
 from dataclasses import replace
@@ -22,7 +23,6 @@ import pandas as pd
 from app.models.forecast_result import ForecastResult
 from app.models.forecast_run import ForecastRun
 from app.services.forecasting import forecast_service, registry
-from app.services.forecasting.forecast_service import DEFAULT_RANKING_METRIC
 from app.services.forecasting.types import EngineOptions
 from app.utils.exceptions import (
     ForbiddenRoleError,
@@ -32,7 +32,7 @@ from app.utils.exceptions import (
 )
 
 
-def _metrics(points) -> dict | None:
+def forecast_summary(points) -> dict | None:
     if not points:
         return None
     values = [p.value for p in points]
@@ -51,7 +51,7 @@ class ForecastRunService:
         self._repo = forecast_repo
         self._products = products
         self._demand = demand
-        self._settings = settings  # ForecastSettingsService; None → DEFAULT_RANKING_METRIC
+        self._settings = settings  # ForecastSettingsService; None → seluruh registry
         self._external = external  # ExternalVariableService; None → tanpa variabel eksternal
 
     async def create_run(
@@ -83,22 +83,17 @@ class ForecastRunService:
                 raise ProductNotFoundError(f"Produk '{pid}' tidak ditemukan.")
             products.append(product)
 
-        ranking_metric = None
-        if method is None:
-            ranking_metric = await self._settings.ranking_metric() if self._settings else DEFAULT_RANKING_METRIC
-
         run = ForecastRun(
             user_id=user_id,
             horizon=horizon,
             horizon_unit=horizon_unit,
             status="PROCESSING",
-            ranking_metric=ranking_metric,
         )
         await self._repo.add_run(run)
 
         results = []
         for product in products:
-            record = await self._forecast_one(product, horizon, method, ranking_metric, enabled, options)
+            record = await self._forecast_one(product, horizon, method, enabled, options)
             results.append(
                 ForecastResult(
                     run_id=run.id,
@@ -114,7 +109,7 @@ class ForecastRunService:
                     mase=record.mase,
                     explanation=record.explanation,
                     forecast_data=[p.__dict__ for p in record.forecast] if record.forecast else None,
-                    metrics=_metrics(record.forecast),
+                    metrics=forecast_summary(record.forecast),
                     feature_importance=record.feature_importance,
                     hyperparameters=record.hyperparameters,
                 )
@@ -132,7 +127,6 @@ class ForecastRunService:
         product,
         horizon: int,
         method: str | None,
-        ranking_metric: str | None,
         enabled: set[str],
         options: EngineOptions,
     ):
@@ -147,7 +141,6 @@ class ForecastRunService:
             df,
             horizon,
             requested_method=method,
-            ranking_metric=ranking_metric or DEFAULT_RANKING_METRIC,
             enabled_methods=enabled,
             options=replace(options, exog=await self._external.exog_for_product(product.id))
             if self._external

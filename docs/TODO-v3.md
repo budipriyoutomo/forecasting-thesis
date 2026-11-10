@@ -73,7 +73,7 @@ Legenda: 🔴 P0 (salah/inkonsisten) · 🟡 P1 (wajib thesis) · 🟢 P2 (rapi-
   - Service level (α) = 1 − stock out rate
 - [x] `InventoryMetricsTable.tsx`: header **"Service Level (α)"**, **"Fulfilment Rate (β)"**, **"Stock Out Rate"** + tooltip rumus; field API tetap `fill_rate` (tidak breaking); test mapping kolom
 - [x] Export PDF metrik: header "Fill rate" → "Fulfilment" (ASCII; font PDF core tidak punya β)
-- [ ] PRD FR-11.3 masih menulis "fill rate" → dikerjakan di Fase 11.13
+- [x] PRD FR-11.3 "fill rate" → definisi α/β/stock out rate (dikerjakan di Fase 11.13)
 - [ ] ⛔ Bila docx mendefinisikan stock out rate berbasis qty → tambah opsi di Pengaturan Forecast, jangan ganti diam-diam
 
 ---
@@ -141,6 +141,29 @@ Legenda: 🔴 P0 (salah/inkonsisten) · 🟡 P1 (wajib thesis) · 🟢 P2 (rapi-
 - [x] Keputusan user: tampilkan + pakai di proyeksi; riwayat per (run, material); forecast override ditunda
 - [ ] Override **hasil forecast** via UI — ditunda (keputusan user)
 - [ ] `replace_for_run` masih menghapus baris lama (AGENTS §6) — riwayat aman via konteks; versioning rekomendasi bila dibutuhkan nanti
+
+---
+
+## Fase 11.15 — Tanpa Metode Pemenang ✅ (10 Nov 2026)
+
+> Keputusan: `RECONCILIATION.md` §"Fase 11.15". Mode otomatis tidak memilih metode; planner memilih per produk (override append-only); metrik = checkbox tampilan; kolom rank dihapus.
+
+### Backend
+- [x] `forecast_service`: mode otomatis tanpa pemenang; kandidat menyimpan `forecast` + `explanation`; hapus `rank_candidates`/`_comparison_note`/`ranking_metric`
+- [x] `forecast_settings.display_metrics` (migration; drop `ranking_metric` di settings), schema & API `GET/PUT /forecast-settings`
+- [x] `forecast_selection_service`: metode berlaku per hasil (override terbaru) + `SelectedForecastReader` untuk hilir
+- [x] Endpoint pilih metode: per hasil & massal per run (alasan wajib, audit trail)
+- [x] Wiring hilir (reorder, proyeksi, cost, gudang, metrik inventori, export) lewat `SelectedForecastReader`
+- [x] `ForecastResultOut`: `id`, `selected_method`, `selection_status`; run summary `n_pending_selection`
+
+### Frontend
+- [x] Pengaturan Forecast: checkbox metrik tampil (min. 1)
+- [x] Tabel kandidat: tanpa rank, kolom sesuai `display_metrics`, aksi "Pilih"
+- [x] Hasil forecast: status "Metode belum dipilih", dialog pilih + alasan, "pakai untuk semua produk"
+
+### Dokumen
+- [ ] ⛔ Docx thesis (penulis): cek apakah Bab III masih menyebut sistem memilih metode dengan galat terkecil — bila ya, selaraskan dengan keputusan ini
+- [x] AGENTS.md §1/§5/§10/§11, ARCHITECTURE §4/§5/§6, PRD, engines README, TASK_BREAKDOWN
 
 ---
 

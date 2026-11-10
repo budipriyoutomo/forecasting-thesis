@@ -45,6 +45,18 @@ def test_build_forecast_xlsx_bisa_dibuka_kembali():
     assert ws.max_row == 3  # header + 2 baris
 
 
+def test_build_forecast_xlsx_menandai_metode_belum_dipilih():
+    """Fase 11.15 — hasil otomatis yang metodenya belum dipilih planner ditandai jelas."""
+    pending = _fresult("p1")
+    pending.method_used = None
+    pending.selection_status = "PENDING_SELECTION"
+    content = build_forecast_xlsx([pending])
+
+    ws = load_workbook(io.BytesIO(content)).active
+    header = [c.value for c in ws[1]]
+    assert ws.cell(row=2, column=header.index("selection_status") + 1).value == "PENDING_SELECTION"
+
+
 def test_build_reorder_xlsx_isi_benar():
     content = build_reorder_xlsx([_rec("m1")])
 

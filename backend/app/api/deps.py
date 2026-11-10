@@ -39,6 +39,7 @@ from app.services.inventory_metrics_service import InventoryMetricsService
 from app.services.export_service import ExportService
 from app.services.external_variable_service import ExternalVariableService
 from app.services.forecast_run_service import ForecastRunService
+from app.services.forecast_selection_service import ForecastSelectionService
 from app.services.forecast_settings_service import ForecastSettingsService
 from app.services.material_component_service import MaterialComponentService
 from app.services.material_service import MaterialService
@@ -170,7 +171,7 @@ def get_material_component_service(session: AsyncSession = Depends(get_db)) -> M
 def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderService:
     return ReorderService(
         reorder_repo=SqlReorderRepository(session),
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         boms=SqlBomRepository(session),
         materials=SqlMaterialRepository(session),
         cost_templates=SqlCostTemplateRepository(session),
@@ -189,7 +190,7 @@ def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService
     except StorageUploadFailedError:
         storage = None
     return ExportService(
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         reorder_repo=SqlReorderRepository(session),
         storage=storage,
         projections=SqlStockProjectionRepository(session),
@@ -204,7 +205,7 @@ def get_warehouse_service(session: AsyncSession = Depends(get_db)) -> WarehouseS
     return WarehouseService(
         config_repo=SqlWarehouseConfigRepository(session),
         validation_repo=SqlWarehouseValidationRepository(session),
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         products=SqlProductRepository(session),
         materials=SqlMaterialRepository(session),
     )
@@ -232,7 +233,7 @@ def get_material_receipt_service(session: AsyncSession = Depends(get_db)) -> Mat
 
 def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
     return CostService(
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         reorder_repo=SqlReorderRepository(session),
         demand_repo=SqlDemandHistoryRepository(session),
         boms=SqlBomRepository(session),
@@ -246,7 +247,7 @@ def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
 
 def get_inventory_metrics_service(session: AsyncSession = Depends(get_db)) -> InventoryMetricsService:
     return InventoryMetricsService(
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         demand_repo=SqlDemandHistoryRepository(session),
         products=SqlProductRepository(session),
         metrics_repo=SqlInventoryMetricsRepository(session),
@@ -258,12 +259,24 @@ def get_inventory_metrics_service(session: AsyncSession = Depends(get_db)) -> In
 def get_dashboard_service(session: AsyncSession = Depends(get_db)) -> DashboardService:
     return DashboardService(
         materials=SqlMaterialRepository(session),
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         reorder_repo=SqlReorderRepository(session),
         override_repo=SqlOverrideRepository(session),
         warehouse_repo=SqlWarehouseValidationRepository(session),
         inventory_metrics_repo=SqlInventoryMetricsRepository(session),
     )
+
+
+def _selected_forecast(session: AsyncSession) -> ForecastSelectionService:
+    """Hasil forecast dengan metode pilihan planner diterapkan (Fase 11.15) — dipakai
+    endpoint forecast & SEMUA service hilir sebagai `forecast_repo`."""
+    return ForecastSelectionService(
+        SqlForecastRepository(session), SqlOverrideRepository(session), get_override_service(session)
+    )
+
+
+def get_forecast_selection_service(session: AsyncSession = Depends(get_db)) -> ForecastSelectionService:
+    return _selected_forecast(session)
 
 
 def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideService:
@@ -280,7 +293,7 @@ def get_override_service(session: AsyncSession = Depends(get_db)) -> OverrideSer
 def get_stock_projection_service(session: AsyncSession = Depends(get_db)) -> StockProjectionService:
     return StockProjectionService(
         SqlStockProjectionRepository(session),
-        forecast_repo=SqlForecastRepository(session),
+        forecast_repo=_selected_forecast(session),
         reorder_repo=SqlReorderRepository(session),
         boms=SqlBomRepository(session),
         demand_repo=SqlDemandHistoryRepository(session),

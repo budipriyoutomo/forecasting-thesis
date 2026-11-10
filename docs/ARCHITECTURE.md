@@ -263,7 +263,7 @@ forecastiq/
 | horizon | INTEGER | |
 | horizon_unit | VARCHAR(10) | days / weeks / months |
 | status | VARCHAR(20) | PENDING / PROCESSING / COMPLETED / FAILED |
-| ranking_metric | VARCHAR(10), nullable | snapshot `forecast_settings.ranking_metric` saat run dibuat (mode otomatis). NULL = mode manual / run sebelum Fase 11.2a |
+| ranking_metric | VARCHAR(10), nullable | **riwayat saja** — snapshot metrik penentu pemenang run Fase 11.2a–11.14. Sejak Fase 11.15 (tanpa pemenang) run baru selalu NULL |
 | created_at / completed_at | TIMESTAMPTZ | |
 | error_message | TEXT, nullable | |
 
@@ -275,13 +275,13 @@ forecastiq/
 | id | UUID | PK |
 | run_id | UUID FK → forecast_runs | |
 | product_id | UUID FK → products ON DELETE SET NULL | |
-| method_used | VARCHAR(30) | moving_average / exponential_smoothing / random_forest / xgboost / lstm |
+| method_used | VARCHAR(30), nullable | moving_average / exponential_smoothing / random_forest / xgboost / lstm. Mode manual = metode yang diminta. **Mode otomatis sejak Fase 11.15 = NULL** (tidak ada pemenang); metode berlaku = pilihan planner di `overrides` (lihat §6.1a) |
 | selection_mode | VARCHAR(10) | `auto` (comparative) / `manual` |
-| candidates_evaluated | JSONB | `[{method, mad, mfe, mse, mape}]` — hasil semua metode yang diuji, untuk transparansi & explanation |
+| candidates_evaluated | JSONB | `[{method, mad, mfe, mse, mape, mase, forecast, explanation, feature_importance, hyperparameters}]` — semua metode yang dijalankan. `forecast` (deret per metode) sejak Fase 11.15 — dipakai saat planner memilih metode; run lama tanpa `forecast` tidak bisa ganti metode |
 | mad / mfe / mse / mape | NUMERIC, nullable | metrik akurasi metode terpilih |
 | mase | NUMERIC, nullable | metrik tambahan opsional (lihat `RECONCILIATION.md` Keputusan Terbuka v3.0 poin 3), tidak ditampilkan default di UI thesis |
 | explanation | TEXT | penjelasan bahasa natural |
-| forecast_data | JSONB | `[{date, value, lower, upper}]` |
+| forecast_data | JSONB, nullable | `[{date, value, lower, upper}]` — mode manual / run lama. Mode otomatis (Fase 11.15) NULL; deret berlaku diambil dari kandidat pilihan planner |
 | metrics | JSONB | `{avg_forecast, trend_direction, trend_pct, gap_vs_existing_pct, ...}` |
 | created_at | TIMESTAMPTZ | |
 
@@ -362,7 +362,7 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | SMALLINT | PK, selalu 1 |
-| ranking_metric | VARCHAR(10) | `mad` \| `mfe_abs` \| `mape` (CHECK), default `mad` — metrik penentu pemenang Comparative Selection |
+| display_metrics | VARCHAR(10)[], nullable | Fase 11.15 — metrik yang **ditampilkan** di hasil forecast (checkbox, ⊂ `mad`/`mfe`/`mse`/`mape`, urutan baku). NULL = semua. Bukan penentu pemenang — `ranking_metric` di-drop (migration `d7e8f9a0b1c2`) |
 | enabled_methods | VARCHAR(50)[], nullable | metode aktif (kunci `MODEL_REGISTRY`, terurut). NULL = seluruh metode terdaftar; array kosong ditolak CHECK. Pengganti env `FORECAST_ENGINES_ENABLED` |
 | es_alpha_grid, es_alpha_metric, ml_grid_search, ml_winsorize, service_level_pct, eoq_method | — | Fase 11.2/11.4, lihat §6.10 |
 | rop_formula | VARCHAR(20) | v3.3 — `standard` \| `with_buffer` (CHECK), default `with_buffer` |
@@ -370,7 +370,7 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | updated_by | UUID, nullable | admin terakhir yang mengubah |
 | updated_at | TIMESTAMPTZ | |
 
-> `candidates_evaluated` mode otomatis kini membawa `rank_mad`, `rank_mfe` (berdasarkan \|MFE\|), `rank_mape` (1 = terbaik, seri → peringkat sama, metrik tak terdefinisi → null). Mode manual tanpa peringkat.
+> Fase 11.15: kolom peringkat `rank_mad`/`rank_mfe`/`rank_mape` (Fase 11.2a) **dihapus** — tidak ada penilaian metrik; run lama yang masih membawanya diabaikan UI.
 
 ### `cost_template_items` (baru — 2 Oktober 2026)
 | Kolom | Tipe | Keterangan |
@@ -449,6 +449,8 @@ GET    /api/v1/uploads
 POST   /api/v1/forecast/runs              # trigger forecast run (horizon, method opsional)
 GET    /api/v1/forecast/runs/{run_id}
 GET    /api/v1/forecast/results?product_id=...
+POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; run milik user lain → 403
+POST   /api/v1/forecast/runs/{run_id}/selection        # Fase 11.15 — satu metode untuk semua produk di run {method, reason} → {n_selected, skipped_product_ids, results}; produk tanpa metode itu dilewati
 
 POST   /api/v1/reorder/recommendations    # generate & persist rekomendasi (body: run_id, current_stock per material — lihat catatan di §4 `reorder_recommendations`)
 GET    /api/v1/reorder/recommendations
@@ -461,8 +463,8 @@ PUT    /api/v1/warehouse/config/{id}                # ubah capacity_qty (admin)
 DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
-GET    /api/v1/forecast-settings                   # pengaturan forecast + available_methods (semua role; default mad & semua metode bila belum disimpan)
-PUT    /api/v1/forecast-settings                   # ubah ranking_metric & enabled_methods (admin) — berlaku untuk run berikutnya; metrik di luar mad|mfe_abs|mape atau enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; enabled_methods absen = tidak diubah
+GET    /api/v1/forecast-settings                   # pengaturan forecast + available_methods (semua role; default semua metrik & semua metode bila belum disimpan)
+PUT    /api/v1/forecast-settings                   # ubah display_metrics & enabled_methods (admin); display_metrics di luar mad|mfe|mse|mape atau [] → 422; enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; field absen = tidak diubah
 GET    /api/v1/cost-templates                      # daftar template biaya
 GET    /api/v1/cost-templates/active               # template aktif (404 COST_TEMPLATE_NOT_FOUND bila belum ada)
 GET    /api/v1/cost-templates/{id}                 # detail + items
@@ -525,6 +527,8 @@ COST_TEMPLATE_NAME_EXISTS    WAREHOUSE_CAPACITY_INVALID
 ## 6. Forecasting Engine — Comparative Selection (Final v3.0)
 
 > **Perubahan mendasar dari v2.0:** tidak ada lagi klasifikasi pola demand (ADI/CV² → kuadran Syntetos-Boylan). v3.0 mengikuti Bab III thesis: jalankan seluruh metode aktif, uji akurasinya, pilih yang terbaik. Lihat `RECONCILIATION.md` §"Rekonsiliasi v3.0" untuk alasan.
+>
+> **Fase 11.15 (10 Nov 2026):** langkah "pilih yang terbaik" **dihapus** atas keputusan user — sistem menjalankan & menampilkan semua metode berdampingan tanpa pemenang maupun peringkat; planner memilih metode per produk (§6.1a). Lihat `RECONCILIATION.md` §"Fase 11.15".
 
 ### 6.0 Kontrak Engine — Fungsional, 1 Fungsi per Metode (tidak berubah dari v2.0)
 
@@ -587,19 +591,27 @@ def run_forecast_for_product(df: pd.DataFrame, horizon: int, requested_method: s
     if not candidates_evaluated:
         return ForecastResultRecord(status="MODEL_SELECTION_FAILED")
 
-    # Pilih berdasarkan metrik dari master data Pengaturan Forecast (default: MAD, terendah
-    # menang) — diteruskan ForecastRunService sebagai argumen, bukan dibaca dari env.
-    # Kandidat diberi rank_mad / rank_mfe (|MFE|) / rank_mape lewat rank_candidates().
-    # ranking_metric: "mad" | "mfe_abs" | "mape"
-    method_name, result = min(candidates_evaluated, key=lambda x: getattr(x[1], ranking_metric))
+    # Fase 11.15 — TIDAK ada pemenang & tidak ada peringkat. Simpan semua kandidat beserta
+    # deret forecast + penjelasannya; method_used/forecast_data NULL sampai planner memilih.
     return ForecastResultRecord(
-        status="COMPLETED", method_used=method_name, selection_mode="auto",
-        candidates_evaluated=[{"method": m, **r.__dict__} for m, r in candidates_evaluated],
-        **result.__dict__,
+        status="COMPLETED", selection_mode="auto",
+        candidates_evaluated=[{"method": m, **metrics(r), "forecast": r.forecast, "explanation": ...}
+                              for m, r in candidates_evaluated],
     )
 ```
 
 > Kegagalan satu metode **tidak** menggagalkan seluruh proses perbandingan (exclude & lanjut). Mode manual **tidak** fallback ke metode lain bila gagal (user sudah memilih sadar) — sama seperti aturan v2.0.
+
+### 6.1a Pemilihan Metode oleh Planner (Fase 11.15, 10 Nov 2026)
+
+Mode otomatis tidak memilih pemenang (keputusan user — `RECONCILIATION.md` §"Fase 11.15").
+`forecast_selection_service.py`:
+
+- **Pilihan = override append-only**: `overrides(target_type = forecast_result, new_value = {"method_used": m}, reason wajib, run_id)`. Hasil forecast asli tidak diubah.
+- **Metode berlaku** per hasil = override terbaru yang metodenya ada di kandidat dengan deret `forecast`; tanpa itu → `forecast_results.method_used` (mode manual / run lama sebelum 11.15); tanpa keduanya → `PENDING_SELECTION`.
+- **Adapter hilir**: `ForecastSelectionService.list_results(run_id)` mengembalikan view hasil dengan `method_used`/`forecast_data`/metrik/penjelasan dari kandidat terpilih. Di-inject sebagai `forecast_repo` ke reorder, proyeksi stok, cost, gudang, metrik inventori, export & dashboard (`api/deps.py`). Hasil `PENDING_SELECTION` tidak punya `forecast_data` → **dilewati** di semua perhitungan hilir.
+- Response forecast: `ForecastResultOut.id`, `selection_status` (`SELECTED`/`PENDING_SELECTION`/null untuk gagal), `selection_reason`, `selected_at`; run summary `n_pending_selection`.
+- Setelah memilih metode, planner menjalankan perencanaan lagi (reorder/proyeksi adalah resource hasil `POST` generate).
 
 ### 6.2 Metrik Evaluasi (`evaluation.py`)
 
@@ -672,7 +684,7 @@ Setiap fungsi **self-contained**: melakukan holdout backtest (untuk MAD/MFE/MSE/
 
 ```env
 # Metode aktif: master data forecast_settings.enabled_methods (Fase 11.2a) — bukan env
-# Metrik ranking pemenang BUKAN env lagi — master data forecast_settings (Fase 11.2a)
+# Tidak ada metrik ranking pemenang (Fase 11.15); metrik tampil = forecast_settings.display_metrics
 COMPUTE_MASE=true                     # hitung & simpan MASE tambahan (tidak dipakai ranking)
 BACKTEST_MIN_PERIODS=12
 LSTM_MIN_PERIODS=24
@@ -872,7 +884,7 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 ### Tabel baru / berubah
 | Tabel | Isi | Migration |
 |---|---|---|
-| `forecast_settings` (1 baris, `id = 1`) | `ranking_metric`, `enabled_methods[]`, `es_alpha_grid[]`, `es_alpha_metric`, `ml_grid_search`, `ml_winsorize`, `service_level_pct`, `eoq_method` | `e6f7a8b9c0d1`, `c0d1e2f3a4b5` |
+| `forecast_settings` (1 baris, `id = 1`) | `display_metrics[]` (dulu `ranking_metric`, Fase 11.15 `d7e8f9a0b1c2`), `enabled_methods[]`, `es_alpha_grid[]`, `es_alpha_metric`, `ml_grid_search`, `ml_winsorize`, `service_level_pct`, `eoq_method` | `e6f7a8b9c0d1`, `c0d1e2f3a4b5` |
 | `forecast_runs.ranking_metric`, `forecast_results.feature_importance/hyperparameters` | snapshot metrik & hasil engine | `e6f7a8b9c0d1` |
 | `external_variables`, `external_variable_values` | variabel eksternal dinamis + nilai per periode (product_id NULL = global) | `f7a8b9c0d1e2` |
 | `material_usage_history` + `reorder_recommendations.waste_factor` | pemakaian aktual vs standar → buffer | `a8b9c0d1e2f3` |
