@@ -220,6 +220,23 @@ Checklist rinci: `docs/TODO-v3.md`. Keputusan: `RECONCILIATION.md` §"Rekonsilia
 
 ---
 
+## 14. Fase 11.17 — Loop Kapasitas Gudang → Adjust SS & Buffer — ✅ SELESAI (19 Nov 2026), belum di-commit
+
+Keputusan & flowchart: `RECONCILIATION.md` §"Loop Validasi Kapasitas Gudang → Adjust SS & Buffer". Rincian teknis: `ARCHITECTURE.md` §6.11.
+
+- [x] Fungsi murni: kelebihan per grup per periode (skenario `proposed`) + klasifikasi penyebab infeasible (`capacity_adjustment_service`)
+- [x] Fungsi murni: anak tangga service level (99 → … → 90%), potong Buffer proporsional, α efektif
+- [x] Tabel `capacity_adjustments` append-only (usulan/custom/reset, audit alasan) — migration `b1c2d3e4f5a6`; master data tidak disentuh
+- [x] `ReorderService.compute_for_run` memakai SS/Buffer hasil adjust → ROP & S dihitung ulang; simpan nilai sistem + α efektif
+- [x] Proyeksi baseline memakai kebijakan sistem (`system_policy_from_rec`)
+- [x] Usulan = simulasi loop tahap 2→3 di memori (maks 10 iterasi); `/plan` menyertakan `capacity.suggestion` bila overload
+- [x] API: `suggest`, `GET` berlaku+riwayat, `POST` simpan usulan/custom, `reset`; response reorder + 4 kolom adjust
+- [x] UI: `CapacityAdjustmentPanel` di hasil perencanaan — usulan vs nilai sistem, input custom + alasan, α efektif, infeasible + penyebab, kembali ke nilai sistem
+- [x] Docs: PRD FR-10.7, ARCHITECTURE §4/§6.10/§6.11, RECONCILIATION
+- [ ] (Berikutnya) EOQ berkendala kapasitas (Lagrange/Hadley–Whitin) — dianalisis, belum dijadwalkan
+
+---
+
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)
 
 1. Fase Migrasi 0 (setup & audit — wajib, jangan dilewati meski buru-buru, ini yang mencegah migrasi jadi rewrite liar)

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { BomTreeNode } from "@/components/boms/BomTree";
 import type { ApiResponse } from "@/types/api";
-import type { PlanningSummary, StockProjectionRow } from "@/types/planning";
+import type { CapacityAdjustmentInputItem, PlanningSummary, StockProjectionRow } from "@/types/planning";
 import type { ReorderRecommendation } from "@/types/reorder";
 
 function unwrap<T>(res: ApiResponse<T>): T {
@@ -25,6 +25,28 @@ export function useRunPlanning() {
       for (const key of ["stock-projection", "reorder-list", "cost-summary", "inventory-metrics"])
         qc.invalidateQueries({ queryKey: [key, runId] });
     },
+  });
+}
+
+// Fase 11.17 — adjust kapasitas gudang (SS & Buffer). Setelah simpan/reset, pemanggil
+// menjalankan ulang perencanaan (loop kembali ke tahap 2).
+export function useSaveCapacityAdjustments(runId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    unknown,
+    Error,
+    { source: "suggested" | "custom"; items: CapacityAdjustmentInputItem[]; reason?: string | null }
+  >({
+    mutationFn: async (input) => unwrap(await api.capacityAdjustments.save(runId, input, getToken() as string)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["capacity-adjustments", runId] }),
+  });
+}
+
+export function useResetCapacityAdjustments(runId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ n_reset: number }, Error, void>({
+    mutationFn: async () => unwrap(await api.capacityAdjustments.reset(runId, null, getToken() as string)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["capacity-adjustments", runId] }),
   });
 }
 

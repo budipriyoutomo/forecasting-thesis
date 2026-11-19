@@ -162,3 +162,22 @@ async def test_service_override_map_kosong_tanpa_dependency_dan_dari_override_se
 
     svc._overrides = Ovs()
     assert (await svc.override_map("r1"))["m1"][0] == 150.0
+
+
+def test_out_menyertakan_adjust_kapasitas():
+    # Fase 11.17 — nilai sistem sebelum adjust, α efektif & sumber adjust untuk UI.
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.api.v1.reorder import _out
+
+    rec = SimpleNamespace(
+        id="rec-1", material_id="m1", safety_stock=Decimal("376.16"), reorder_point=Decimal("1426.16"),
+        recommended_order_qty=Decimal("0"), status="safe", safety_stock_system=Decimal("465.27"),
+        buffer_stock_system=Decimal("50"), service_level_effective=Decimal("97"), adjustment_source="suggested",
+    )
+    out = _out(rec)
+    assert float(out["safety_stock_system"]) == 465.27 and float(out["buffer_stock_system"]) == 50
+    assert float(out["service_level_effective"]) == 97 and out["adjustment_source"] == "suggested"
+    bare = SimpleNamespace(id="r", material_id="m1", safety_stock=1, reorder_point=2, recommended_order_qty=3, status="urgent")
+    assert _out(bare)["adjustment_source"] is None and _out(bare)["service_level_effective"] is None

@@ -89,3 +89,53 @@ async def test_endpoint_plan(client, auth_headers):
         assert (await client.post("/api/v1/forecast/runs/r1/plan")).status_code == 401
     finally:
         app.dependency_overrides.pop(get_planning_pipeline_service, None)
+
+
+# ── Fase 11.17 — loop kapasitas gudang ──
+
+
+class FakeCapacity:
+    def __init__(self, rec):
+        self._rec = rec
+
+    async def suggest(self, user_id, run_id):
+        self._rec.calls.append(("suggest",))
+        return {"status": "adjusted", "groups": [{"group": "cap"}], "items": []}
+
+
+@pytest.mark.asyncio
+async def test_overload_menyertakan_usulan_adjust_kapasitas():
+    rec = Recorder()
+    svc = PlanningPipelineService(*_fakes(rec), capacity=FakeCapacity(rec))
+    out = await svc.run("u1", "r1")
+    # usulan dihitung setelah proyeksi, sebelum evaluasi
+    assert [c[0] for c in rec.calls] == ["reorder", "projection", "suggest", "metrics", "cost"]
+    assert out["capacity"]["suggestion"]["status"] == "adjusted"
+    assert out["capacity"]["n_adjusted_materials"] == 0
+
+
+@pytest.mark.asyncio
+async def test_muat_kapasitas_tanpa_usulan():
+    rec = Recorder()
+    reorder, projection, metrics, cost = _fakes(rec)
+
+    class FitProjection:
+        async def generate_for_run(self, user_id, run_id):
+            return [SimpleNamespace(scenario="proposed", is_within_capacity=True, shortage_qty=0)]
+
+    class AdjustedReorder:
+        async def generate_for_run(self, user_id, run_id, current_stock=None):
+            return [SimpleNamespace(status="safe", item_status="COMPLETED", adjustment_source="custom"),
+                    SimpleNamespace(status="safe", item_status="COMPLETED", adjustment_source=None)]
+
+    svc = PlanningPipelineService(AdjustedReorder(), FitProjection(), metrics, cost, capacity=FakeCapacity(rec))
+    out = await svc.run("u1", "r1")
+    assert ("suggest",) not in rec.calls
+    assert out["capacity"] == {"n_adjusted_materials": 1, "suggestion": None}
+
+
+@pytest.mark.asyncio
+async def test_tanpa_service_kapasitas_usulan_kosong():
+    rec = Recorder()
+    out = await PlanningPipelineService(*_fakes(rec)).run("u1", "r1")
+    assert out["capacity"]["suggestion"] is None

@@ -26,4 +26,9 @@ export interface ReorderRecommendation {
   override_qty?: string | null;
   override_reason?: string | null;
   override_at?: string | null;
+  // Fase 11.17 — adjust kapasitas gudang: nilai sistem sebelum adjust (null = tidak di-adjust)
+  safety_stock_system?: string | null;
+  buffer_stock_system?: string | null;
+  service_level_effective?: string | null; // α efektif (%) = Φ(SS ÷ σ·√L)
+  adjustment_source?: "suggested" | "custom" | null;
 }

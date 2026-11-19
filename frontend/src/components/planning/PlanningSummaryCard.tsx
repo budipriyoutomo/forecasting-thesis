@@ -6,6 +6,8 @@ import type { PlanningSummary } from "@/types/planning";
 // Ringkasan pipeline thesis (Fase 11.8): [2] MRP → [3] kapasitas gudang → [4] evaluasi.
 export function PlanningSummaryCard({ summary }: { summary: PlanningSummary }) {
   const { reorder, projection, cost } = summary;
+  const adjusted = summary.capacity?.n_adjusted_materials ?? 0;
+  const adjustedHint = adjusted > 0 ? ` · ${adjusted} material di-adjust SS/Buffer` : "";
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <StatTile
@@ -23,9 +25,10 @@ export function PlanningSummaryCard({ summary }: { summary: PlanningSummary }) {
         value={projection.n_over_capacity > 0 ? `${projection.n_over_capacity} periode melebihi kapasitas` : "Muat kapasitas"}
         tone={projection.n_over_capacity > 0 ? "urgent" : "default"}
         hint={
-          projection.baseline_available
+          (projection.baseline_available
             ? `${projection.n_shortage_periods} periode kekurangan stok`
-            : `${projection.n_shortage_periods} periode kekurangan stok · skenario existing tidak dihitung (planning horizon tidak tersedia)`
+            : `${projection.n_shortage_periods} periode kekurangan stok · skenario existing tidak dihitung (planning horizon tidak tersedia)`) +
+          adjustedHint
         }
       />
       <StatTile

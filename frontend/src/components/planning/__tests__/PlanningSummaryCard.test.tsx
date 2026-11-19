@@ -22,4 +22,20 @@ describe("PlanningSummaryCard", () => {
     expect(screen.getByText(/planning horizon tidak tersedia/i)).toBeDefined();
     expect(screen.getByText("50.0%")).toBeDefined();
   });
+
+  it("menyebut jumlah material yang di-adjust kapasitas (Fase 11.17)", () => {
+    render(
+      <PlanningSummaryCard
+        summary={{
+          reorder: { n_materials: 3, n_urgent: 0, n_missing_data: 0 },
+          projection: { n_rows: 6, n_over_capacity: 0, n_shortage_periods: 0, baseline_available: true },
+          capacity: { n_adjusted_materials: 2, suggestion: null },
+          evaluation: { n_material_metrics: 3, n_product_metrics: 6 },
+          cost: { total_inventory_cost: 1, baseline_inventory_cost: 2, savings_pct: 50, shortage_cost: 0,
+                  baseline_shortage_cost: 10, eoq_method: "classic" },
+        }}
+      />,
+    );
+    expect(screen.getByText(/2 material di-adjust SS\/Buffer/i)).toBeDefined();
+  });
 });

@@ -11,6 +11,7 @@ import { ReorderTable } from "@/components/dashboard/ReorderTable";
 import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { MethodSelectionDialog } from "@/components/forecast/MethodSelectionDialog";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
+import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
 import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
 import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
 import { FormError } from "@/components/common/FormError";
@@ -226,6 +227,15 @@ export default function ForecastConfigPage() {
             )}
             <FormError message={planning.isError ? planning.error.message : null} />
             {planning.data && <PlanningSummaryCard summary={planning.data} />}
+            {planning.data && runId && (
+              <CapacityAdjustmentPanel
+                runId={runId}
+                suggestion={planning.data.capacity?.suggestion}
+                adjustedCount={planning.data.capacity?.n_adjusted_materials ?? 0}
+                materials={materials ?? []}
+                onReplan={() => planning.mutate({ runId })}
+              />
+            )}
             {projection.data && projection.data.length > 0 && (
               <>
                 <div className="flex flex-wrap gap-2">

@@ -23,6 +23,10 @@ Per periode t:
 Dua skenario (Keputusan #3): `proposed` — pemakaian = forecast ForecastIQ × BOM;
 `baseline` — pemakaian = planning perusahaan × BOM pada periode yang sama (hanya bila
 planning untuk periode horizon tersedia). Kapasitas melebihi → flag, bukan error (#17).
+
+Fase 11.17: adjust kapasitas (SS & Buffer) hanya untuk skenario `proposed`; `baseline` memakai
+kebijakan pesan SISTEM (`system_policy_from_rec`). `compute_for_run` menghitung tanpa menyimpan
+(dipakai simulasi usulan adjust, `capacity_adjustment_service`).
 """
 from dataclasses import dataclass
 from datetime import date
@@ -31,7 +35,7 @@ import pandas as pd
 
 from app.models.stock_projection import StockProjection
 from app.services.bom_service import BomLine, breakdown_requirements_series
-from app.services.reorder_service import OrderPolicy, order_policy_from_rec
+from app.services.reorder_service import OrderPolicy, order_policy_from_rec, system_policy_from_rec
 from app.services.warehouse_service import material_group_key
 from app.services.forecasting.preprocessing import future_timestamps, infer_period_delta
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
@@ -152,16 +156,13 @@ class StockProjectionService:
         self._materials = materials  # 19 Nov 2026 — grup material (category) untuk kapasitas
 
     async def generate_for_run(self, user_id: str, run_id: str) -> list:
-        run = await self._require_run(user_id, run_id)
-        periods, forecast_series, planning_series, bom_lines = await self._series(run_id)
-        if not periods:
-            await self._repo.replace_for_run(str(run_id), [])
-            return []
+        rows = await self.compute_for_run(user_id, run_id)
+        await self._repo.replace_for_run(str(run_id), rows)
+        return rows
 
-        recs = {str(r.material_id): r for r in await self._reorder.list_by_run(run_id)}
-        if not recs and self._reorder_service is not None:
-            recs = {str(r.material_id): r for r in await self._reorder_service.generate_for_run(user_id, run_id)}
-
+    async def capacity_context(self) -> tuple[dict, dict]:
+        """({material_id: kunci grup | None}, {kunci grup: kapasitas}) — grup yang unit anggotanya
+        tidak cocok dengan uom kapasitas dilewati (utilisasi "—")."""
         materials = await self._materials.list() if self._materials else []
         group_of = {str(m.id): material_group_key(getattr(m, "category", None)) for m in materials}
         units_of_group: dict[str, set[str]] = {}
@@ -178,13 +179,32 @@ class StockProjectionService:
             if uom and units_of_group.get(key, set()) - {uom.strip().upper()}:
                 continue
             capacity_by_group[key] = float(c.capacity_qty)
+        return group_of, capacity_by_group
+
+    async def compute_for_run(
+        self, user_id: str, run_id: str, recs: list | None = None, scenarios: tuple = SCENARIOS
+    ) -> list:
+        """Proyeksi TANPA menyimpan. `recs` None → rekomendasi tersimpan run ini (dibuat dulu
+        bila belum ada); list → rekomendasi di memori (simulasi adjust kapasitas)."""
+        run = await self._require_run(user_id, run_id)
+        periods, forecast_series, planning_series, bom_lines = await self._series(run_id)
+        if not periods:
+            return []
+
+        if recs is None:
+            recs = await self._reorder.list_by_run(run_id)
+            if not recs and self._reorder_service is not None:
+                recs = await self._reorder_service.generate_for_run(user_id, run_id)
+        recs = {str(r.material_id): r for r in recs}
+
+        group_of, capacity_by_group = await self.capacity_context()
         opening = await self._stock.latest_stock(as_of=periods[0])
         receipt_rows = await self._receipts.list(date_to=None)
         overrides = await self._overrides.reorder_qty_by_material(run_id) if self._overrides else {}
 
         rows = []
         for scenario, product_series in (("proposed", forecast_series), ("baseline", planning_series)):
-            if not product_series:
+            if not product_series or scenario not in scenarios:
                 continue
             projections: dict[str, list[ProjectionRow]] = {}
             for material_id, usage in breakdown_requirements_series(product_series, bom_lines).items():
@@ -194,7 +214,12 @@ class StockProjectionService:
                     periods,
                     [(r.expected_date, r.qty) for r in receipt_rows if str(r.material_id) == material_id],
                 )
-                policy = order_policy_from_rec(rec) if rec else None
+                if rec is None:
+                    policy = None
+                elif scenario == "proposed":
+                    policy = order_policy_from_rec(rec)
+                else:  # baseline = kondisi perusahaan: tanpa adjust kapasitas (Fase 11.17)
+                    policy = system_policy_from_rec(rec)
                 override = overrides.get(material_id) if scenario == "proposed" else None
                 projections[material_id] = project_stock(
                     opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, None,
@@ -215,7 +240,6 @@ class StockProjectionService:
                             is_within_capacity=p.is_within_capacity,
                         )
                     )
-        await self._repo.replace_for_run(str(run_id), rows)
         return rows
 
     async def list_for_run(self, user_id: str, run_id: str, scenario: str | None = None):

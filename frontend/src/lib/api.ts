@@ -19,7 +19,13 @@ import type {
 import type { BomTreeNode } from "@/components/boms/BomTree";
 import type { ExternalVariable, ExternalVariableInput, ImportResult } from "@/types/externalVariable";
 import type { LatestStock, MaterialReceipt, MaterialReceiptInput, WasteFactor } from "@/types/inventory";
-import type { PlanningSummary, StockProjectionRow } from "@/types/planning";
+import type {
+  CapacityAdjustment,
+  CapacityAdjustmentInputItem,
+  CapacitySuggestion,
+  PlanningSummary,
+  StockProjectionRow,
+} from "@/types/planning";
 import type { ForecastSettings, ForecastSettingsInput } from "@/types/forecastSettings";
 import type { Override, OverrideInput } from "@/types/override";
 import type { Product, ProductInput } from "@/types/product";
@@ -182,6 +188,34 @@ export const api = {
       ),
     projection: (runId: string, token: string) =>
       request<StockProjectionRow[]>(`/api/v1/forecast/runs/${runId}/stock-projection`, authed(token)),
+  },
+
+  // Fase 11.17 — adjust kapasitas gudang (SS & Buffer) per run
+  capacityAdjustments: {
+    suggest: (runId: string, token: string) =>
+      request<CapacitySuggestion>(
+        `/api/v1/forecast/runs/${runId}/capacity-adjustments/suggest`,
+        authed(token, { method: "POST" }),
+      ),
+    list: (runId: string, token: string) =>
+      request<{ active: CapacityAdjustment[]; history: CapacityAdjustment[] }>(
+        `/api/v1/forecast/runs/${runId}/capacity-adjustments`,
+        authed(token),
+      ),
+    save: (
+      runId: string,
+      input: { source: "suggested" | "custom"; items: CapacityAdjustmentInputItem[]; reason?: string | null },
+      token: string,
+    ) =>
+      request<CapacityAdjustment[]>(
+        `/api/v1/forecast/runs/${runId}/capacity-adjustments`,
+        authed(token, { method: "POST", body: JSON.stringify(input) }),
+      ),
+    reset: (runId: string, reason: string | null, token: string) =>
+      request<{ n_reset: number }>(
+        `/api/v1/forecast/runs/${runId}/capacity-adjustments/reset`,
+        authed(token, { method: "POST", body: JSON.stringify({ reason }) }),
+      ),
   },
 
   externalVariables: {

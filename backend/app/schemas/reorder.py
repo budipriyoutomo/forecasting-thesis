@@ -39,6 +39,12 @@ class ReorderRecommendationOut(BaseModel):
     order_qty_policy_used: str | None = None  # eoq | order_up_to
     order_up_to_level: Decimal | None = None
     moq_used: Decimal | None = None
+    # Fase 11.17 — adjust kapasitas gudang: nilai SISTEM sebelum adjust (null = tidak di-adjust),
+    # α efektif (%) = Φ(SS ÷ σ_d·√L), sumber adjust (suggested | custom).
+    safety_stock_system: Decimal | None = None
+    buffer_stock_system: Decimal | None = None
+    service_level_effective: Decimal | None = None
+    adjustment_source: str | None = None
     # Fase 11.14 — override planner yang BERLAKU untuk (run, material); angka sistem tetap
     # di `recommended_order_qty`. null = belum di-override.
     override_qty: Decimal | None = None

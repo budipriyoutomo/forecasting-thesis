@@ -5,6 +5,9 @@ untuk satu forecast run (REVISI_V2 §1/§3.1, sheet "Diagra Alur Sistem"):
   [1] forecast produk (sudah ada di run)
   [2] MRP = forecast × BOM → safety stock, buffer stock, EOQ   (ReorderService)
   [3] proyeksi stok material & utilisasi gudang                (StockProjectionService)
+      ↳ stok akhir melebihi kapasitas grup → usulan adjust SS & Buffer (CapacityAdjustmentService,
+        Fase 11.17). Usulan TIDAK diterapkan otomatis: planner menerima / mengisi custom, lalu
+        menjalankan perencanaan lagi (loop kembali ke [2]). Overload tetap flag (larangan #17).
   [4] evaluasi usulan inventory material + ringkasan biaya     (InventoryMetricsService, CostService)
 
 Tiap tahap tetap service terpisah dengan endpoint sendiri; orkestrator hanya
@@ -13,8 +16,9 @@ mengurutkan & merangkum. Error di satu tahap menghentikan tahap berikutnya.
 
 
 class PlanningPipelineService:
-    def __init__(self, reorder, projection, metrics, cost):
+    def __init__(self, reorder, projection, metrics, cost, capacity=None):
         self._reorder = reorder
+        self._capacity = capacity
         self._projection = projection
         self._metrics = metrics
         self._cost = cost
@@ -22,10 +26,12 @@ class PlanningPipelineService:
     async def run(self, user_id: str, run_id: str, current_stock: dict | None = None) -> dict:
         recs = await self._reorder.generate_for_run(user_id, run_id, current_stock)
         projection = await self._projection.generate_for_run(user_id, run_id)
+        proposed = [p for p in projection if p.scenario == "proposed"]
+        over_capacity = any(p.is_within_capacity is False for p in proposed)
+        suggestion = await self._capacity.suggest(user_id, run_id) if over_capacity and self._capacity else None
         metrics = await self._metrics.compute_for_run(user_id, run_id)
         cost = await self._cost.get_cost_summary(user_id, run_id)
 
-        proposed = [p for p in projection if p.scenario == "proposed"]
         return {
             "reorder": {
                 "n_materials": len(recs),
@@ -37,6 +43,10 @@ class PlanningPipelineService:
                 "n_over_capacity": sum(1 for p in proposed if p.is_within_capacity is False),
                 "n_shortage_periods": sum(1 for p in proposed if float(p.shortage_qty) > 0),
                 "baseline_available": any(p.scenario == "baseline" for p in projection),
+            },
+            "capacity": {
+                "n_adjusted_materials": sum(1 for r in recs if getattr(r, "adjustment_source", None)),
+                "suggestion": suggestion,
             },
             "evaluation": {
                 "n_material_metrics": sum(1 for m in metrics if m.target_type == "material"),

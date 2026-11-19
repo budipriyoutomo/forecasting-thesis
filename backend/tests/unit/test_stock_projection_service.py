@@ -254,3 +254,45 @@ async def test_grup_unit_tidak_cocok_uom_kapasitas_tidak_dijumlahkan():
 
 async def _async(value):
     return value
+
+
+# ── Fase 11.17 — loop kapasitas gudang ──
+
+
+@pytest.mark.asyncio
+async def test_baseline_memakai_kebijakan_sistem_sebelum_adjust_kapasitas():
+    # Usulan di-adjust (ROP 600, S 900); sistem: SS 300 vs 100 → ROP 800, S 1100.
+    planning = [SimpleNamespace(period="2026-11-01", planning=500), SimpleNamespace(period="2026-12-01", planning=400)]
+    rec = SimpleNamespace(
+        material_id="m1", safety_stock=100, buffer_stock=0, reorder_point=600, eoq_qty=0,
+        order_qty_policy_used="order_up_to", order_up_to_level=900, moq_used=0,
+        safety_stock_system=300, buffer_stock_system=0, rop_formula_used="with_buffer",
+    )
+    svc, _ = _svc(planning=planning, recs=[rec])
+    rows = await svc.generate_for_run(USER, "r1")
+    first = {r.scenario: r for r in rows if r.period == date(2026, 11, 1)}
+    # pre = 1000 + 200 − 500 = 700
+    assert first["proposed"].order_qty == 0  # 700 > ROP usulan 600
+    assert first["baseline"].order_qty == 400  # 700 ≤ ROP sistem 800 → S 1100 − 700
+
+
+@pytest.mark.asyncio
+async def test_compute_tanpa_simpan_dengan_rekomendasi_di_memori():
+    stored = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
+    svc, repo = _svc(recs=[stored])
+    sim = SimpleNamespace(
+        material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=800, eoq_qty=0,
+        order_qty_policy_used="order_up_to", order_up_to_level=1500, moq_used=0,
+    )
+    rows = await svc.compute_for_run(USER, "r1", recs=[sim], scenarios=("proposed",))
+    assert repo.by_run == {}
+    assert {r.scenario for r in rows} == {"proposed"}
+    assert rows[0].order_qty == 800 and rows[0].ending_qty == 1500  # pre 700 ≤ 800 → S 1500
+
+
+@pytest.mark.asyncio
+async def test_konteks_kapasitas_grup():
+    svc, _ = _svc(materials=[SimpleNamespace(id="m1", category=" Cap "), SimpleNamespace(id="m2", category=None)])
+    group_of, capacity = await svc.capacity_context()
+    assert group_of == {"m1": "cap", "m2": None}
+    assert capacity == {"cap": 2000.0}

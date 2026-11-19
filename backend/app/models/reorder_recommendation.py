@@ -55,6 +55,12 @@ class ReorderRecommendation(Base):
     order_qty_policy_used: Mapped[str | None] = mapped_column(String(20), nullable=True)  # eoq | order_up_to
     order_up_to_level: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     moq_used: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    # Fase 11.17 — adjust kapasitas gudang (capacity_adjustments). Nilai SISTEM sebelum adjust
+    # (NULL = tidak di-adjust) dipakai audit & skenario baseline; α efektif = Φ(SS ÷ σ_d·√L).
+    safety_stock_system: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    buffer_stock_system: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    service_level_effective: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    adjustment_source: Mapped[str | None] = mapped_column(String(10), nullable=True)  # suggested | custom
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

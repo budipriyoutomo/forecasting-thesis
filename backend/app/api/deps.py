@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.repositories.bom_repository import SqlBomRepository
+from app.repositories.capacity_adjustment_repository import SqlCapacityAdjustmentRepository
 from app.repositories.cost_template_repository import SqlCostTemplateRepository
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
 from app.repositories.external_variable_repository import SqlExternalVariableRepository
@@ -31,6 +32,7 @@ from app.repositories.warehouse_repository import (
 )
 from app.services.auth_service import AuthService
 from app.services.bom_service import BomService
+from app.services.capacity_adjustment_service import CapacityAdjustmentReader, CapacityAdjustmentService
 from app.services.cost_service import CostService
 from app.services.cost_template_service import CostTemplateService
 from app.services.dashboard_service import DashboardService
@@ -179,6 +181,7 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
         settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
         stock=_stock(session),
         overrides=get_override_service(session),
+        adjustments=CapacityAdjustmentReader(SqlCapacityAdjustmentRepository(session)),
     )
 
 
@@ -313,4 +316,15 @@ def get_planning_pipeline_service(session: AsyncSession = Depends(get_db)) -> Pl
         projection=get_stock_projection_service(session),
         metrics=get_inventory_metrics_service(session),
         cost=get_cost_service(session),
+        capacity=get_capacity_adjustment_service(session),
+    )
+
+
+def get_capacity_adjustment_service(session: AsyncSession = Depends(get_db)) -> CapacityAdjustmentService:
+    return CapacityAdjustmentService(
+        SqlCapacityAdjustmentRepository(session),
+        reorder=get_reorder_service(session),
+        projection=get_stock_projection_service(session),
+        settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
+        materials=SqlMaterialRepository(session),
     )

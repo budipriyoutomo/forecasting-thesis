@@ -859,3 +859,80 @@ bukan per item material.
 - RBAC tidak diubah: seperti seluruh Pengaturan Forecast (termasuk α ES), simpan = role `admin`;
   role `ppic`/`viewer` hanya baca.
 
+
+### Loop Validasi Kapasitas Gudang → Adjust SS & Buffer (19 Nov 2026) — ✅ diimplementasi (Fase 11.17)
+
+**Permintaan user.** Setelah proyeksi stok (tahap 3), stok tidak boleh melebihi kapasitas gudang.
+Bila melebihi, nilai tahap 2 (MRP & titik pesan) disesuaikan lalu tahap 2→3 diulang. Yang boleh
+di-adjust: SS, Buffer, ROP, EOQ — **fase ini fokus SS & Buffer**; ROP & EOQ dianalisis dulu.
+
+**Flowchart (disetujui user):**
+
+```mermaid
+flowchart TD
+    A[1. Forecast produk] --> B[2. MRP: forecast × BOM → SS, Buffer, ROP, EOQ]
+    B --> C[3. Proyeksi stok per periode]
+    C --> D{Σ stok akhir grup ≤ kapasitas grup di SEMUA periode?}
+    D -- Ya --> E[4. Evaluasi + biaya]
+    D -- Tidak --> F{Masih bisa diturunkan? SS/Buffer > 0, iterasi < maks}
+    F -- Ya --> G[Usulkan adjust SS & Buffer grup yang overload; planner terima / custom]
+    G --> B
+    F -- Tidak --> H[INFEASIBLE + penyebab: stok awal / kedatangan / MOQ / cycle stock]
+    H --> E
+```
+
+**Dasar analisis.** Dengan kebijakan `order_up_to` dan pesanan tiba di periode yang sama, stok
+akhir periode yang memesan ≈ S = ROP + μL = 2μL + SS + B. Menurunkan SS/B sebesar Δ menurunkan
+puncak stok material itu tepat Δ, sehingga kelebihan per grup bisa dihitung langsung
+(Σ(2μL + SS + B) vs kapasitas), bukan coba-coba. Overload yang berasal dari stok awal ERP,
+kedatangan terjadwal, MOQ, atau cycle stock (2μL) **tidak** bisa diselesaikan lewat SS/Buffer →
+dilaporkan sebagai infeasible beserta penyebabnya.
+
+**Keputusan user:**
+1. **Urutan adjust: turunkan service level dulu**, baru Buffer. Alasan: SS menutup ketidakpastian
+   (probabilistik), Buffer menutup waste yang sistematis; penurunan service level mudah
+   dijelaskan di thesis.
+2. **Sistem mengusulkan angka adjust**, planner bisa menerima usulan **atau mengisi angka custom**
+   (SS/Buffer per material) yang berbeda dari usulan sistem.
+3. **Adjust disimpan per run** (pola sama dengan override), **tidak** menimpa
+   `materials.manual_safety_stock` / master data.
+4. **Skenario baseline (planning perusahaan) tidak di-adjust** — perbandingan TIC tetap simetris
+   terhadap kondisi perusahaan apa adanya.
+5. **Transparansi**: tampilkan service level efektif setelah adjust,
+   z' = SS' ÷ (σ_d·√L) → α' = Φ(z'), agar planner melihat konsekuensinya.
+
+**Analisis ROP & EOQ (belum diimplementasi):**
+- **ROP tidak di-adjust langsung.** ROP = μL + SS (+B); μL adalah pemakaian selama lead time
+  (fakta, bukan pilihan). Menurunkan ROP tanpa SS/B = diam-diam menganggap lead time lebih
+  pendek → stockout. ROP dihitung ulang otomatis dari SS/B hasil adjust.
+- **EOQ bisa di-adjust** dan relevan untuk kebijakan `eoq` (puncak stok ≈ ROP + EOQ) atau saat
+  SS/B sudah 0 tapi masih overload. Model: **EOQ berkendala kapasitas (Hadley–Whitin,
+  Lagrange)** — Q'ᵢ = √(2AᵢS ÷ (iCᵢ + 2λ)), λ ≥ 0 dicari dengan bisection sampai
+  Σ(ROPᵢ + Q'ᵢ) ≤ kapasitas grup (λ = 0 → EOQ asli sudah muat). Satu material:
+  Q' = min(EOQ, kapasitas − ROP). EOQ dinamis: batasi kandidat n ke yang puncak stoknya muat,
+  pilih TC minimum. Biaya naik landai: TC(Q)/TC(Q*) = ½(Q/Q* + Q*/Q) → Q −20% ≈ +2,5%,
+  Q −50% ≈ +25%; kenaikannya terlihat di TIC tahap 4.
+
+**Keputusan teknis turunan (assistant, bisa dikoreksi):**
+- Penurunan service level berlaku **per grup yang overload** (bukan mengubah Pengaturan Forecast
+  global), bertahap dari target aktif turun ke anak tangga 99 → 98 → 97 → 95 → 92,5 → 90 %.
+  **Batas bawah 90%**; di bawah itu sistem berhenti menurunkan SS dan beralih ke Buffer.
+- Buffer dipotong **proporsional** terhadap Buffer tiap material dalam grup, sampai kelebihan
+  tertutup atau Buffer = 0.
+- Maksimal **10** iterasi tahap 2→3 (`MAX_ITERATIONS`); lewat itu → status infeasible. *Dikoreksi saat
+  implementasi dari 5*: turun 99 → 90 % saja sudah 5 anak tangga, sehingga batas 5 membuat
+  pemotongan Buffer tidak pernah sempat dijalankan.
+- Material dengan **SS manual** (`materials.manual_safety_stock`) tidak diturunkan lewat service
+  level (SS-nya bukan fungsi Z) — grup yang hanya berisi SS manual langsung ke tahap potong Buffer.
+  Planner tetap bisa mengisi SS custom untuk material itu.
+- Adjust disimpan sebagai qty **absolut** SS & Buffer (bukan hanya service level), supaya angka
+  yang diterima planner = angka yang dipakai; `service_level_pct` disimpan sebagai informasi.
+- Usulan selalu dihitung dari **nilai sistem** (adjust tersimpan diabaikan dalam simulasi), jadi
+  usulan tidak "menumpuk" di atas adjust custom sebelumnya.
+- Pipeline `/plan` hanya menghitung usulan bila ada periode overload (simulasi mengulang tahap
+  2→3 beberapa kali — tidak dibayar saat gudang muat).
+- Angka custom planner menimpa usulan untuk material itu, dicatat siapa/kapan/alasan (audit
+  trail seperti override). Setelah disimpan, tahap 2→4 dijalankan ulang; bila masih overload,
+  flag tetap tampil (keputusan #17: kapasitas = flag, bukan error).
+- **Titik cek kapasitas = stok akhir periode** (rumus thesis) — **dikonfirmasi user 19 Nov 2026**.
+  Puncak fisik dalam periode (stok awal + kedatangan + pesanan sebelum dipakai) tidak dicek.

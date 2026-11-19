@@ -20,6 +20,11 @@ Stok (`stock_projection_service`) sama-sama memakai `compute_rop` / `compute_ord
                            EOQ ≤ 0 → fallback order_up_to)
 Default = perilaku Reorder sebelum v3.3. Rumus final thesis menunggu docx (TODO-v3 ⛔).
 
+Fase 11.17 — adjust kapasitas gudang (`capacity_adjustment_service`): SS/Buffer yang berlaku
+untuk (run, material) menimpa nilai sistem SEBELUM `compute_reorder`, sehingga ROP & S ikut
+turun. Nilai sistem disimpan di `safety_stock_system`/`buffer_stock_system`; skenario baseline
+proyeksi memakai `system_policy_from_rec`. `compute_for_run` = hitung tanpa menyimpan (simulasi).
+
 Orkestrasi (`ReorderService`) menghitung μ/σ dari deret kebutuhan material
 hasil breakdown BOM atas forecast produk, dan mengambil lead_time/MOQ/manual SS
 dari master data material.
@@ -41,6 +46,7 @@ import numpy as np
 from app.config import get_settings
 from app.models.reorder_recommendation import ReorderRecommendation
 from app.services.bom_service import BomLine, breakdown_requirements_series, compute_buffer_qty
+from app.services.capacity_adjustment_service import effective_service_level
 from app.services.cost_template_service import load_cost_params
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
@@ -280,6 +286,26 @@ class OrderPolicy:
         return compute_order_qty(self.policy, current, self.reorder_point, self.order_up_to, self.eoq_qty, self.moq)
 
 
+def _shifted_policy(rec, shift: float) -> OrderPolicy:
+    p = order_policy_from_rec(rec)
+    return OrderPolicy(p.policy, p.reorder_point + shift, p.order_up_to + shift, p.eoq_qty, p.moq)
+
+
+def system_policy_from_rec(rec) -> OrderPolicy:
+    """Kebijakan pesan SEBELUM adjust kapasitas (Fase 11.17) — dipakai skenario baseline.
+    ROP & S digeser kembali sebesar (SS sistem − SS) + (B sistem − B) [B hanya bila rumus
+    ROP memakai buffer]. Baris tanpa adjust → sama dengan `order_policy_from_rec`."""
+    ss_sys = getattr(rec, "safety_stock_system", None)
+    b_sys = getattr(rec, "buffer_stock_system", None)
+    shift = 0.0
+    if ss_sys is not None:
+        shift += float(ss_sys) - float(rec.safety_stock or 0)
+    formula = getattr(rec, "rop_formula_used", None) or DEFAULT_ROP_FORMULA
+    if b_sys is not None and formula == "with_buffer":
+        shift += float(b_sys) - float(getattr(rec, "buffer_stock", 0) or 0)
+    return _shifted_policy(rec, shift)
+
+
 def order_policy_from_rec(rec) -> OrderPolicy:
     """OrderPolicy dari baris `reorder_recommendations`. Baris sebelum v3.3 (kolom NULL) →
     order_up_to, S = 2·ROP − SS − B (rumus lama with_buffer), MOQ 0."""
@@ -295,6 +321,13 @@ def order_policy_from_rec(rec) -> OrderPolicy:
         eoq_qty=float(rec.eoq_qty or 0),
         moq=float(getattr(rec, "moq_used", None) or 0),
     )
+
+
+def compute_safety_stock(z: float, sigma: float, lead_time_days: float, manual_ss: float | None) -> float:
+    """SS = SS manual bila diisi, else Z · σ_harian · √L."""
+    if manual_ss is not None:
+        return float(manual_ss)
+    return float(z) * float(sigma) * math.sqrt(float(lead_time_days))
 
 
 def compute_reorder(
@@ -313,7 +346,7 @@ def compute_reorder(
     mu, sigma = float(mu), float(sigma)
     lt, moq, current = float(lead_time_days), float(moq), float(current_stock)
 
-    ss = float(manual_ss) if manual_ss is not None else z * sigma * math.sqrt(lt)
+    ss = compute_safety_stock(z, sigma, lt, manual_ss)
     demand_over_lt = mu * lt
     # Buffer stock (antisipasi waste, Fase 11.1) disimpan di atas safety stock (with_buffer).
     rop = compute_rop(mu, lt, ss, buffer, formula)
@@ -350,6 +383,7 @@ class ReorderService:
         settings=None,
         stock=None,
         overrides=None,
+        adjustments=None,
     ):
         self._repo = reorder_repo
         self._forecast = forecast_repo
@@ -365,9 +399,22 @@ class ReorderService:
         self._stock = stock
         # Fase 11.14: OverrideService → qty override planner yang berlaku per material.
         self._overrides = overrides
+        # Fase 11.17: pembaca adjust kapasitas (SS & Buffer) yang berlaku per material di run ini.
+        self._adjustments = adjustments
 
     async def generate_for_run(self, user_id: str, run_id: str, current_stock: dict | None = None):
+        recommendations = await self.compute_for_run(user_id, run_id, current_stock)
+        await self._repo.replace_for_run(str(run_id), recommendations)
+        return recommendations
+
+    async def compute_for_run(
+        self, user_id: str, run_id: str, current_stock: dict | None = None, adjustments: dict | None = None
+    ):
+        """Hitung rekomendasi TANPA menyimpan. `adjustments` None → adjust kapasitas tersimpan
+        run ini; dict (termasuk {}) → dipakai apa adanya (simulasi usulan, Fase 11.17)."""
         run = await self._require_run(user_id, run_id)
+        if adjustments is None:
+            adjustments = await self._adjustments.adjustments_by_material(run_id) if self._adjustments else {}
         current_stock = current_stock or {}
         settings = get_settings()
         service_level = await self._settings.service_level_pct() if self._settings else DEFAULT_SERVICE_LEVEL_PCT
@@ -423,17 +470,31 @@ class ReorderService:
             eoq_qty = round_to_moq(raw_qty, float(material.moq))
             ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
 
+            manual_ss = float(material.manual_safety_stock) if material.manual_safety_stock is not None else None
+            system_ss = compute_safety_stock(z, sigma, material.lead_time_days, manual_ss)
+            ss, buffer_used = system_ss, buffer
+            adj = adjustments.get(str(material_id))
+            if adj is not None:
+                if adj.safety_stock is not None:
+                    ss = float(adj.safety_stock)
+                elif adj.service_level_pct is not None and manual_ss is None:
+                    ss = compute_safety_stock(
+                        z_from_service_level(float(adj.service_level_pct)), sigma, material.lead_time_days, None
+                    )
+                if adj.buffer_stock is not None:
+                    buffer_used = float(adj.buffer_stock)
+            sigma_lt = sigma * math.sqrt(float(material.lead_time_days))
+            alpha = effective_service_level(ss, sigma_lt)
+
             comp = compute_reorder(
                 mu=mu,
                 sigma=sigma,
                 lead_time_days=material.lead_time_days,
                 moq=float(material.moq),
                 z=z,
-                manual_ss=float(material.manual_safety_stock)
-                if material.manual_safety_stock is not None
-                else None,
+                manual_ss=ss,
                 current_stock=stock_qty,
-                buffer=buffer,
+                buffer=buffer_used,
                 formula=rop_formula,
                 policy=qty_policy,
                 eoq_qty=float(eoq_qty),
@@ -444,7 +505,7 @@ class ReorderService:
                     run_id=run.id,
                     material_id=material.id,
                     safety_stock=comp.safety_stock,
-                    buffer_stock=_dec(buffer),
+                    buffer_stock=_dec(buffer_used),
                     waste_factor=_dec(waste_factor) if waste_factor is not None else None,
                     reorder_point=comp.reorder_point,
                     recommended_order_qty=comp.recommended_order_qty,
@@ -464,10 +525,12 @@ class ReorderService:
                     order_qty_policy_used=qty_policy,
                     order_up_to_level=comp.order_up_to_level,
                     moq_used=_dec(material.moq),
+                    safety_stock_system=_dec(system_ss) if adj is not None else None,
+                    buffer_stock_system=_dec(buffer) if adj is not None else None,
+                    service_level_effective=_dec(alpha) if alpha is not None else None,
+                    adjustment_source=adj.source if adj is not None else None,
                 )
             )
-
-        await self._repo.replace_for_run(str(run_id), recommendations)
         return recommendations
 
     async def override_map(self, run_id: str) -> dict:

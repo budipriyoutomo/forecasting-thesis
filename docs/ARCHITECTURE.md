@@ -309,6 +309,10 @@ forecastiq/
 | order_qty_policy_used | VARCHAR(20), nullable | `order_up_to` \| `eoq` yang dipakai |
 | order_up_to_level | NUMERIC, nullable | S = ROP + μ_d·L — input kebijakan `order_up_to` di Proyeksi Stok |
 | moq_used | NUMERIC, nullable | MOQ material saat generate — input Proyeksi Stok |
+| safety_stock_system | NUMERIC, nullable | Fase 11.17 — SS SISTEM sebelum adjust kapasitas; NULL = tidak di-adjust |
+| buffer_stock_system | NUMERIC, nullable | Fase 11.17 — Buffer sistem sebelum adjust; NULL = tidak di-adjust |
+| service_level_effective | NUMERIC, nullable | Fase 11.17 — α efektif (%) = Φ(SS ÷ σ_d·√L); NULL bila σ_d·√L = 0 |
+| adjustment_source | VARCHAR(10), nullable | Fase 11.17 — `suggested` \| `custom`; NULL = nilai sistem |
 
 > `current_stock` **bukan** kolom persisten di tabel ini — dikirim sebagai parameter request saat `POST /api/v1/reorder/recommendations` (lihat §5), karena stok aktual berubah-ubah dan sumber kebenarannya ada di luar ForecastIQ (belum ada integrasi ERP/WMS di MVP, lihat `PRD.md` §Out-of-scope).
 
@@ -405,6 +409,23 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | fill_rate | NUMERIC | 1 − Σ kekurangan / Σ demand |
 | stock_out_rate | NUMERIC | proporsi periode kekurangan |
 | inventory_turnover | NUMERIC | Σ demand ÷ persediaan rata-rata |
+
+### `capacity_adjustments` (baru — Fase 11.17, 19 Nov 2026)
+Adjust SS & Buffer per (run, material) agar stok akhir proyeksi muat kapasitas grup material. **Append-only**: yang berlaku = baris terbaru per (run, material); `reset` = kembali ke nilai sistem. Master data material tidak diubah.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | PK |
+| run_id | UUID FK → forecast_runs (CASCADE) | |
+| material_id | UUID FK → materials (CASCADE) | |
+| user_id | UUID | siapa yang menyimpan |
+| source | VARCHAR(10) | `suggested` \| `custom` \| `reset` (CHECK) |
+| service_level_pct | NUMERIC(6,3), nullable | anak tangga service level usulan (informasi) |
+| safety_stock | NUMERIC, nullable | SS absolut yang dipakai ReorderService (menimpa SS sistem/manual) |
+| buffer_stock | NUMERIC, nullable | Buffer absolut yang dipakai |
+| previous_value | JSONB, nullable | snapshot rekomendasi saat disimpan (audit) |
+| reason | TEXT NOT NULL | wajib untuk `custom` (`OVERRIDE_REASON_REQUIRED`); `suggested`/`reset` diisi default |
+| created_at | TIMESTAMPTZ | |
 
 ### `overrides`
 | Kolom | Tipe | Keterangan |
@@ -901,6 +922,7 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 | `warehouse_config.material_group` (target per grup material menggantikan per material; utilisasi proyeksi = Σ stok anggota grup ÷ kapasitas grup) | kapasitas per grup material (19 Nov 2026) | `f9a0b1c2d3e4` |
 | `inventory_metrics.inventory_days/shortage_cost` | evaluasi material | `f3a4b5c6d7e8` |
 | `forecast_settings.rop_formula/order_qty_policy` + `reorder_recommendations.rop_formula_used/order_qty_policy_used/order_up_to_level/moq_used` | v3.3 kebijakan pesan satu sumber (§6.8) | `b5c6d7e8f9a0` |
+| `capacity_adjustments` + `reorder_recommendations.safety_stock_system/buffer_stock_system/service_level_effective/adjustment_source` | loop kapasitas gudang → adjust SS & Buffer (Fase 11.17, §6.11) | `b1c2d3e4f5a6` |
 
 ### Endpoint baru
 ```
@@ -914,7 +936,11 @@ GET/POST /material-receipts · POST /material-receipts/import · PUT/DELETE /mat
 POST/GET /forecast/runs/{id}/stock-projection
 GET  /forecast/runs/{id}/stock-projection/export?format=xlsx|pdf&scenario=proposed|baseline
 GET  /forecast/runs/{id}/inventory-metrics/export?format=xlsx|pdf&target_type=product|material
-POST /forecast/runs/{id}/plan                      # tahap 2→4 berurutan
+POST /forecast/runs/{id}/plan                      # tahap 2→4 berurutan; + `capacity` {n_adjusted_materials, suggestion} (Fase 11.17)
+POST /forecast/runs/{id}/capacity-adjustments/suggest   # usulan adjust SS & Buffer (simulasi, tidak disimpan) — Fase 11.17
+GET  /forecast/runs/{id}/capacity-adjustments           # {active, history}
+POST /forecast/runs/{id}/capacity-adjustments           # 201; {source: suggested|custom, items[{material_id, safety_stock, buffer_stock, service_level_pct?}], reason}
+POST /forecast/runs/{id}/capacity-adjustments/reset     # {n_reset} — kembali ke nilai sistem
 GET  /forecast/runs/{id}/inventory-metrics?target_type=material
 POST/PUT /warehouse/config                         # + item_type (product|material_group), material_group — 19 Nov 2026
 GET  /material-components                          # seluruh komponen (kolom Level tabel BOM) — 19 Nov 2026
@@ -927,6 +953,22 @@ GET  /material-components                          # seluruh komponen (kolom Lev
 - Proyeksi: pre = opening + receipt − usage; order = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
 - Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga produk (`selling_price`) (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
 - Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
+
+## 6.11 Loop Kapasitas Gudang → Adjust SS & Buffer (Fase 11.17, 19 Nov 2026)
+
+Keputusan: `RECONCILIATION.md` §"Loop Validasi Kapasitas Gudang → Adjust SS & Buffer".
+
+```
+[2] MRP (SS, Buffer, ROP, EOQ) → [3] proyeksi stok → Σ stok akhir grup ≤ kapasitas di SEMUA periode?
+      ↑                                                   ├─ ya    → [4] evaluasi + biaya
+      └── planner terima usulan / isi custom ─────────────┴─ tidak → usulan adjust (tidak otomatis diterapkan)
+```
+
+- **Titik cek**: stok AKHIR periode skenario `proposed` (rumus thesis); kelebihan grup = max_t(Σ stok akhir anggota − kapasitas grup).
+- **Usulan** (`capacity_adjustment_service.suggest`, simulasi di memori lewat `ReorderService.compute_for_run(adjustments=…)` + `StockProjectionService.compute_for_run(recs=…, scenarios=("proposed",))`, tidak disimpan): per grup overload turunkan service level satu anak tangga `99 → 98 → 97 → 95 → 92,5 → 90` (batas bawah 90%, material SS manual dilewati) → setelah batas bawah, potong Buffer anggota grup proporsional sebesar kelebihan → ulang tahap 2→3, maks `MAX_ITERATIONS = 10`. Status `within_capacity` | `adjusted` | `infeasible`; grup infeasible diberi penyebab `opening_stock` | `receipts` | `moq` | `cycle_stock`.
+- **Penerapan**: `ReorderService` membaca adjust berlaku (`CapacityAdjustmentReader`): `safety_stock` absolut menimpa SS (termasuk SS manual), `service_level_pct` saja → SS = Z(p)·σ_d·√L (tidak untuk SS manual), `buffer_stock` menimpa Buffer. ROP & S dihitung ulang otomatis lewat `compute_rop`.
+- **Baseline tidak di-adjust**: proyeksi `baseline` memakai `system_policy_from_rec` (ROP & S digeser kembali sebesar selisih SS/Buffer sistem − adjust).
+- **ROP** tidak di-adjust langsung (μ·L = fakta lead time). **EOQ berkendala kapasitas** (Hadley–Whitin, Lagrange) belum diimplementasi.
 
 ## 7. Storage Flow — Object Storage (S3-compatible)
 
