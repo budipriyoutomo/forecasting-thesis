@@ -303,6 +303,7 @@ def get_stock_projection_service(session: AsyncSession = Depends(get_db)) -> Sto
         receipts=SqlMaterialReceiptRepository(session),
         reorder_service=get_reorder_service(session),
         overrides=get_override_service(session),
+        materials=SqlMaterialRepository(session),
     )
 
 

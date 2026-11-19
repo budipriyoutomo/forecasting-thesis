@@ -12,6 +12,8 @@ export interface ForecastSettings {
   es_alpha_metric: AlphaMetric;
   ml_grid_search: boolean;
   ml_winsorize: boolean;
+  /** Window Moving Average (n periode, 1–12) — pengganti env MOVING_AVERAGE_WINDOW (19 Nov 2026). */
+  ma_window: number;
   service_level_pct: number;
   eoq_method: EoqMethod;
   rop_formula: RopFormula;
@@ -34,6 +36,7 @@ export interface ForecastSettingsInput {
   es_alpha_metric?: AlphaMetric;
   ml_grid_search?: boolean;
   ml_winsorize?: boolean;
+  ma_window?: number;
   service_level_pct?: number;
   eoq_method?: EoqMethod;
   rop_formula?: RopFormula;

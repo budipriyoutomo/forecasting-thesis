@@ -28,6 +28,7 @@ import {
   CAPACITY_MODE_LABELS,
   computeEffectiveCapacity,
   isDusLike,
+  materialGroups,
   usesDus,
   usesPallet,
 } from "@/lib/warehouse";
@@ -44,7 +45,7 @@ import type {
 // Angka disimpan sebagai string di form supaya field kosong bisa dibedakan dari 0;
 // dikonversi ke number saat submit.
 const baseSchema = z.object({
-  product_id: z.string(), // id target (produk/material) — wajib dicek di superRefine
+  product_id: z.string(), // id target (id produk / nama grup material) — wajib dicek di superRefine
   capacity_mode: z.enum(["PALLET", "DUS", "COMBINED"]),
   pallet_qty: z.string(),
   dus_qty: z.string(),
@@ -74,7 +75,8 @@ function toCapacityInput(v: FormValues, unit: string): WarehouseCapacityInput {
 // Kapasitas diinput dalam pallet, dus, atau kombinasi (Fase 10, 2 Oktober 2026).
 // `capacity_qty` resmi dihitung server; pratinjau di sini memakai rumus yang sama
 // (lib/warehouse.ts). Produk terkunci saat mode ubah — satu produk satu baris.
-// Fase 11.6: `targetType="material"` memakai master material & istilah CTN (dus = CTN).
+// `targetType="material_group"` (19 Nov 2026, menggantikan per material Fase 11.6): target =
+// grup material (materials.category), istilah CTN (dus = CTN), unit = unit bersama anggota grup.
 export function WarehouseConfigForm({
   products,
   materials = [],
@@ -92,10 +94,25 @@ export function WarehouseConfigForm({
   submitting?: boolean;
   error?: string | null;
 }) {
-  const isMaterial = targetType === "material";
-  const targetLabel = isMaterial ? "Material" : "Produk";
+  const isMaterial = targetType === "material_group";
+  const targetLabel = isMaterial ? "Grup material" : "Produk";
   const dusWord = isMaterial ? "CTN" : "dus";
-  const items: { id: string; code: string; name: string; unit: string }[] = isMaterial ? materials : products;
+  const items: { id: string; code: string; name: string; unit: string }[] = useMemo(
+    () =>
+      isMaterial
+        ? materialGroups(materials).map((g) => ({
+            id: g.name,
+            code: g.name,
+            name: `${g.codes.length} material (${g.codes.join(", ")})`,
+            unit: g.unit ?? "",
+          }))
+        : products,
+    [isMaterial, materials, products],
+  );
+  const mixedUnit = useMemo(() => {
+    const byName = new Map(materialGroups(materials).map((g) => [g.name, g.unit === null]));
+    return (id: string) => isMaterial && Boolean(byName.get(id));
+  }, [isMaterial, materials]);
   const unitOf = useMemo(() => {
     const byId = new Map(items.map((p) => [p.id, p.unit]));
     return (productId: string) => byId.get(productId) ?? "";
@@ -108,6 +125,12 @@ export function WarehouseConfigForm({
         const unit = unitOf(v.product_id);
         if (!v.product_id)
           ctx.addIssue({ code: "custom", path: ["product_id"], message: `${targetLabel} wajib dipilih` });
+        if (mixedUnit(v.product_id))
+          ctx.addIssue({
+            code: "custom",
+            path: ["product_id"],
+            message: "Unit material di grup ini berbeda-beda — samakan dulu di master material",
+          });
         const nonNegative = (field: "pallet_qty" | "dus_qty") => {
           const n = num(v[field]);
           if (n !== null && (!Number.isFinite(n) || n < 0))
@@ -138,14 +161,14 @@ export function WarehouseConfigForm({
             message: "Kapasitas harus lebih dari 0",
           });
       }),
-    [unitOf, targetLabel, isMaterial, dusWord],
+    [unitOf, targetLabel, isMaterial, dusWord, mixedUnit],
   );
 
   const str = (v: string | null | undefined) => (v == null ? "" : String(Number(v)));
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      product_id: initial?.product_id ?? initial?.material_id ?? "",
+      product_id: initial?.product_id ?? initial?.material_group ?? "",
       capacity_mode: initial?.capacity_mode ?? "DUS",
       pallet_qty: initial && usesPallet(initial.capacity_mode) ? str(initial.pallet_qty) : "",
       dus_qty: initial && usesDus(initial.capacity_mode) ? str(initial.dus_qty) : "",
@@ -164,7 +187,7 @@ export function WarehouseConfigForm({
     const capacity = toCapacityInput(v, unitOf(v.product_id));
     onSubmit(
       isMaterial
-        ? { item_type: "material", material_id: v.product_id, ...capacity }
+        ? { item_type: "material_group", material_group: v.product_id, ...capacity }
         : { product_id: v.product_id, ...capacity },
     );
   });

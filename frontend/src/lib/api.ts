@@ -8,7 +8,7 @@ import type {
   MethodSelectionInput,
   RunSelectionResult,
 } from "@/types/forecast";
-import type { Bom, BomInput } from "@/types/bom";
+import type { Bom, BomBulkInput, BomInput, MaterialComponent } from "@/types/bom";
 import type { Material, MaterialInput } from "@/types/material";
 import type { CostSummary, InventoryMetric } from "@/types/metrics";
 import type {
@@ -126,6 +126,13 @@ export const api = {
         body: JSON.stringify(input),
       }),
 
+    createBulk: (input: BomBulkInput, token: string): Promise<ApiResponse<Bom[]>> =>
+      request<Bom[]>("/api/v1/boms/bulk", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
     remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
       request<{ id: string; deleted: boolean }>(`/api/v1/boms/${id}`, {
         method: "DELETE",
@@ -154,6 +161,7 @@ export const api = {
 
   // Fase 11.3 — BOM multi-level
   bomTree: {
+    components: (token: string) => request<MaterialComponent[]>("/api/v1/material-components", authed(token)),
     get: (productId: string, token: string) =>
       request<BomTreeNode>(`/api/v1/boms/tree?product_id=${encodeURIComponent(productId)}`, authed(token)),
     addComponent: (parentId: string, componentId: string, qty: number, token: string) =>

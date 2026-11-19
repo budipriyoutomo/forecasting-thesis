@@ -275,14 +275,14 @@ def test_profil_thesis_hanya_2024_2025_riil():
 class FakeWarehouseBoth(FakeWarehouseRepository):
     def __init__(self):
         super().__init__()
-        self.configs_by_material = {}
+        self.configs_by_group = {}
 
-    async def get_by_material(self, material_id):
-        return self.configs_by_material.get(material_id)
+    async def get_by_material_group(self, group):
+        return self.configs_by_group.get(group.strip().casefold())
 
     async def add(self, config):
-        if getattr(config, "item_type", "product") == "material":
-            self.configs_by_material[config.material_id] = config
+        if getattr(config, "item_type", "product") == "material_group":
+            self.configs_by_group[config.material_group.casefold()] = config
             return config
         return await super().add(config)
 
@@ -329,10 +329,11 @@ async def test_seed_profil_thesis_master_data_bom_kapasitas_biaya():
     assert summary.boms_created == len(THESIS_BOM) == 14
     assert summary.components_created == 1
     assert summary.demand_rows == 7 * 24
-    # Kapasitas: hanya material (Preform); produk tidak punya data kapasitas di Excel.
-    assert summary.warehouse_created == 1 and not repos["warehouse"].configs_by_product
-    prf = await repos["materials"].get_by_code("PRF-WHITE")
-    assert float(repos["warehouse"].configs_by_material[prf.id].capacity_qty) == 5_555_376
+    # Kapasitas per grup material (Preform & Cap); produk tidak punya data kapasitas di Excel.
+    assert summary.warehouse_created == 2 and not repos["warehouse"].configs_by_product
+    by_group = repos["warehouse"].configs_by_group
+    assert float(by_group["preform"].capacity_qty) == 5_555_376
+    assert float(by_group["cap"].capacity_qty) == 12_825_000
 
     (tpl,) = repos["cost_templates"].items
     assert summary.cost_templates_created == 1

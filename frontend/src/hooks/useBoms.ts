@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { Bom, BomInput } from "@/types/bom";
+import type { Bom, BomBulkInput, BomInput, MaterialComponent } from "@/types/bom";
 
 const KEY = ["boms"];
 
@@ -30,6 +30,33 @@ export function useCreateBom() {
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+// 19 Nov 2026 — satu produk, banyak material sekaligus
+export function useCreateBomsBulk() {
+  const qc = useQueryClient();
+  return useMutation<Bom[], Error, BomBulkInput>({
+    mutationFn: async (input) => {
+      const res = await api.boms.createBulk(input, getToken() as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+// Seluruh komponen level 2+ — untuk kolom Level di tabel BOM
+export function useMaterialComponents() {
+  const token = getToken();
+  return useQuery<MaterialComponent[]>({
+    queryKey: ["material-components"],
+    enabled: Boolean(token),
+    queryFn: async () => {
+      const res = await api.bomTree.components(token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
   });
 }
 

@@ -26,6 +26,11 @@ export function MaterialsTable({
         cell: ({ row }) => <span className="font-medium">{row.original.code}</span>,
       },
       { accessorKey: "name", header: "Nama" },
+      {
+        accessorKey: "category",
+        header: "Grup",
+        cell: ({ row }) => row.original.category ?? "—",
+      },
       { accessorKey: "unit", header: "Satuan" },
       {
         accessorKey: "lead_time_days",

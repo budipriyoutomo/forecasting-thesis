@@ -7,13 +7,17 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
-import { CAPACITY_MODE_LABELS, usesDus, usesPallet } from "@/lib/warehouse";
+import { CAPACITY_MODE_LABELS, materialGroupKey, materialGroups, usesDus, usesPallet } from "@/lib/warehouse";
 import type { Material } from "@/types/material";
 import type { Product } from "@/types/product";
 import type { WarehouseConfig, WarehouseTarget } from "@/types/warehouse";
 
 interface WarehouseConfigRow extends WarehouseConfig {
   productLabel: string;
+  /** Kode anggota grup material (kosong untuk produk). */
+  members: string;
+  /** Unit anggota grup tak lagi sama dengan `uom` kapasitas → utilisasi proyeksi tidak dihitung. */
+  unitMismatch: boolean;
 }
 
 // "10 pallet × 60 + 25 dus" / "10 pallet × 60" / "25 dus" — material memakai CTN (Fase 11.6)
@@ -40,26 +44,56 @@ export function WarehouseConfigTable({
   onEdit?: (c: WarehouseConfig) => void;
   onDelete?: (c: WarehouseConfig) => void;
 }) {
+  const isMaterial = targetType === "material_group";
   const rows = useMemo<WarehouseConfigRow[]>(() => {
-    const byId = new Map<string, { code: string; name: string }>(
-      (targetType === "material" ? materials : products).map((p) => [p.id, p]),
-    );
+    if (isMaterial) {
+      const groups = new Map(materialGroups(materials).map((g) => [g.key, g]));
+      return configs.map((c) => {
+        const g = groups.get(materialGroupKey(c.material_group));
+        return {
+          ...c,
+          productLabel: c.material_group ?? "",
+          members: g ? g.codes.join(", ") : "Belum ada material di grup ini",
+          unitMismatch: Boolean(g) && g?.unit?.trim().toUpperCase() !== c.uom.trim().toUpperCase(),
+        };
+      });
+    }
+    const byId = new Map(products.map((p) => [p.id, p]));
     return configs.map((c) => {
-      const id = (targetType === "material" ? c.material_id : c.product_id) ?? "";
+      const id = c.product_id ?? "";
       const p = byId.get(id);
-      return { ...c, productLabel: p ? `${p.code} — ${p.name}` : id };
+      return { ...c, productLabel: p ? `${p.code} — ${p.name}` : id, members: "", unitMismatch: false };
     });
-  }, [configs, products, materials, targetType]);
-  const isMaterial = targetType === "material";
+  }, [configs, products, materials, isMaterial]);
   const dusWord = isMaterial ? "CTN" : "dus";
 
   const columns = useMemo<ColumnDef<WarehouseConfigRow>[]>(
     () => [
       {
         accessorKey: "productLabel",
-        header: isMaterial ? "Material" : "Produk",
+        header: isMaterial ? "Grup material" : "Produk",
         cell: ({ row }) => <span className="font-medium">{row.original.productLabel}</span>,
       },
+      ...(isMaterial
+        ? [
+            {
+              accessorKey: "members",
+              header: "Anggota",
+              enableSorting: false,
+              cell: ({ row }) => (
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground">{row.original.members}</span>
+                  {row.original.unitMismatch && (
+                    <span className="text-xs text-destructive">
+                      Unit material tidak sama dengan satuan kapasitas ({row.original.uom}) — utilisasi
+                      proyeksi tidak dihitung sampai disamakan.
+                    </span>
+                  )}
+                </div>
+              ),
+            } satisfies ColumnDef<WarehouseConfigRow>,
+          ]
+        : []),
       {
         accessorKey: "capacity_mode",
         header: "Mode",
@@ -115,7 +149,7 @@ export function WarehouseConfigTable({
                   </Button>
                 }
                 title="Hapus konfigurasi kapasitas ini?"
-                description={`Kapasitas gudang untuk ${row.original.productLabel} dihapus, sehingga produk itu tidak lagi ikut divalidasi kapasitas. Tindakan ini tidak bisa dibatalkan.`}
+                description={`Kapasitas gudang untuk ${row.original.productLabel} dihapus, sehingga ${isMaterial ? "grup material" : "produk"} itu tidak lagi ikut divalidasi kapasitas. Tindakan ini tidak bisa dibatalkan.`}
                 confirmLabel="Ya, hapus"
                 onConfirm={() => onDelete(row.original)}
               />
@@ -132,7 +166,7 @@ export function WarehouseConfigTable({
       columns={columns}
       data={rows}
       searchColumn="productLabel"
-      searchPlaceholder="Cari produk…"
+      searchPlaceholder={isMaterial ? "Cari grup…" : "Cari produk…"}
       emptyMessage="Belum ada konfigurasi kapasitas gudang."
     />
   );

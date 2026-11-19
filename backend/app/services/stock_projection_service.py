@@ -15,7 +15,10 @@ Per periode t:
              sekarang" — periode berikutnya kembali ke kebijakan sistem.
   ending   = max(0, pre + order);  shortage = max(0, −(pre + order))
   opening[t+1] = ending[t]
-  utilisasi = stok ÷ kapasitas material × 100% (stok awal & stok akhir)
+  utilisasi = Σ stok material satu GRUP ÷ kapasitas grup × 100% (stok awal & stok akhir).
+             Sejak 19 Nov 2026 kapasitas gudang material dicatat per grup material
+             (`materials.category`); setiap material di grup memperlihatkan utilisasi
+             grup yang sama. Yang dijumlahkan hanya material yang diproyeksikan di run ini.
 
 Dua skenario (Keputusan #3): `proposed` — pemakaian = forecast ForecastIQ × BOM;
 `baseline` — pemakaian = planning perusahaan × BOM pada periode yang sama (hanya bila
@@ -29,6 +32,7 @@ import pandas as pd
 from app.models.stock_projection import StockProjection
 from app.services.bom_service import BomLine, breakdown_requirements_series
 from app.services.reorder_service import OrderPolicy, order_policy_from_rec
+from app.services.warehouse_service import material_group_key
 from app.services.forecasting.preprocessing import future_timestamps, infer_period_delta
 from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
 
@@ -86,6 +90,30 @@ def project_stock(
     return rows
 
 
+def apply_group_capacity(
+    projections: dict[str, list[ProjectionRow]],
+    group_of: dict[str, str | None],
+    capacity_by_group: dict[str, float],
+) -> None:
+    """Isi utilisasi & flag kapasitas per periode dari TOTAL stok anggota grup (in place).
+    Material tanpa grup / grup tanpa kapasitas → utilisasi None (tak bisa dibandingkan)."""
+    members: dict[str, list[list[ProjectionRow]]] = {}
+    for material_id, rows in projections.items():
+        key = group_of.get(material_id)
+        if key and capacity_by_group.get(key):
+            members.setdefault(key, []).append(rows)
+    for key, groups in members.items():
+        cap = float(capacity_by_group[key])
+        for t in range(max(len(rows) for rows in groups)):
+            period_rows = [rows[t] for rows in groups if t < len(rows)]
+            opening = sum(r.opening_qty for r in period_rows)
+            ending = sum(r.ending_qty for r in period_rows)
+            for r in period_rows:
+                r.utilization_opening_pct = _util(opening, cap)
+                r.utilization_ending_pct = _util(ending, cap)
+                r.is_within_capacity = ending <= cap
+
+
 def bucket_by_period(periods: list[date], items: list[tuple[date, float]]) -> list[float]:
     """Jumlahkan (tanggal, qty) ke periode [p_t, p_{t+1}). Tanggal sebelum periode pertama
     masuk periode pertama (kedatangan setelah snapshot, sebelum horizon); di luar horizon dibuang."""
@@ -107,7 +135,7 @@ def bucket_by_period(periods: list[date], items: list[tuple[date, float]]) -> li
 class StockProjectionService:
     def __init__(
         self, projection_repo, forecast_repo, reorder_repo, boms, demand_repo, products, warehouse_configs,
-        stock, receipts, reorder_service=None, factory=StockProjection, overrides=None,
+        stock, receipts, reorder_service=None, factory=StockProjection, overrides=None, materials=None,
     ):
         self._repo = projection_repo
         self._forecast = forecast_repo
@@ -121,6 +149,7 @@ class StockProjectionService:
         self._reorder_service = reorder_service
         self._factory = factory
         self._overrides = overrides  # Fase 11.14 — OverrideService (qty override per material)
+        self._materials = materials  # 19 Nov 2026 — grup material (category) untuk kapasitas
 
     async def generate_for_run(self, user_id: str, run_id: str) -> list:
         run = await self._require_run(user_id, run_id)
@@ -133,11 +162,22 @@ class StockProjectionService:
         if not recs and self._reorder_service is not None:
             recs = {str(r.material_id): r for r in await self._reorder_service.generate_for_run(user_id, run_id)}
 
-        capacity = {
-            str(c.material_id): float(c.capacity_qty)
-            for c in await self._configs.list()
-            if getattr(c, "item_type", "product") == "material"
-        }
+        materials = await self._materials.list() if self._materials else []
+        group_of = {str(m.id): material_group_key(getattr(m, "category", None)) for m in materials}
+        units_of_group: dict[str, set[str]] = {}
+        for m in materials:
+            key, unit = group_of[str(m.id)], getattr(m, "unit", None)
+            if key and unit:
+                units_of_group.setdefault(key, set()).add(unit.strip().upper())
+        capacity_by_group = {}
+        for c in await self._configs.list():
+            if getattr(c, "item_type", "product") != "material_group":
+                continue
+            key, uom = material_group_key(c.material_group), getattr(c, "uom", None)
+            # Unit anggota diubah setelah kapasitas dibuat → tidak bisa dijumlahkan: utilisasi "—".
+            if uom and units_of_group.get(key, set()) - {uom.strip().upper()}:
+                continue
+            capacity_by_group[key] = float(c.capacity_qty)
         opening = await self._stock.latest_stock(as_of=periods[0])
         receipt_rows = await self._receipts.list(date_to=None)
         overrides = await self._overrides.reorder_qty_by_material(run_id) if self._overrides else {}
@@ -146,6 +186,7 @@ class StockProjectionService:
         for scenario, product_series in (("proposed", forecast_series), ("baseline", planning_series)):
             if not product_series:
                 continue
+            projections: dict[str, list[ProjectionRow]] = {}
             for material_id, usage in breakdown_requirements_series(product_series, bom_lines).items():
                 usage = (usage + [0.0] * len(periods))[: len(periods)]
                 rec = recs.get(material_id)
@@ -155,17 +196,20 @@ class StockProjectionService:
                 )
                 policy = order_policy_from_rec(rec) if rec else None
                 override = overrides.get(material_id) if scenario == "proposed" else None
-                projected = project_stock(
-                    opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, capacity.get(material_id),
+                projections[material_id] = project_stock(
+                    opening.get(material_id, (None, 0.0))[1], receipts, usage, policy, None,
                     first_order=override[0] if override else None,
                 )
+            apply_group_capacity(projections, group_of, capacity_by_group)
+            for material_id, projected in projections.items():
+                group_capacity = capacity_by_group.get(group_of.get(material_id))
                 for period, p in zip(periods, projected):
                     rows.append(
                         self._factory(
                             run_id=run.id, material_id=material_id, scenario=scenario, period=period,
                             opening_qty=p.opening_qty, receipt_qty=p.receipt_qty, usage_qty=p.usage_qty,
                             order_qty=p.order_qty, ending_qty=p.ending_qty, shortage_qty=p.shortage_qty,
-                            capacity_qty=capacity.get(material_id),
+                            capacity_qty=group_capacity,
                             utilization_opening_pct=p.utilization_opening_pct,
                             utilization_ending_pct=p.utilization_ending_pct,
                             is_within_capacity=p.is_within_capacity,

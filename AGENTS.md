@@ -189,7 +189,7 @@ backend/app/services/forecasting/
 COMPUTE_MASE=true
 BACKTEST_MIN_PERIODS=12
 LSTM_MIN_PERIODS=24
-MOVING_AVERAGE_WINDOW=3
+# Window Moving Average: master data Pengaturan Forecast (ma_window, 19 Nov 2026) — bukan env
 ENGINE_TIMEOUT_SECONDS=45
 LSTM_ENGINE_TIMEOUT_SECONDS=120
 FORECAST_TIMEOUT_SECONDS=180

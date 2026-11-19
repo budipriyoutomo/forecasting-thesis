@@ -12,6 +12,8 @@ from app.services.warehouse_service import (
     CapacityInput,
     WarehouseService,
     compute_effective_capacity,
+    material_group_key,
+    normalize_material_group,
     validate_capacity,
 )
 from app.utils.exceptions import (
@@ -376,7 +378,9 @@ async def test_validate_for_run_tidak_ada_404():
         await svc.validate_for_run(USER, "ghost")
 
 
-# ── Fase 11.6: kapasitas per MATERIAL (Keputusan #1 — produk + material) ──
+# ── Kapasitas per GRUP MATERIAL (19 Nov 2026, menggantikan per material Fase 11.6) ──
+# Thesis "Pengumpulan Data": kapasitas gudang dicatat per material group (mis. 6 warna Cap
+# berbagi 171 pallet). Grup = `materials.category`, dicocokkan tanpa beda besar/kecil huruf.
 
 
 class FakeMaterialRepo:
@@ -386,10 +390,17 @@ class FakeMaterialRepo:
     async def get_by_id(self, mid):
         return self._by_id.get(mid)
 
+    async def list(self):
+        return list(self._by_id.values())
+
 
 class FakeConfigRepoV2(FakeConfigRepo):
-    async def get_by_material(self, material_id):
-        return next((c for c in self._rows.values() if getattr(c, "material_id", None) == material_id), None)
+    async def get_by_material_group(self, group):
+        key = group.strip().casefold()
+        return next(
+            (c for c in self._rows.values() if (getattr(c, "material_group", None) or "").casefold() == key),
+            None,
+        )
 
     async def add(self, config):
         config.id = config.id or f"cfg-{len(self._rows) + 1}"
@@ -397,46 +408,90 @@ class FakeConfigRepoV2(FakeConfigRepo):
         return config
 
 
-def _service_v2(configs=None):
+def _mat(mid, unit, category):
+    return SimpleNamespace(id=mid, unit=unit, category=category)
+
+
+def _service_v2(configs=None, materials=None):
     return WarehouseService(
         config_repo=FakeConfigRepoV2(configs),
         validation_repo=FakeValidationRepo(),
         forecast_repo=FakeForecastRepo(None),
         products=FakeProductRepo(["p1"]),
-        materials=FakeMaterialRepo([SimpleNamespace(id="m1", unit="PCS"), SimpleNamespace(id="m2", unit="CTN")]),
+        materials=FakeMaterialRepo(
+            materials
+            or [
+                _mat("m1", "PCS", "cap"),
+                _mat("m2", "PCS", "Cap"),
+                _mat("m3", "CTN", "carton"),
+                _mat("m4", "PCS", "campur"),
+                _mat("m5", "KG", "campur"),
+            ]
+        ),
     )
 
 
-@pytest.mark.asyncio
-async def test_create_material_config_pallet_ctn_pcs():
-    svc = _service_v2()
-    # 10 pallet × 40 CTN + 0 → 400 CTN × 500 pcs = 200.000 pcs
-    config = await svc.create_material_config("m1", _input("PALLET", pallet_qty=10, dus_per_pallet=40, pcs_per_dus=500))
-
-    assert config.item_type == "material" and config.material_id == "m1" and config.product_id is None
-    assert float(config.capacity_qty) == 200_000 and config.uom == "PCS"
+def test_normalize_material_group():
+    assert normalize_material_group("  Cap ") == "Cap"
+    assert normalize_material_group("   ") is None
+    assert normalize_material_group(None) is None
+    assert material_group_key(" CAP ") == material_group_key("cap") == "cap"
 
 
 @pytest.mark.asyncio
-async def test_create_material_config_duplikat_dan_404():
+async def test_create_group_config_cap_thesis_171_pallet():
     svc = _service_v2()
-    await svc.create_material_config("m2", _input("DUS", dus_qty=100))
+    # Thesis: 171 pallet × 25 CTN × 3.000 pcs = 12.825.000 pcs untuk seluruh warna Cap
+    config = await svc.create_group_config(
+        " cap ", _input("PALLET", pallet_qty=171, dus_per_pallet=25, pcs_per_dus=3000)
+    )
+    assert config.item_type == "material_group" and config.material_group == "cap"
+    assert config.product_id is None and config.material_id is None
+    assert float(config.capacity_qty) == 12_825_000 and config.uom == "PCS"
+
+
+@pytest.mark.asyncio
+async def test_create_group_config_duplikat_case_insensitive():
+    svc = _service_v2()
+    await svc.create_group_config("cap", _input("DUS", dus_qty=10, pcs_per_dus=100))
     with pytest.raises(WarehouseConfigExistsError):
-        await svc.create_material_config("m2", _input("DUS", dus_qty=50))
-    with pytest.raises(MaterialNotFoundError):
-        await svc.create_material_config("zz", _input("DUS", dus_qty=50))
+        await svc.create_group_config("CAP", _input("DUS", dus_qty=5, pcs_per_dus=100))
 
 
 @pytest.mark.asyncio
-async def test_update_material_config_pakai_unit_material():
+async def test_create_group_config_grup_tanpa_material_404():
     svc = _service_v2()
-    cfg = await svc.create_material_config("m1", _input("DUS", dus_qty=10, pcs_per_dus=100))
+    with pytest.raises(MaterialNotFoundError):
+        await svc.create_group_config("preform", _input("DUS", dus_qty=10))
+
+
+@pytest.mark.asyncio
+async def test_create_group_config_unit_campur_ditolak():
+    svc = _service_v2()
+    # PCS dan KG tidak bisa dijumlahkan dalam satu kapasitas
+    with pytest.raises(WarehouseCapacityInvalidError):
+        await svc.create_group_config("campur", _input("DUS", dus_qty=10, pcs_per_dus=1))
+
+
+@pytest.mark.asyncio
+async def test_create_group_config_unit_ctn_tanpa_pcs_per_dus():
+    svc = _service_v2()
+    config = await svc.create_group_config("carton", _input("DUS", dus_qty=100))
+    assert float(config.capacity_qty) == 100 and config.uom == "CTN"
+
+
+@pytest.mark.asyncio
+async def test_update_group_config_pakai_unit_grup():
+    svc = _service_v2()
+    cfg = await svc.create_group_config("cap", _input("DUS", dus_qty=10, pcs_per_dus=100))
     cfg = await svc.update_config(cfg.id, _input("DUS", dus_qty=20, pcs_per_dus=100))
-    assert float(cfg.capacity_qty) == 2000
+    assert float(cfg.capacity_qty) == 2000 and cfg.uom == "PCS"
 
 
-def test_validate_capacity_produk_mengabaikan_config_material():
+def test_validate_capacity_produk_mengabaikan_config_grup_material():
     product_cfg = SimpleNamespace(product_id="p1", capacity_qty=Decimal("100"), item_type="product")
-    material_cfg = SimpleNamespace(product_id=None, material_id="m1", capacity_qty=Decimal("1"), item_type="material")
-    result = validate_capacity([product_cfg, material_cfg], {"p1": 50})
+    group_cfg = SimpleNamespace(
+        product_id=None, material_group="cap", capacity_qty=Decimal("1"), item_type="material_group"
+    )
+    result = validate_capacity([product_cfg, group_cfg], {"p1": 50})
     assert [d.product_id for d in result.details] == ["p1"]

@@ -3,7 +3,7 @@ Warehouse repositories (v3.0 Fase 6, redesain 24 Agustus 2026) —
 docs/ARCHITECTURE.md §4. `WarehouseConfig` kini satu baris per produk (pola CRUD
 sama seperti `bom_repository.py`), bukan satu baris global per kategori.
 """
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.warehouse import WarehouseConfig, WarehouseValidation
@@ -31,6 +31,15 @@ class SqlWarehouseConfigRepository:
     async def get_by_material(self, material_id: str) -> WarehouseConfig | None:
         result = await self._session.execute(
             select(WarehouseConfig).where(WarehouseConfig.material_id == material_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_material_group(self, group: str) -> WarehouseConfig | None:
+        result = await self._session.execute(
+            select(WarehouseConfig).where(
+                WarehouseConfig.item_type == "material_group",
+                func.lower(WarehouseConfig.material_group) == group.strip().lower(),
+            )
         )
         return result.scalar_one_or_none()
 

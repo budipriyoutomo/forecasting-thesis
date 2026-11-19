@@ -187,4 +187,30 @@ describe("ForecastSettingsForm", () => {
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ rop_formula: "standard", order_qty_policy: "eoq" }));
   });
+
+  it("window Moving Average: default 3, bisa diubah & ikut disubmit", async () => {
+    const onSubmit = vi.fn();
+    render(<ForecastSettingsForm initial={{ enabled_methods: null }} available={AVAILABLE} onSubmit={onSubmit} />);
+
+    const input = screen.getByLabelText(/window moving average/i) as HTMLInputElement;
+    expect(input.value).toBe("3");
+    await userEvent.clear(input);
+    await userEvent.type(input, "6");
+    await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ ma_window: 6 }));
+  });
+
+  it("window Moving Average di luar 1–12 atau pecahan ditolak", async () => {
+    render(<ForecastSettingsForm initial={{ ma_window: 4, enabled_methods: null }} available={AVAILABLE} onSubmit={vi.fn()} />);
+
+    const input = screen.getByLabelText(/window moving average/i) as HTMLInputElement;
+    expect(input.value).toBe("4");
+    for (const bad of ["0", "13", "2.5"]) {
+      await userEvent.clear(input);
+      await userEvent.type(input, bad);
+      expect(screen.getByText(/window harus bilangan bulat 1–12/i)).toBeDefined();
+      expect((screen.getByRole("button", { name: /simpan/i }) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
 });

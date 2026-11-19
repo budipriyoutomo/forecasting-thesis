@@ -9,10 +9,11 @@ produk dilakukan service (`WAREHOUSE_CAPACITY_INVALID`), bukan di sini.
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CapacityMode = Literal["PALLET", "DUS", "COMBINED"]
-ItemType = Literal["product", "material"]
+# 19 Nov 2026: `material` (per item) diganti `material_group` (per grup material).
+ItemType = Literal["product", "material_group"]
 
 
 class WarehouseConfigUpdate(BaseModel):
@@ -24,17 +25,18 @@ class WarehouseConfigUpdate(BaseModel):
 
 
 class WarehouseConfigCreate(WarehouseConfigUpdate):
-    # Fase 11.6: target produk (default, perilaku lama) atau material — tepat satu id.
+    # Target produk (default, perilaku lama) atau grup material — tepat satu target diisi.
     item_type: ItemType = "product"
     product_id: str | None = None
-    material_id: str | None = None
+    material_group: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def _target_sesuai_tipe(self):
-        target = self.product_id if self.item_type == "product" else self.material_id
-        other = self.material_id if self.item_type == "product" else self.product_id
-        if not target or other:
-            raise ValueError(f"item_type '{self.item_type}' wajib mengisi tepat {self.item_type}_id.")
+        group = (self.material_group or "").strip()
+        if self.item_type == "product" and (not self.product_id or group):
+            raise ValueError("item_type 'product' wajib mengisi product_id saja.")
+        if self.item_type == "material_group" and (not group or self.product_id):
+            raise ValueError("item_type 'material_group' wajib mengisi material_group saja.")
         return self
 
 
@@ -44,7 +46,8 @@ class WarehouseConfigOut(BaseModel):
     id: str
     item_type: ItemType = "product"
     product_id: str | None = None
-    material_id: str | None = None
+    material_id: str | None = None  # legacy (target per material sebelum 19 Nov 2026)
+    material_group: str | None = None
     capacity_mode: CapacityMode
     pallet_qty: Decimal
     dus_qty: Decimal

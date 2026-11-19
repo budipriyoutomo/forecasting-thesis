@@ -202,7 +202,7 @@ forecastiq/
 | id | UUID | PK |
 | code | VARCHAR unique | kode material/packaging — unik, `MATERIAL_CODE_EXISTS` jika duplikat saat create/import |
 | name | VARCHAR | |
-| category | VARCHAR | |
+| category | VARCHAR | **Grup material** (UI: "Grup material", 19 Nov 2026) — mis. `cap`, `bottle`, `preform`. Dicocokkan tanpa beda besar/kecil huruf; kapasitas gudang material dicatat per grup (`warehouse_config.material_group`) |
 | unit | VARCHAR | satuan |
 | lead_time_days | INTEGER | |
 | moq | NUMERIC | minimum order quantity |
@@ -221,6 +221,8 @@ forecastiq/
 | created_at / updated_at | TIMESTAMPTZ | |
 
 > Biaya material per unit produk (read-only, tidak dipersist) = Σ `qty_per_unit × materials.unit_price` — ditampilkan berdampingan dengan `products.selling_price` (harga produk) sebagai pembanding (2 Okt 2026; sebelum 10 Nov 2026 pembandingnya HPP).
+
+> **Level BOM (19 Nov 2026):** baris `boms` selalu **level 1** (produk → material dibeli; response `GET /boms` menyertakan `level = 1`). Level 2+ = `material_components` (informasi, tidak ikut breakdown). Tabel BOM di UI meratakan keduanya dengan kolom Level (komponen di bawah material induknya). `POST /boms/bulk` menambah banyak material untuk satu produk sekaligus.
 
 > Satu `product` bisa punya banyak baris `boms` (banyak komponen material). Dipakai `bom_service.py` untuk menurunkan deret kebutuhan material yang jadi input reorder & cost (di memori, tidak dipersist), dan untuk hitung Standar Pemakaian Material (buffer stock, FR-4.2). **Hasil forecast sendiri tidak menyentuh BOM.**
 
@@ -325,7 +327,10 @@ forecastiq/
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | UUID | PK |
-| product_id | UUID FK → products ON DELETE CASCADE, unique | satu produk maksimal satu baris kapasitas (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
+| item_type | VARCHAR(20) | `product` / `material_group` (19 Nov 2026; menggantikan `material` per item dari Fase 11.6) |
+| product_id | UUID FK → products ON DELETE CASCADE, nullable | target `product`; unik per produk (`WAREHOUSE_CONFIG_EXISTS` bila duplikat) |
+| material_group | VARCHAR(100), nullable | target `material_group` = `materials.category`; unik `lower(material_group)`. Semua material di grup wajib ber-unit sama (`WAREHOUSE_CAPACITY_INVALID`), grup tanpa material → `MATERIAL_NOT_FOUND` |
+| material_id | UUID, nullable | legacy (per material, Fase 11.6) — tidak diisi lagi, dipertahankan untuk downgrade |
 | capacity_mode | VARCHAR(10) | `PALLET` / `DUS` / `COMBINED` |
 | pallet_qty | NUMERIC(18,4) | jumlah pallet (0 bila mode `DUS`) |
 | dus_qty | NUMERIC(18,4) | jumlah dus lepas (0 bila mode `PALLET`) |
@@ -364,6 +369,7 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | display_metrics | VARCHAR(10)[], nullable | Fase 11.15 — metrik yang **ditampilkan** di hasil forecast (checkbox, ⊂ `mad`/`mfe`/`mse`/`mape`, urutan baku). NULL = semua. Bukan penentu pemenang — `ranking_metric` di-drop (migration `d7e8f9a0b1c2`) |
 | enabled_methods | VARCHAR(50)[], nullable | metode aktif (kunci `MODEL_REGISTRY`, terurut). NULL = seluruh metode terdaftar; array kosong ditolak CHECK. Pengganti env `FORECAST_ENGINES_ENABLED` |
 | es_alpha_grid, es_alpha_metric, ml_grid_search, ml_winsorize, service_level_pct, eoq_method | — | Fase 11.2/11.4, lihat §6.10 |
+| ma_window | SMALLINT | 19 Nov 2026 — window Moving Average (CHECK 1–12), default 3. Pengganti env `MOVING_AVERAGE_WINDOW`; nilai yang dipakai tercatat di `candidates_evaluated[].hyperparameters.window` |
 | rop_formula | VARCHAR(20) | v3.3 — `standard` \| `with_buffer` (CHECK), default `with_buffer` |
 | order_qty_policy | VARCHAR(20) | v3.3 — `eoq` \| `order_up_to` (CHECK), default `order_up_to` |
 | updated_by | UUID, nullable | admin terakhir yang mengubah |
@@ -437,6 +443,7 @@ POST   /api/v1/materials/import
 
 GET    /api/v1/boms?product_id=...
 POST   /api/v1/boms
+POST   /api/v1/boms/bulk          # {product_id, items:[{material_id, qty_per_unit}]} — 19 Nov 2026
 PUT    /api/v1/boms/{id}
 DELETE /api/v1/boms/{id}
 POST   /api/v1/boms/import
@@ -463,7 +470,7 @@ DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
 GET    /api/v1/forecast-settings                   # pengaturan forecast + available_methods (semua role; default semua metrik & semua metode bila belum disimpan)
-PUT    /api/v1/forecast-settings                   # ubah display_metrics & enabled_methods (admin); display_metrics di luar mad|mfe|mse|mape atau [] → 422; enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; field absen = tidak diubah
+PUT    /api/v1/forecast-settings                   # ubah display_metrics & enabled_methods (admin); display_metrics di luar mad|mfe|mse|mape atau [] → 422; enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; field absen = tidak diubah; ma_window bukan bilangan bulat 1–12 → 422 (19 Nov 2026)
 GET    /api/v1/cost-templates                      # daftar template biaya
 GET    /api/v1/cost-templates/active               # template aktif (404 COST_TEMPLATE_NOT_FOUND bila belum ada)
 GET    /api/v1/cost-templates/{id}                 # detail + items
@@ -671,7 +678,7 @@ def get_enabled_methods(enabled: Iterable[str] | None = None) -> set[str]:
 
 | Metode | File | Ringkasan Implementasi (lihat Bab III thesis untuk detail rumus) |
 |---|---|---|
-| Moving Average | `moving_average_engine.py` | Fₜ₊₁ = rata-rata n periode terakhir; n dikonfigurasi (`MOVING_AVERAGE_WINDOW`, default 3) |
+| Moving Average | `moving_average_engine.py` | Fₜ₊₁ = rata-rata n periode terakhir; n dari Pengaturan Forecast (`forecast_settings.ma_window`, default 3, 1–12) |
 | Exponential Smoothing | `exponential_smoothing_engine.py` | Fₜ₊₁ = αDₜ + (1−α)Fₜ; α di-tuning dengan grid 0,1–0,9 saat backtest, pilih α dengan MAPE terendah |
 | Random Forest | `random_forest_engine.py` | `RandomForestRegressor(n_estimators=100, max_depth=10)`, fitur: lag_1, lag_7 (bila data cukup), bulan, hari |
 | XGBoost | `xgboost_engine.py` | `XGBRegressor`, fitur: lag_1/7/30 + kalender (tahun, bulan, hari, minggu ISO), hyperparameter tuning via `GridSearchCV` (n_estimators, max_depth, learning_rate) |
@@ -687,7 +694,7 @@ Setiap fungsi **self-contained**: melakukan holdout backtest (untuk MAD/MFE/MSE/
 COMPUTE_MASE=true                     # hitung & simpan MASE tambahan (tidak dipakai ranking)
 BACKTEST_MIN_PERIODS=12
 LSTM_MIN_PERIODS=24
-MOVING_AVERAGE_WINDOW=3
+# Window Moving Average → forecast_settings.ma_window (19 Nov 2026), bukan env
 ENGINE_TIMEOUT_SECONDS=45             # konvensional & tree-based
 LSTM_ENGINE_TIMEOUT_SECONDS=120       # LSTM butuh timeout lebih longgar
 FORECAST_TIMEOUT_SECONDS=180
@@ -883,7 +890,7 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 ### Tabel baru / berubah
 | Tabel | Isi | Migration |
 |---|---|---|
-| `forecast_settings` (1 baris, `id = 1`) | `display_metrics[]` (dulu `ranking_metric`, Fase 11.15 `d7e8f9a0b1c2`), `enabled_methods[]`, `es_alpha_grid[]`, `es_alpha_metric`, `ml_grid_search`, `ml_winsorize`, `service_level_pct`, `eoq_method` | `e6f7a8b9c0d1`, `c0d1e2f3a4b5` |
+| `forecast_settings` (1 baris, `id = 1`) | `display_metrics[]` (dulu `ranking_metric`, Fase 11.15 `d7e8f9a0b1c2`), `enabled_methods[]`, `es_alpha_grid[]`, `es_alpha_metric`, `ml_grid_search`, `ml_winsorize`, `service_level_pct`, `eoq_method`, `ma_window` (19 Nov 2026) | `e6f7a8b9c0d1`, `c0d1e2f3a4b5`, `a0b1c2d3e4f5` |
 | `forecast_runs.ranking_metric`, `forecast_results.feature_importance/hyperparameters` | snapshot metrik & hasil engine | `e6f7a8b9c0d1` |
 | `external_variables`, `external_variable_values` | variabel eksternal dinamis + nilai per periode (product_id NULL = global) | `f7a8b9c0d1e2` |
 | `material_usage_history` + `reorder_recommendations.waste_factor` | pemakaian aktual vs standar → buffer | `a8b9c0d1e2f3` |
@@ -891,6 +898,7 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 | `cost_templates.holding_cost_rate_pct`, `cost_template_items.period_basis` + tipe `MAINTENANCE`; `reorder_recommendations.eoq_method/item_status/annual_demand/unit_price_used/holding_rate_used` | EOQ klasik | `c0d1e2f3a4b5` |
 | `stock_snapshots`, `material_receipts` + `reorder_recommendations.current_stock_used/stock_source` | stok ERP & kedatangan | `d1e2f3a4b5c6` |
 | `warehouse_config.item_type/material_id` (product_id nullable, partial unique per target, CHECK tepat satu) + `stock_projections` | kapasitas material & proyeksi | `e2f3a4b5c6d7` |
+| `warehouse_config.material_group` (target per grup material menggantikan per material; utilisasi proyeksi = Σ stok anggota grup ÷ kapasitas grup) | kapasitas per grup material (19 Nov 2026) | `f9a0b1c2d3e4` |
 | `inventory_metrics.inventory_days/shortage_cost` | evaluasi material | `f3a4b5c6d7e8` |
 | `forecast_settings.rop_formula/order_qty_policy` + `reorder_recommendations.rop_formula_used/order_qty_policy_used/order_up_to_level/moq_used` | v3.3 kebijakan pesan satu sumber (§6.8) | `b5c6d7e8f9a0` |
 
@@ -908,7 +916,8 @@ GET  /forecast/runs/{id}/stock-projection/export?format=xlsx|pdf&scenario=propos
 GET  /forecast/runs/{id}/inventory-metrics/export?format=xlsx|pdf&target_type=product|material
 POST /forecast/runs/{id}/plan                      # tahap 2→4 berurutan
 GET  /forecast/runs/{id}/inventory-metrics?target_type=material
-POST/PUT /warehouse/config                         # + item_type, material_id
+POST/PUT /warehouse/config                         # + item_type (product|material_group), material_group — 19 Nov 2026
+GET  /material-components                          # seluruh komponen (kolom Level tabel BOM) — 19 Nov 2026
 ```
 
 ### Rumus inti

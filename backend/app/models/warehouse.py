@@ -30,15 +30,19 @@ class WarehouseConfig(Base):
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     # Fase 11.6 (Keputusan #1): target polimorfik — `product` (gudang FG, perilaku lama) atau
-    # `material` (gudang packaging, dipakai proyeksi stok thesis). Tepat satu FK terisi (CHECK);
+    # gudang packaging (sejak 19 Nov 2026 `material_group`, dipakai proyeksi stok thesis). Tepat satu FK terisi (CHECK);
     # unik per target dijaga partial unique index.
-    item_type: Mapped[str] = mapped_column(String(10), nullable=False, default="product")
+    item_type: Mapped[str] = mapped_column(String(20), nullable=False, default="product")
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=True, index=True
     )
     material_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("materials.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    # 19 Nov 2026: target `material_group` — kapasitas dibagi seluruh material yang
+    # `materials.category`-nya sama (case-insensitive). Menggantikan target `material`
+    # (kolom material_id dipertahankan untuk downgrade, tidak diisi lagi).
+    material_group: Mapped[str | None] = mapped_column(String(100), nullable=True)
     capacity_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="DUS")
     pallet_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
     dus_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)

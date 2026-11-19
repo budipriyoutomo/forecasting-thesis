@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Callable, Protocol
 
 from app.models.bom import Bom
-from app.schemas.bom import BomCreate, BomUpdate
+from app.schemas.bom import BomBulkCreate, BomCreate, BomUpdate
 from app.utils.exceptions import (
     BomNotFoundError,
     MaterialNotFoundError,
@@ -129,6 +129,20 @@ class BomService:
         await self._require_refs(payload.product_id, payload.material_id)
         bom = self._model(**payload.model_dump())
         return await self._repo.add(bom)
+
+    async def create_many(self, payload: BomBulkCreate) -> list:
+        """Semua referensi divalidasi DULU — satu material tak dikenal → tidak ada yang tersimpan."""
+        if await self._products.get_by_id(payload.product_id) is None:
+            raise ProductNotFoundError(f"Produk '{payload.product_id}' tidak ditemukan.")
+        for item in payload.items:
+            if await self._materials.get_by_id(item.material_id) is None:
+                raise MaterialNotFoundError(f"Material '{item.material_id}' tidak ditemukan.")
+        return [
+            await self._repo.add(
+                self._model(product_id=payload.product_id, material_id=item.material_id, qty_per_unit=item.qty_per_unit)
+            )
+            for item in payload.items
+        ]
 
     async def update(self, bom_id: str, payload: BomUpdate):
         bom = await self.get(bom_id)

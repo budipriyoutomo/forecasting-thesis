@@ -2,13 +2,14 @@
 BOMs endpoints (Fase 2 v3.0) — Bill of Materials, docs/ARCHITECTURE.md §5.
 
 RBAC: baca semua role terautentikasi; tulis hanya `admin`. Logika lewat BomService.
-`GET /boms?product_id=...` memfilter per produk.
+`GET /boms?product_id=...` memfilter per produk. `POST /boms/bulk` (19 Nov 2026) menambah
+banyak material untuk satu produk sekaligus. Response menyertakan `level` (= 1).
 """
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_bom_service, get_current_user, require_role
-from app.schemas.bom import BomCreate, BomResponse, BomUpdate
+from app.schemas.bom import BomBulkCreate, BomCreate, BomResponse, BomUpdate
 from app.services.bom_service import BomService, compute_line_cost
 
 router = APIRouter(prefix="/boms", tags=["boms"])
@@ -44,6 +45,13 @@ async def create_bom(payload: BomCreate, service: BomService = Depends(get_bom_s
     bom = await service.create(payload)
     data = _to_response(bom, await service.material_prices())
     return JSONResponse(status_code=201, content={"success": True, "data": data})
+
+
+@router.post("/bulk", dependencies=[Depends(require_role("admin"))])
+async def create_boms_bulk(payload: BomBulkCreate, service: BomService = Depends(get_bom_service)):
+    boms = await service.create_many(payload)
+    prices = await service.material_prices()
+    return JSONResponse(status_code=201, content={"success": True, "data": [_to_response(b, prices) for b in boms]})
 
 
 @router.put("/{bom_id}", dependencies=[Depends(require_role("admin"))])

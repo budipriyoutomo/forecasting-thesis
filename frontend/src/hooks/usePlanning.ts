@@ -64,6 +64,9 @@ export function useBomComponent() {
         ? unwrap(await api.bomTree.removeComponent(input.removeId, token))
         : unwrap(await api.bomTree.addComponent(input.parentId, input.componentId, input.qty, token));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bom-tree"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bom-tree"] });
+      qc.invalidateQueries({ queryKey: ["material-components"] });
+    },
   });
 }

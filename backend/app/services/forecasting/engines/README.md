@@ -49,7 +49,7 @@ def forecast_<method>(df: pd.DataFrame, horizon: int) -> EngineResult:
 
 | Metode | File | Fungsi | Minimum data | Catatan |
 |---|---|---|---|---|
-| Moving Average | `moving_average_engine.py` | `forecast_moving_average` | `BACKTEST_MIN_PERIODS` (12) | window `MOVING_AVERAGE_WINDOW` (3) |
+| Moving Average | `moving_average_engine.py` | `forecast_moving_average` | `BACKTEST_MIN_PERIODS` (12) | window `options.ma_window` (Pengaturan Forecast, default 3) |
 | Exponential Smoothing | `exponential_smoothing_engine.py` | `forecast_exponential_smoothing` | 12 | SES manual, α tuned grid 0.1–0.9 |
 | Random Forest | `random_forest_engine.py` | `forecast_random_forest` | 12 | fitur lag [1,12] + bulan, rekursif |
 | XGBoost | `xgboost_engine.py` | `forecast_xgboost` | 12 | fitur lag [1,2,12] + bulan, rekursif |

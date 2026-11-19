@@ -450,10 +450,13 @@ async def _seed_thesis_extras(summary, material_by_code, warehouse, components, 
             summary.components_created += 1
 
     for spec in THESIS_MATERIAL_CAPACITY:
-        material = material_by_code[spec.material_code]
-        if await warehouse.get_by_material(str(material.id)) is not None:
+        # Kapasitas per grup material (19 Nov 2026); unit = unit anggota grup (seluruhnya PCS).
+        material = next(m for m in material_by_code.values() if m.category == spec.material_group)
+        if await warehouse.get_by_material_group(spec.material_group) is not None:
             continue
-        config = WarehouseConfig(item_type="material", product_id=None, material_id=material.id)
+        config = WarehouseConfig(
+            item_type="material_group", product_id=None, material_id=None, material_group=spec.material_group
+        )
         apply_capacity(
             config,
             CapacityInput(

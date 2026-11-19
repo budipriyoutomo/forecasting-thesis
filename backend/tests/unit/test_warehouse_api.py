@@ -240,3 +240,74 @@ async def test_validation_run_tanpa_config_404(client):
     res = await client.get("/api/v1/forecast/runs/r1/warehouse-validation", headers=_headers("ppic"))
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "WAREHOUSE_CONFIG_NOT_FOUND"
+
+
+# ── Kapasitas per grup material (19 Nov 2026) ──
+
+
+def _override_group():
+    from tests.unit.test_warehouse_service import FakeConfigRepoV2, FakeMaterialRepo, _mat
+
+    app.dependency_overrides[get_warehouse_service] = lambda: WarehouseService(
+        config_repo=FakeConfigRepoV2(),
+        validation_repo=FakeValidationRepo(),
+        forecast_repo=FakeForecastRepo(None),
+        products=FakeProductRepo(["p1"]),
+        materials=FakeMaterialRepo([_mat("m1", "PCS", "cap"), _mat("m2", "PCS", "cap")]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_config_grup_material_201(client):
+    _override_group()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={
+            "item_type": "material_group",
+            "material_group": "cap",
+            "capacity_mode": "PALLET",
+            "pallet_qty": 171,
+            "dus_per_pallet": 25,
+            "pcs_per_dus": 3000,
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()["data"]
+    assert data["item_type"] == "material_group" and data["material_group"] == "cap"
+    assert data["product_id"] is None and data["material_id"] is None
+    assert float(data["capacity_qty"]) == 12_825_000 and data["uom"] == "PCS"
+
+
+@pytest.mark.asyncio
+async def test_post_config_grup_tanpa_nama_grup_422(client):
+    _override_group()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"item_type": "material_group", "capacity_mode": "DUS", "dus_qty": 10, "pcs_per_dus": 1},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_config_per_material_tidak_lagi_didukung_422(client):
+    _override_group()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"item_type": "material", "material_id": "m1", "capacity_mode": "DUS", "dus_qty": 10, "pcs_per_dus": 1},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_config_grup_tidak_dikenal_404(client):
+    _override_group()
+    res = await client.post(
+        "/api/v1/warehouse/config",
+        headers=_headers("admin"),
+        json={"item_type": "material_group", "material_group": "label", "capacity_mode": "DUS", "dus_qty": 10},
+    )
+    assert res.status_code == 404
+    assert res.json()["error"]["code"] == "MATERIAL_NOT_FOUND"

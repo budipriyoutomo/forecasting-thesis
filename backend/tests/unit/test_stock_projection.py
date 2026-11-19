@@ -14,7 +14,7 @@ from datetime import date
 import pytest
 
 from app.services.reorder_service import OrderPolicy
-from app.services.stock_projection_service import bucket_by_period, project_stock
+from app.services.stock_projection_service import apply_group_capacity, bucket_by_period, project_stock
 
 
 def test_proyeksi_tanpa_pesanan_dan_utilisasi():
@@ -91,3 +91,24 @@ def test_override_nol_berarti_tidak_pesan_periode_pertama():
     policy = OrderPolicy("eoq", reorder_point=200, order_up_to=400, eoq_qty=300, moq=0)
     rows = project_stock(opening=100, receipts=[0], usage=[50], policy=policy, capacity=None, first_order=0)
     assert rows[0].order_qty == 0 and rows[0].ending_qty == 50
+
+
+def test_apply_group_capacity_menjumlahkan_stok_anggota_grup():
+    a = project_stock(100, [0, 0], [10, 10], None, None)  # ending 90, 80
+    b = project_stock(50, [0, 0], [0, 0], None, None)  # ending 50, 50
+    c = project_stock(30, [0], [0], None, None)  # grup lain, tanpa kapasitas
+    apply_group_capacity({"m1": a, "m2": b, "m3": c}, {"m1": "cap", "m2": "cap", "m3": "label"}, {"cap": 150})
+
+    assert [r.utilization_opening_pct for r in a] == pytest.approx([100.0, 140 / 150 * 100])
+    assert a[0].utilization_ending_pct == pytest.approx(140 / 150 * 100)
+    assert a[1].utilization_ending_pct == pytest.approx(130 / 150 * 100)
+    assert b[0].utilization_ending_pct == a[0].utilization_ending_pct
+    assert all(r.is_within_capacity for r in a + b)
+    assert c[0].utilization_ending_pct is None and c[0].is_within_capacity is None
+
+
+def test_apply_group_capacity_grup_melebihi_kapasitas_diflag():
+    a = project_stock(100, [0], [0], None, None)
+    b = project_stock(100, [0], [0], None, None)
+    apply_group_capacity({"m1": a, "m2": b}, {"m1": "cap", "m2": "cap"}, {"cap": 150})
+    assert a[0].is_within_capacity is False and b[0].is_within_capacity is False

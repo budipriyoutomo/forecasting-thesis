@@ -1,4 +1,4 @@
-"""Fase 11.6 — endpoint proyeksi stok + config gudang material."""
+"""Fase 11.6 — endpoint proyeksi stok + config gudang grup material (19 Nov 2026)."""
 from types import SimpleNamespace
 
 import pytest
@@ -33,16 +33,16 @@ async def test_generate_dan_get(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_config_gudang_material_via_api(client):
+async def test_config_gudang_grup_material_via_api(client):
     from tests.unit.test_forecast_settings_api import _headers
 
     svc = _service_v2()
     app.dependency_overrides[get_warehouse_service] = lambda: svc
-    body = {"item_type": "material", "material_id": "m1", "capacity_mode": "PALLET",
+    body = {"item_type": "material_group", "material_group": "cap", "capacity_mode": "PALLET",
             "pallet_qty": 10, "dus_per_pallet": 40, "pcs_per_dus": 500}
     res = await client.post("/api/v1/warehouse/config", json=body, headers=_headers("admin"))
     assert res.status_code == 201, res.text
-    assert res.json()["data"]["item_type"] == "material" and float(res.json()["data"]["capacity_qty"]) == 200_000
+    assert res.json()["data"]["item_type"] == "material_group" and float(res.json()["data"]["capacity_qty"]) == 200_000
 
     bad = {**body, "product_id": "p1"}
     assert (await client.post("/api/v1/warehouse/config", json=bad, headers=_headers("admin"))).status_code == 422

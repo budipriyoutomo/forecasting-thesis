@@ -9,6 +9,10 @@ atau kombinasi; `capacity_qty` (unit produk) & `uom` dihitung server lewat
 dijalankan per produk: kebutuhan = total qty forecast produk di satu run,
 dibandingkan `capacity_qty` konfigurasinya. Melebihi kapasitas BUKAN error —
 hanya flag `is_within_capacity` (larangan #17), keputusan tetap di planner.
+
+19 Nov 2026: kapasitas gudang material dicatat per GRUP MATERIAL (`materials.category`,
+mis. 6 warna Cap berbagi 171 pallet — thesis "Pengumpulan Data"), menggantikan kapasitas
+per material (Fase 11.6). Semua material satu grup wajib ber-unit sama.
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -40,6 +44,20 @@ class CapacityInput:
     dus_qty: float = 0
     dus_per_pallet: float | None = None
     pcs_per_dus: float | None = None
+
+
+def normalize_material_group(value: str | None) -> str | None:
+    """Nama grup material dirapikan (trim); kosong → None."""
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def material_group_key(value: str | None) -> str | None:
+    """Kunci pencocokan grup — tanpa beda besar/kecil huruf ("Cap" = "cap")."""
+    value = normalize_material_group(value)
+    return value.casefold() if value else None
 
 
 def is_dus_like(unit: str) -> bool:
@@ -119,7 +137,7 @@ def validate_capacity(
     details: list[ProductCapacityResult] = []
     for config in configs:
         if getattr(config, "item_type", "product") != "product":
-            continue  # kapasitas material dipakai proyeksi stok (Fase 11.6), bukan di sini
+            continue  # kapasitas grup material dipakai proyeksi stok, bukan di sini
         pid = str(config.product_id)
         required = forecast_qty_by_product.get(pid)
         if required is None:
@@ -166,19 +184,22 @@ class WarehouseService:
         apply_capacity(config, inp, product.unit)
         return await self._config.add(config)
 
-    async def create_material_config(self, material_id: str, inp: CapacityInput) -> WarehouseConfig:
-        """Kapasitas gudang per MATERIAL (Fase 11.6): pallet → CTN (dus) → pcs, rumus sama."""
-        material = await self._require_material(material_id)
-        if await self._config.get_by_material(material_id) is not None:
-            raise WarehouseConfigExistsError("Material ini sudah punya konfigurasi kapasitas.")
-        config = WarehouseConfig(item_type="material", product_id=None, material_id=material_id)
-        apply_capacity(config, inp, material.unit)
+    async def create_group_config(self, material_group: str, inp: CapacityInput) -> WarehouseConfig:
+        """Kapasitas gudang per GRUP MATERIAL: pallet → CTN (dus) → pcs, rumus sama dengan produk."""
+        group = normalize_material_group(material_group)
+        if group is None:
+            raise WarehouseCapacityInvalidError("Nama grup material wajib diisi.")
+        unit = await self._group_unit(group)
+        if await self._config.get_by_material_group(group) is not None:
+            raise WarehouseConfigExistsError(f"Grup material '{group}' sudah punya konfigurasi kapasitas.")
+        config = WarehouseConfig(item_type="material_group", product_id=None, material_id=None, material_group=group)
+        apply_capacity(config, inp, unit)
         return await self._config.add(config)
 
     async def update_config(self, config_id: str, inp: CapacityInput) -> WarehouseConfig:
         config = await self.get_config(config_id)
-        if getattr(config, "item_type", "product") == "material":
-            unit = (await self._require_material(str(config.material_id))).unit
+        if getattr(config, "item_type", "product") == "material_group":
+            unit = await self._group_unit(config.material_group)
         else:
             product = await self._products.get_by_id(str(config.product_id))
             if product is None:
@@ -187,11 +208,22 @@ class WarehouseService:
         apply_capacity(config, inp, unit)
         return await self._config.save(config)
 
-    async def _require_material(self, material_id: str):
-        material = await self._materials.get_by_id(material_id) if self._materials else None
-        if material is None:
-            raise MaterialNotFoundError(f"Material '{material_id}' tidak ditemukan.")
-        return material
+    async def _group_unit(self, group: str) -> str:
+        """Unit bersama material di grup. Grup tanpa material → 404; unit campur → invalid."""
+        key = material_group_key(group)
+        members = [
+            m for m in (await self._materials.list() if self._materials else [])
+            if material_group_key(getattr(m, "category", None)) == key
+        ]
+        if not members:
+            raise MaterialNotFoundError(f"Belum ada material dengan grup '{group}'.")
+        units = {m.unit.strip().upper() for m in members}
+        if len(units) > 1:
+            raise WarehouseCapacityInvalidError(
+                f"Material di grup '{group}' memakai unit berbeda ({', '.join(sorted(units))}) — "
+                "samakan unitnya agar kapasitas bisa dijumlahkan."
+            )
+        return members[0].unit
 
     async def delete_config(self, config_id: str) -> None:
         config = await self.get_config(config_id)

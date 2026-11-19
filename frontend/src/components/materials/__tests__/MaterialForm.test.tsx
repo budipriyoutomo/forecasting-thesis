@@ -75,4 +75,26 @@ describe("MaterialForm", () => {
     expect((screen.getByLabelText(/^kode$/i) as HTMLInputElement).value).toBe("RM-009");
     expect((screen.getByLabelText(/^nama$/i) as HTMLInputElement).value).toBe("Gula");
   });
+
+  it("mengirim grup material (dipakai kapasitas gudang per grup)", async () => {
+    const onSubmit = vi.fn();
+    render(<MaterialForm onSubmit={onSubmit} groups={["cap", "preform"]} />);
+
+    await userEvent.type(screen.getByLabelText(/^kode$/i), "CAP-RED");
+    await userEvent.type(screen.getByLabelText(/^nama$/i), "Cap Red");
+    await userEvent.type(screen.getByLabelText(/^satuan$/i), "PCS");
+    await userEvent.type(screen.getByLabelText(/grup material/i), "  cap ");
+    await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ category: "cap" }));
+  });
+
+  it("mode edit menampilkan grup material yang tersimpan", () => {
+    const material: Material = {
+      id: "m1", code: "CAP-RED", name: "Cap Red", category: "cap", unit: "PCS",
+      lead_time_days: 7, moq: "0", manual_safety_stock: null,
+    };
+    render(<MaterialForm initial={material} onSubmit={vi.fn()} />);
+    expect((screen.getByLabelText(/grup material/i) as HTMLInputElement).value).toBe("cap");
+  });
 });

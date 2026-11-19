@@ -61,17 +61,34 @@ describe("WarehouseConfigTable", () => {
     expect(await screen.findByRole("button", { name: /ya, hapus/i })).toBeDefined();
   });
 
-  it("baris material memakai label material & satuan CTN", () => {
+  it("baris grup material memakai nama grup, anggota & satuan CTN", () => {
     const cfg = {
-      id: "w9", item_type: "material", product_id: null, material_id: "m1", capacity_mode: "DUS",
-      pallet_qty: "0", dus_qty: "400", dus_per_pallet: null, pcs_per_dus: "500",
+      id: "w9", item_type: "material_group", product_id: null, material_id: null, material_group: "cap",
+      capacity_mode: "DUS", pallet_qty: "0", dus_qty: "400", dus_per_pallet: null, pcs_per_dus: "500",
       capacity_dus: "400", capacity_qty: "200000", uom: "PCS",
     } as never;
-    const materials = [{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS" }] as never[];
-    render(<WarehouseConfigTable configs={[cfg]} products={[]} materials={materials} targetType="material" />);
+    const materials = [
+      { id: "m1", code: "CAP-BLUE", name: "Cap Blue", unit: "PCS", category: "cap" },
+      { id: "m2", code: "CAP-RED", name: "Cap Red", unit: "PCS", category: "Cap" },
+    ] as never[];
+    render(
+      <WarehouseConfigTable configs={[cfg]} products={[]} materials={materials} targetType="material_group" />,
+    );
 
-    expect(screen.getByText("BTL-WHITE — Bottle White")).toBeDefined();
-    expect(screen.getByRole("columnheader", { name: /material/i })).toBeDefined();
+    expect(screen.getByText("cap")).toBeDefined();
+    expect(screen.getByText(/CAP-BLUE, CAP-RED/)).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: /grup material/i })).toBeDefined();
     expect(screen.getAllByText(/CTN/).length).toBeGreaterThan(0);
+  });
+
+  it("peringatan bila unit anggota grup tidak lagi sama dengan satuan kapasitas", () => {
+    const cfg = {
+      id: "w9", item_type: "material_group", product_id: null, material_group: "cap",
+      capacity_mode: "DUS", pallet_qty: "0", dus_qty: "10", dus_per_pallet: null, pcs_per_dus: "1",
+      capacity_dus: "10", capacity_qty: "10", uom: "PCS",
+    } as never;
+    const materials = [{ id: "m1", code: "CAP-RED", name: "Cap Red", unit: "KG", category: "cap" }] as never[];
+    render(<WarehouseConfigTable configs={[cfg]} products={[]} materials={materials} targetType="material_group" />);
+    expect(screen.getByText(/unit material tidak sama/i)).toBeDefined();
   });
 });

@@ -84,3 +84,16 @@ async def test_tree_dan_404(client):
     assert res.status_code == 404
     res = await client.delete("/api/v1/material-components/zz", headers=_headers("admin"))
     assert res.json()["error"]["code"] == "MATERIAL_COMPONENT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_list_semua_komponen_untuk_tabel_bom_level(client):
+    # 19 Nov 2026: tabel BOM menampilkan baris level 2+ — butuh seluruh komponen sekaligus.
+    _override([
+        SimpleNamespace(id="c1", parent_material_id="btl", component_material_id="pre", qty_per_unit=1),
+        SimpleNamespace(id="c2", parent_material_id="pre", component_material_id="resin", qty_per_unit=0.02),
+    ])
+    res = await client.get("/api/v1/material-components", headers=_headers("viewer"))
+    assert res.status_code == 200
+    assert [r["id"] for r in res.json()["data"]] == ["c1", "c2"]
+    assert (await client.get("/api/v1/material-components")).status_code == 401

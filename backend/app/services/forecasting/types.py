@@ -48,12 +48,20 @@ class EngineResult:
     hyperparameters: dict | None = None
 
 
+# Window Moving Average default (thesis: rata-rata 3 periode). Rentang yang boleh disimpan
+# 1..MAX_MA_WINDOW — 12 = satu tahun data bulanan = BACKTEST_MIN_PERIODS default.
+DEFAULT_MA_WINDOW = 3
+MAX_MA_WINDOW = 12
+
+
 @dataclass
 class EngineOptions:
     """Opsi engine dari master data Pengaturan Forecast (Fase 11.2) — argumen opsional
     ketiga `forecast_<method>(df, horizon, options=None)`; None = default thesis."""
 
     es_alpha_grid: tuple[float, ...] = THESIS_ALPHA_GRID
+    # 19 Nov 2026: window Moving Average (n periode), pengganti env MOVING_AVERAGE_WINDOW
+    ma_window: int = DEFAULT_MA_WINDOW
     es_alpha_metric: str = "mad"  # mad | mape — metrik pemilihan α (thesis: MAD)
     ml_grid_search: bool = False  # GridSearchCV + TimeSeriesSplit untuk RF/XGB
     ml_winsorize: bool = False  # cap outlier IQR sebelum training ML

@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from app.services.forecasting.engines.moving_average_engine import forecast_moving_average
+from app.services.forecasting.types import EngineOptions
 
 
 def _monthly_df(values):
@@ -37,3 +38,27 @@ def test_tanggal_forecast_melangkah_bulanan():
     d0 = pd.Timestamp(res.forecast[0].date)
     d1 = pd.Timestamp(res.forecast[1].date)
     assert 27 <= (d1 - d0).days <= 32  # kira-kira 1 bulan
+
+
+# ── Window dari master data Pengaturan Forecast (19 Nov 2026), bukan env ──
+
+
+def test_default_window_3_tanpa_options():
+    df = _monthly_df([float(v) for v in range(1, 19)])  # 1..18
+    res = forecast_moving_average(df, horizon=2)
+    assert res.forecast[0].value == pytest.approx((16 + 17 + 18) / 3)
+    assert res.hyperparameters == {"window": 3}
+
+
+def test_window_dari_options():
+    df = _monthly_df([float(v) for v in range(1, 19)])
+    res = forecast_moving_average(df, horizon=2, options=EngineOptions(ma_window=6))
+    assert res.forecast[0].value == pytest.approx(sum(range(13, 19)) / 6)
+    assert res.hyperparameters == {"window": 6}
+    assert "window 6" in res.explanation
+
+
+def test_window_lebih_panjang_dari_data_train_memakai_seluruh_data():
+    df = _monthly_df([10.0, 20.0, 30.0, 40.0])
+    res = forecast_moving_average(df, horizon=1, options=EngineOptions(ma_window=12))
+    assert res.forecast[0].value == pytest.approx(25.0)

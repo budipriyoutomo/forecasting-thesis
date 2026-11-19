@@ -131,28 +131,34 @@ describe("WarehouseConfigForm", () => {
     );
   });
 
-  it("target material (Fase 11.6): label Material & CTN, submit item_type material", async () => {
+  it("target grup material: pilih grup, CTN, submit item_type material_group", async () => {
     const onSubmit = vi.fn();
-    const materials = [{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS" }] as never[];
-    render(<WarehouseConfigForm products={PRODUCTS} materials={materials} targetType="material" onSubmit={onSubmit} />);
+    const materials = [
+      { id: "m1", code: "CAP-BLUE", name: "Cap Blue", unit: "PCS", category: "cap" },
+      { id: "m2", code: "CAP-RED", name: "Cap Red", unit: "PCS", category: "Cap" },
+      { id: "m3", code: "PRF-WHITE", name: "Preform", unit: "PCS", category: "preform" },
+    ] as never[];
+    render(
+      <WarehouseConfigForm products={PRODUCTS} materials={materials} targetType="material_group" onSubmit={onSubmit} />,
+    );
 
-    await pilih(/^material$/i, /BTL-WHITE/);
+    await pilih(/^grup material$/i, /^cap/i);
     await pilih(/mode kapasitas/i, /pallet/i);
-    await userEvent.type(screen.getByLabelText(/jumlah pallet/i), "10");
-    await userEvent.type(screen.getByLabelText(/ctn per pallet/i), "40");
-    await userEvent.type(screen.getByLabelText(/pcs per ctn/i), "500");
-    expect(screen.getByText(/400 CTN/)).toBeDefined();
+    await userEvent.type(screen.getByLabelText(/jumlah pallet/i), "171");
+    await userEvent.type(screen.getByLabelText(/ctn per pallet/i), "25");
+    await userEvent.type(screen.getByLabelText(/pcs per ctn/i), "3000");
+    expect(screen.getByText(/4\.275 CTN/)).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith({
-        item_type: "material",
-        material_id: "m1",
+        item_type: "material_group",
+        material_group: "cap",
         capacity_mode: "PALLET",
-        pallet_qty: 10,
+        pallet_qty: 171,
         dus_qty: 0,
-        dus_per_pallet: 40,
-        pcs_per_dus: 500,
+        dus_per_pallet: 25,
+        pcs_per_dus: 3000,
       }),
     );
   });

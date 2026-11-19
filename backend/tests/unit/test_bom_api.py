@@ -154,3 +154,58 @@ async def test_create_bom_response_menyertakan_line_cost(client):
     assert res.status_code == 201
     assert "line_cost" in res.json()["data"]
     assert res.json()["data"]["line_cost"] is None  # m1 di fixture default tanpa harga
+
+
+# ── 19 Nov 2026: kolom level & input banyak material ──
+
+
+@pytest.mark.asyncio
+async def test_list_bom_menyertakan_level_1(client):
+    _override([FakeBom(id="b1", product_id="p1", material_id="m1", qty_per_unit=Decimal(1))])
+    res = await client.get("/api/v1/boms", headers=_headers("ppic"))
+    assert res.status_code == 200
+    assert res.json()["data"][0]["level"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_admin_201(client):
+    _override([])
+    body = {"product_id": "p1", "items": [{"material_id": "m1", "qty_per_unit": 2}]}
+    res = await client.post("/api/v1/boms/bulk", headers=_headers("admin"), json=body)
+    assert res.status_code == 201
+    data = res.json()["data"]
+    assert len(data) == 1 and data[0]["material_id"] == "m1" and data[0]["level"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_non_admin_403(client):
+    _override([])
+    body = {"product_id": "p1", "items": [{"material_id": "m1", "qty_per_unit": 2}]}
+    res = await client.post("/api/v1/boms/bulk", headers=_headers("ppic"), json=body)
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_tanpa_token_401(client):
+    res = await client.post("/api/v1/boms/bulk", json={"product_id": "p1", "items": []})
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_material_tak_ada_404(client):
+    _override([])
+    body = {"product_id": "p1", "items": [{"material_id": "ghost", "qty_per_unit": 1}]}
+    res = await client.post("/api/v1/boms/bulk", headers=_headers("admin"), json=body)
+    assert res.status_code == 404
+    assert res.json()["error"]["code"] == "MATERIAL_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_material_ganda_422(client):
+    _override([])
+    body = {
+        "product_id": "p1",
+        "items": [{"material_id": "m1", "qty_per_unit": 1}, {"material_id": "m1", "qty_per_unit": 3}],
+    }
+    res = await client.post("/api/v1/boms/bulk", headers=_headers("admin"), json=body)
+    assert res.status_code == 422

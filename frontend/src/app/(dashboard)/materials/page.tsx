@@ -22,6 +22,7 @@ import {
   useMaterials,
   useUpdateMaterial,
 } from "@/hooks/useMaterials";
+import { materialGroups } from "@/lib/warehouse";
 import type { Material, MaterialInput } from "@/types/material";
 
 export default function MaterialsPage() {
@@ -88,6 +89,7 @@ export default function MaterialsPage() {
           <MaterialForm
             key={editing?.id ?? "baru"}
             initial={editing ?? undefined}
+            groups={materialGroups(materials ?? []).map((g) => g.name)}
             onSubmit={onSubmit}
             submitting={active}
             error={formError}

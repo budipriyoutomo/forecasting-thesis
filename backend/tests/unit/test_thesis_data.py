@@ -86,18 +86,23 @@ def test_bom_level_2_bottle_ke_preform():
 
 def test_kapasitas_preform_pallet_ke_pcs():
     # Excel: Preform 346 pallet = 346 carton = 5.555.376 pcs → 1 CTN/pallet, 16.056 pcs/CTN
-    (cap,) = THESIS_MATERIAL_CAPACITY
-    assert cap.material_code == "PRF-WHITE"
+    cap = next(c for c in THESIS_MATERIAL_CAPACITY if c.material_group == "preform")
     inp = CapacityInput(capacity_mode=cap.capacity_mode, pallet_qty=cap.pallet_qty,
                         dus_per_pallet=cap.dus_per_pallet, pcs_per_dus=cap.pcs_per_dus)
     dus, pcs = compute_effective_capacity(inp, "PCS")
     assert (dus, pcs) == (346, 5_555_376)
 
 
-def test_kapasitas_group_cap_hanya_referensi():
+def test_kapasitas_group_cap_satu_angka_untuk_6_warna():
     # Excel: Cap 171 pallet = 4.275 carton = 12.825.000 pcs — SATU angka untuk 6 warna.
+    # Sejak 19 Nov 2026 kapasitas per grup material → di-seed sebagai grup "cap".
     assert CAP_GROUP_CAPACITY == {"pallet": 171, "ctn_per_pallet": 25, "pcs_per_ctn": 3000, "pcs": 12_825_000}
-    assert CAP_GROUP_CAPACITY["pallet"] * CAP_GROUP_CAPACITY["ctn_per_pallet"] * CAP_GROUP_CAPACITY["pcs_per_ctn"] == 12_825_000
+    cap = next(c for c in THESIS_MATERIAL_CAPACITY if c.material_group == "cap")
+    inp = CapacityInput(capacity_mode=cap.capacity_mode, pallet_qty=cap.pallet_qty,
+                        dus_per_pallet=cap.dus_per_pallet, pcs_per_dus=cap.pcs_per_dus)
+    assert compute_effective_capacity(inp, "PCS") == (4275, CAP_GROUP_CAPACITY["pcs"])
+    # grup kapasitas harus cocok dengan category material thesis
+    assert {c.material_group for c in THESIS_MATERIAL_CAPACITY} <= {m.category for m in THESIS_MATERIALS}
 
 
 @pytest.mark.parametrize(

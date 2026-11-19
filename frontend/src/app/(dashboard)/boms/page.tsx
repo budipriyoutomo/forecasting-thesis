@@ -8,6 +8,7 @@ import { TableSkeleton } from "@/components/common/TableSkeleton";
 import { BomComponentForm } from "@/components/boms/BomComponentForm";
 import { BomCostSummary } from "@/components/boms/BomCostSummary";
 import { BomForm } from "@/components/boms/BomForm";
+import { BomMultiForm } from "@/components/boms/BomMultiForm";
 import { BomTree } from "@/components/boms/BomTree";
 import { BomsTable } from "@/components/boms/BomsTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -27,11 +28,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useBoms, useCreateBom, useDeleteBom, useUpdateBom } from "@/hooks/useBoms";
+import {
+  useBoms,
+  useCreateBomsBulk,
+  useDeleteBom,
+  useMaterialComponents,
+  useUpdateBom,
+} from "@/hooks/useBoms";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useBomComponent, useBomTree } from "@/hooks/usePlanning";
 import { useProducts } from "@/hooks/useProducts";
-import type { Bom, BomInput } from "@/types/bom";
+import type { Bom, BomBulkInput, BomInput } from "@/types/bom";
 
 // Radix Select tidak menerima value "" untuk sebuah item, jadi "semua produk"
 // diwakili sentinel dan diterjemahkan ke null saat query.
@@ -43,7 +50,9 @@ export default function BomsPage() {
   const { data: boms, isPending, isError } = useBoms(productFilter);
   const { data: products } = useProducts();
   const { data: materials } = useMaterials();
-  const create = useCreateBom();
+  const create = useCreateBomsBulk();
+  // 19 Nov 2026: komponen level 2+ untuk kolom Level di tabel BOM
+  const { data: components } = useMaterialComponents();
   const update = useUpdateBom();
   const remove = useDeleteBom();
   // Fase 11.3: tree multi-level FG → material → komponen untuk produk yang difilter.
@@ -56,11 +65,9 @@ export default function BomsPage() {
   const active = create.isPending || update.isPending;
   const formError = (create.error || update.error)?.message ?? null;
 
-  const onSubmit = (input: BomInput) => {
-    const opts = { onSuccess: () => setOpen(false) };
-    if (editing) update.mutate({ id: editing.id, input }, opts);
-    else create.mutate(input, opts);
-  };
+  const opts = { onSuccess: () => setOpen(false) };
+  const onUpdate = (input: BomInput) => editing && update.mutate({ id: editing.id, input }, opts);
+  const onCreate = (input: BomBulkInput) => create.mutate(input, opts);
 
   return (
     <div className="flex flex-col gap-6">
@@ -128,6 +135,7 @@ export default function BomsPage() {
       {boms && (
         <BomsTable
           boms={boms}
+          components={components ?? []}
           products={products ?? []}
           materials={materials ?? []}
           onEdit={(b) => {
@@ -139,22 +147,35 @@ export default function BomsPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Ubah baris BOM" : "Tambah baris BOM"}</DialogTitle>
+            <DialogTitle>{editing ? "Ubah baris BOM" : "Tambah BOM"}</DialogTitle>
             <DialogDescription>
-              Qty per unit adalah jumlah material yang dipakai untuk satu unit produk jadi.
+              Qty per unit adalah jumlah material (level 1) yang dipakai untuk satu unit produk jadi.
+              {!editing && " Tambahkan beberapa material sekaligus untuk produk yang sama."}
             </DialogDescription>
           </DialogHeader>
-          <BomForm
-            key={editing?.id ?? "baru"}
-            products={products ?? []}
-            materials={materials ?? []}
-            initial={editing ?? undefined}
-            onSubmit={onSubmit}
-            submitting={active}
-            error={formError}
-          />
+          {editing ? (
+            <BomForm
+              key={editing.id}
+              products={products ?? []}
+              materials={materials ?? []}
+              initial={editing}
+              onSubmit={onUpdate}
+              submitting={active}
+              error={formError}
+            />
+          ) : (
+            <BomMultiForm
+              key={open ? "baru-open" : "baru"}
+              products={products ?? []}
+              materials={materials ?? []}
+              defaultProductId={productFilter ?? undefined}
+              onSubmit={onCreate}
+              submitting={active}
+              error={formError}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

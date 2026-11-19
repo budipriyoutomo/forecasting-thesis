@@ -38,6 +38,8 @@ class ForecastSetting(Base):
     es_alpha_metric: Mapped[str] = mapped_column(String(10), nullable=False, default="mad")
     ml_grid_search: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     ml_winsorize: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 19 Nov 2026 — window Moving Average (pengganti env MOVING_AVERAGE_WINDOW), 1..12.
+    ma_window: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=3)
     # Perencanaan persediaan (Fase 11.4) — bukan env (permintaan user 30 Okt 2026).
     service_level_pct: Mapped[float] = mapped_column(Float, nullable=False, default=95.0)
     eoq_method: Mapped[str] = mapped_column(String(10), nullable=False, default="classic")

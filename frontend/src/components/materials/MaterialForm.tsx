@@ -33,11 +33,14 @@ type FormValues = z.infer<typeof schema>;
 
 export function MaterialForm({
   initial,
+  groups = [],
   onSubmit,
   submitting,
   error,
 }: {
   initial?: Material;
+  /** Grup material yang sudah ada — saran isian supaya penulisan konsisten. */
+  groups?: string[];
   onSubmit: (input: MaterialInput) => void;
   submitting?: boolean;
   error?: string | null;
@@ -58,7 +61,7 @@ export function MaterialForm({
   const submit = form.handleSubmit((v) =>
     onSubmit({
       ...v,
-      category: v.category?.trim() ? v.category : null,
+      category: v.category?.trim() ? v.category.trim() : null,
       unit_price: parsePrice(v.unit_price),
     }),
   );
@@ -89,6 +92,29 @@ export function MaterialForm({
               <FormControl>
                 <Input {...field} />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="category"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Grup material</FormLabel>
+              <FormControl>
+                <Input list="material-group-options" placeholder="mis. cap, bottle, preform" {...field} />
+              </FormControl>
+              <datalist id="material-group-options">
+                {groups.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+              <FormDescription>
+                Material satu grup berbagi kapasitas gudang (mis. semua warna Cap). Huruf besar/kecil
+                dianggap sama.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

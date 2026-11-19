@@ -12,6 +12,7 @@ seluruh metode di registry. Nama di luar registry → UNSUPPORTED_FORECAST_METHO
 
 Fase 11.2: opsi engine — grid α ES (None = grid thesis), metrik pemilihan α, grid
 search ML, cap outlier IQR → `engine_options()` (EngineOptions untuk tiap run).
+19 Nov 2026: window Moving Average (`ma_window`, default 3) — pindah dari env.
 Fase 11.4: perencanaan persediaan — target service level (%) & metode EOQ.
 Fase 11.9: rumus titik pesan (`rop_formula`) & kebijakan qty pesan (`order_qty_policy`) —
 satu setting untuk tabel Reorder dan Proyeksi Stok. Default = perilaku sebelum v3.3.
@@ -22,7 +23,7 @@ from types import SimpleNamespace
 
 from app.models.forecast_setting import DISPLAY_METRICS, ForecastSetting
 from app.services.forecasting import registry
-from app.services.forecasting.types import THESIS_ALPHA_GRID, EngineOptions
+from app.services.forecasting.types import DEFAULT_MA_WINDOW, THESIS_ALPHA_GRID, EngineOptions
 from app.utils.exceptions import UnsupportedForecastMethodError
 
 _DEFAULTS = {
@@ -32,6 +33,7 @@ _DEFAULTS = {
     "es_alpha_metric": "mad",
     "ml_grid_search": False,
     "ml_winsorize": False,
+    "ma_window": DEFAULT_MA_WINDOW,  # pengganti env MOVING_AVERAGE_WINDOW (19 Nov 2026)
     "service_level_pct": 95.0,  # Fase 11.4 — target service level (%), menggantikan env SERVICE_LEVEL_PCT
     "eoq_method": "classic",  # classic √(2AS/iC) thesis | dynamic
     "rop_formula": "with_buffer",  # standard (μ·L + SS) | with_buffer (μ·L + SS + B)
@@ -75,6 +77,7 @@ class ForecastSettingsService:
             es_alpha_metric=s.es_alpha_metric or "mad",
             ml_grid_search=bool(s.ml_grid_search),
             ml_winsorize=bool(s.ml_winsorize),
+            ma_window=int(getattr(s, "ma_window", None) or DEFAULT_MA_WINDOW),
         )
 
     async def update(
@@ -86,6 +89,7 @@ class ForecastSettingsService:
         es_alpha_metric: str | None = None,
         ml_grid_search: bool | None = None,
         ml_winsorize: bool | None = None,
+        ma_window: int | None = None,
         service_level_pct: float | None = None,
         eoq_method: str | None = None,
         rop_formula: str | None = None,
@@ -110,6 +114,7 @@ class ForecastSettingsService:
             "es_alpha_metric": es_alpha_metric,
             "ml_grid_search": ml_grid_search,
             "ml_winsorize": ml_winsorize,
+            "ma_window": ma_window,
             "service_level_pct": service_level_pct,
             "eoq_method": eoq_method,
             "rop_formula": rop_formula,

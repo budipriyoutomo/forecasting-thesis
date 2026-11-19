@@ -204,7 +204,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 
 | Kategori | Metode | Catatan | Status |
 |---|---|---|---|
-| Baseline konvensional | Moving Average | Window dikonfigurasi (`MOVING_AVERAGE_WINDOW`, default 3) | MVP |
+| Baseline konvensional | Moving Average | Window diatur di Pengaturan Forecast (`ma_window`, default 3, 1–12) | MVP |
 | Baseline konvensional | Exponential Smoothing | Pembanding klasik untuk metode ML | MVP |
 | Machine Learning | Random Forest | Regressor atas fitur lag | MVP |
 | Machine Learning | XGBoost | Regressor atas fitur lag | MVP |

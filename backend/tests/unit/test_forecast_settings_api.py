@@ -210,3 +210,32 @@ async def test_put_kebijakan_reorder_invalid_422(client, body):
     res = await client.put(BASE, json={**body}, headers=_headers("admin"))
     assert res.status_code == 422
     assert repo.saved == 0
+
+
+@pytest.mark.asyncio
+async def test_get_dan_put_window_moving_average(client):
+    repo = _override()
+    data = (await client.get(BASE, headers=_headers("viewer"))).json()["data"]
+    assert data["ma_window"] == 3
+
+    res = await client.put(BASE, json={"ma_window": 6}, headers=_headers("admin"))
+    assert res.status_code == 200
+    assert res.json()["data"]["ma_window"] == 6
+    assert repo.row.ma_window == 6
+
+
+@pytest.mark.asyncio
+async def test_put_window_moving_average_non_admin_403(client):
+    repo = _override()
+    res = await client.put(BASE, json={"ma_window": 6}, headers=_headers("ppic"))
+    assert res.status_code == 403
+    assert repo.saved == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("window", [0, -1, 13, 2.5, "tiga"])
+async def test_put_window_moving_average_invalid_422(client, window):
+    repo = _override()
+    res = await client.put(BASE, json={"ma_window": window}, headers=_headers("admin"))
+    assert res.status_code == 422
+    assert repo.saved == 0

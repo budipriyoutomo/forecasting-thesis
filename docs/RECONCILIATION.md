@@ -803,3 +803,59 @@ adalah pembanding di ringkasan biaya BOM (`BomCostSummary`). Shortage cost sudah
 - Backward-compat: `cost_price` di payload API atau kolom CSV lama **diabaikan**, tidak ditolak.
 - Ringkasan biaya BOM: "Harga produk − biaya material" menggantikan "HPP − biaya material".
 - Mengubah Q2 Fase 10 (§"Konsolidasi Master Data"): produk sekarang hanya punya `selling_price`.
+
+### Grup Material, Level BOM & Kapasitas Gudang per Grup (19 Nov 2026)
+
+**Permintaan user.** (1) Master Material diberi grouping; (2) tabel BOM diberi kolom level BOM
+dan input lebih dari satu material sekaligus; (3) kapasitas gudang memakai grup material,
+bukan per item material.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- **Grup = `materials.category` yang sudah ada**, tidak membuat kolom/tabel baru. Kolom itu
+  sudah diisi seed thesis (`cap`/`bottle`/`preform`) tapi tidak tampil di UI. Label UI
+  "Grup material", pencocokan tanpa beda besar/kecil huruf (`material_group_key`). Tidak ada
+  tabel master grup; form material memberi saran (datalist) dari grup yang sudah ada.
+- **Kapasitas gudang material**: `warehouse_config.item_type = 'material_group'` +
+  `material_group`, menggantikan `material` (Fase 11.6, Keputusan #1). API tidak lagi menerima
+  `item_type = 'material'` (422). Migration `f9a0b1c2d3e4` mengonversi config per-material ke
+  grup = category material itu (category kosong → diisi kode material; satu grup punya >1
+  config → yang paling awal dipakai). Semua material satu grup wajib ber-unit sama.
+- **Proyeksi stok**: pesanan/EOQ tetap per material; utilisasi & flag kapasitas per periode =
+  Σ stok anggota grup **yang diproyeksikan di run itu** ÷ kapasitas grup — setiap material di
+  grup menampilkan angka grup yang sama. Material grup yang tidak ada di BOM run tidak ikut
+  dijumlahkan (stoknya tidak diproyeksikan).
+- **Seed thesis**: kapasitas Cap (171 pallet × 25 CTN × 3.000 pcs = 12.825.000 pcs) kini
+  di-seed sebagai grup `cap`. Ini mengubah keputusan 7 Nov 2026 ("tidak di-seed sampai ada
+  angka per warna") karena blokernya — sistem hanya bisa per material — sudah hilang.
+- **Level BOM**: `boms` = level 1 (response `level`), level 2+ dari `material_components`
+  (endpoint baru `GET /material-components`); tabel diratakan di frontend (`flattenBomLevels`).
+  Ubah/hapus hanya untuk baris level 1; komponen tetap dikelola di "Struktur BOM multi-level".
+- **Input banyak material**: `POST /boms/bulk` — semua referensi divalidasi dulu (satu material
+  tak dikenal → tidak ada yang tersimpan), material ganda dalam satu payload → 422. Mode ubah
+  tetap satu baris.
+- **Unit anggota berubah setelah kapasitas grup dibuat**: proyeksi stok tidak menjumlahkan grup itu
+  (utilisasi "—", bukan angka campur unit), dan tabel Kapasitas Gudang menampilkan peringatan.
+  Mengganti nama grup di master material juga melepas material dari config lama (tabel gudang
+  menampilkan "Belum ada material di grup ini").
+- **Dampak ke template biaya**: `total_capacity_dus` = Σ kapasitas seluruh baris gudang, sehingga
+  ikut berubah bila config grup berbeda dari config per material lama (seed thesis: 346 → 4.621
+  CTN karena Cap kini di-seed). `suggested_holding_cost` hanya referensi — EOQ tetap memakai
+  `holding_cost` template, jadi hasil EOQ/TIC tidak berubah.
+
+### Window Moving Average ke Master Data Pengaturan Forecast (19 Nov 2026)
+
+**Permintaan user.** Window Moving Average dipindah dari env ke master data Pengaturan Forecast
+(seperti α ES), supaya bisa diubah tanpa redeploy.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- Kolom `forecast_settings.ma_window` SMALLINT NOT NULL default 3, CHECK 1–12 (migration
+  `a0b1c2d3e4f5`). Default 3 = nilai env di semua contoh env repo. Batas 12 = satu tahun data
+  bulanan (= `BACKTEST_MIN_PERIODS` default); input pecahan/teks ditolak 422, tidak dibulatkan.
+- Engine membaca `options.ma_window` (`EngineOptions`), pola sama dengan `es_alpha_grid`. Window
+  yang dipakai dicatat di `hyperparameters.window` tiap kandidat → run lama tetap bisa diaudit.
+- Env `MOVING_AVERAGE_WINDOW` dihapus dari `config.py` & contoh env; bila masih ada di `.env`
+  VPS, **diabaikan** (`extra="ignore"`). Konsekuensi: bila VPS pernah memakai nilai ≠ 3, run
+  berikutnya memakai 3 sampai admin mengisinya di UI (preseden: `SERVICE_LEVEL_PCT`, Fase 11.4).
+- RBAC tidak diubah: seperti seluruh Pengaturan Forecast (termasuk α ES), simpan = role `admin`;
+  role `ppic`/`viewer` hanya baca.
+

@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     COMPUTE_MASE: bool = True  # hitung & simpan MASE tambahan (bukan buat ranking, lihat RECONCILIATION v3.0)
     BACKTEST_MIN_PERIODS: int = 12
     LSTM_MIN_PERIODS: int = 24  # LSTM butuh histori lebih panjang
-    MOVING_AVERAGE_WINDOW: int = 3
+    # MOVING_AVERAGE_WINDOW dipindah ke master data Pengaturan Forecast (`ma_window`,
+    # 19 Nov 2026). Nilai lama di .env diabaikan (extra="ignore").
     ENGINE_TIMEOUT_SECONDS: int = 45  # konvensional & tree-based
     LSTM_ENGINE_TIMEOUT_SECONDS: int = 120  # LSTM butuh timeout lebih longgar
     FORECAST_TIMEOUT_SECONDS: int = 180

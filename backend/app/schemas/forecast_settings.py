@@ -4,7 +4,9 @@ Schemas Pengaturan Forecast (Fase 11.2a) — docs/ARCHITECTURE.md §5.
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
+
+from app.services.forecasting.types import MAX_MA_WINDOW
 
 DisplayMetric = Literal["mad", "mfe", "mse", "mape"]  # Fase 11.15 — tampilan, bukan penentu pemenang
 AlphaMetric = Literal["mad", "mape"]
@@ -21,6 +23,8 @@ class ForecastSettingsUpdate(BaseModel):
     es_alpha_metric: AlphaMetric | None = None
     ml_grid_search: bool | None = None
     ml_winsorize: bool | None = None
+    # Window Moving Average (n periode). StrictInt: 2.5 / "3" ditolak, bukan dibulatkan diam-diam.
+    ma_window: StrictInt | None = Field(default=None, ge=1, le=MAX_MA_WINDOW)
     service_level_pct: float | None = Field(default=None, gt=50, lt=100)
     eoq_method: EoqMethod | None = None
     rop_formula: RopFormula | None = None
@@ -35,6 +39,7 @@ class ForecastSettingsOut(BaseModel):
     es_alpha_metric: AlphaMetric
     ml_grid_search: bool
     ml_winsorize: bool
+    ma_window: int
     service_level_pct: float
     eoq_method: EoqMethod
     rop_formula: RopFormula

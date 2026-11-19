@@ -32,7 +32,8 @@ export default function WarehousePage() {
   const { data: products } = useProducts();
   const { data: materials } = useMaterials();
   // Fase 11.6 (Keputusan #1): gudang produk jadi & gudang material dikelola terpisah.
-  const [target, setTarget] = useState<WarehouseTarget>("material");
+  // 19 Nov 2026: gudang material per GRUP material (mis. semua warna Cap satu kapasitas).
+  const [target, setTarget] = useState<WarehouseTarget>("material_group");
   const shown = (configs ?? []).filter((c) => (c.item_type ?? "product") === target);
   const create = useCreateWarehouseConfig();
   const update = useUpdateWarehouseConfig();
@@ -47,7 +48,7 @@ export default function WarehousePage() {
   const onSubmit = (input: WarehouseConfigInput) => {
     const opts = { onSuccess: () => setOpen(false) };
     if (editing) {
-      const { product_id: _productId, material_id: _materialId, item_type: _itemType, ...capacity } = input;
+      const { product_id: _productId, material_group: _group, item_type: _itemType, ...capacity } = input;
       update.mutate({ id: editing.id, input: capacity }, opts);
     } else create.mutate(input, opts);
   };
@@ -56,7 +57,7 @@ export default function WarehousePage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Kapasitas Gudang"
-        description="Kapasitas gudang material (pallet → CTN → pcs, dipakai proyeksi stok & utilisasi thesis) dan gudang produk jadi (pallet/dus, validasi forecast produk)."
+        description="Kapasitas gudang per grup material (pallet → CTN → pcs; seluruh material satu grup berbagi kapasitas, dipakai proyeksi stok & utilisasi) dan gudang produk jadi (pallet/dus, validasi forecast produk)."
         actions={
           <Button
             onClick={() => {
@@ -72,7 +73,7 @@ export default function WarehousePage() {
 
       <Tabs value={target} onValueChange={(v) => setTarget(v as WarehouseTarget)}>
         <TabsList>
-          <TabsTrigger value="material">Material</TabsTrigger>
+          <TabsTrigger value="material_group">Grup material</TabsTrigger>
           <TabsTrigger value="product">Produk jadi</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -102,8 +103,8 @@ export default function WarehousePage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Ubah kapasitas" : "Tambah kapasitas"}</DialogTitle>
             <DialogDescription>
-              {target === "material"
-                ? "Isi kapasitas dalam pallet, CTN, atau kombinasi. Bila unit material bukan CTN/dus, isi juga pcs per CTN agar bisa dibandingkan dengan proyeksi stok."
+              {target === "material_group"
+                ? "Pilih grup material (diatur di master Material), lalu isi kapasitas dalam pallet, CTN, atau kombinasi. Bila unit material bukan CTN/dus, isi juga pcs per CTN agar bisa dibandingkan dengan proyeksi stok."
                 : "Isi kapasitas dalam pallet, dus, atau kombinasi. Bila unit produk bukan dus/karton/box, isi juga jumlah pcs per dus agar bisa dibandingkan dengan forecast."}
             </DialogDescription>
           </DialogHeader>

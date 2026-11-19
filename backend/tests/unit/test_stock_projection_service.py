@@ -61,7 +61,8 @@ class Products:
 
 class Configs:
     async def list(self):
-        return [SimpleNamespace(item_type="material", material_id="m1", capacity_qty=2000),
+        # 19 Nov 2026: kapasitas material per GRUP (materials.category), bukan per material
+        return [SimpleNamespace(item_type="material_group", material_group="CAP", capacity_qty=2000),
                 SimpleNamespace(item_type="product", product_id="p1", capacity_qty=1)]
 
 
@@ -75,14 +76,23 @@ class Receipts:
         return [SimpleNamespace(material_id="m1", expected_date=date(2026, 11, 10), qty=200)]
 
 
-def _svc(run=None, planning=None, recs=None, reorder_service=None):
+class Materials:
+    def __init__(self, materials=None):
+        self._items = materials or [SimpleNamespace(id="m1", category="cap")]
+
+    async def list(self):
+        return self._items
+
+
+def _svc(run=None, planning=None, recs=None, reorder_service=None, boms=None, materials=None, stock=None):
     run = run or SimpleNamespace(id="r1", user_id=USER)
     fdata = [{"date": "2026-11-01", "value": 500}, {"date": "2026-12-01", "value": 400}]
     result = SimpleNamespace(product_id="p1", status="COMPLETED", forecast_data=fdata)
     repo = Repo()
     svc = StockProjectionService(
-        repo, Forecast(run, [result]), Reorder(recs or []), Boms(), Demand(planning or []), Products(), Configs(),
-        Stock(), Receipts(), reorder_service=reorder_service, factory=lambda **kw: SimpleNamespace(**kw),
+        repo, Forecast(run, [result]), Reorder(recs or []), boms or Boms(), Demand(planning or []), Products(), Configs(),
+        stock or Stock(), Receipts(), reorder_service=reorder_service, factory=lambda **kw: SimpleNamespace(**kw),
+        materials=Materials(materials),
     )
     return svc, repo
 
@@ -186,3 +196,61 @@ async def test_override_planner_dipakai_skenario_usulan_saja():
     first = {r.scenario: r for r in rows if r.period == date(2026, 11, 1)}
     assert first["proposed"].order_qty == 500  # pre 700 > ROP 0, tetap pesan sesuai override
     assert first["baseline"].order_qty == 0  # baseline = perusahaan, tidak kena override
+
+
+@pytest.mark.asyncio
+async def test_utilisasi_dihitung_dari_total_stok_grup_material():
+    # m1 & m2 satu grup "cap" (kapasitas 2000). m1: 1000+200−500 = 700; m2: 600−500 = 100.
+    # Utilisasi grup periode 1 = (700 + 100) / 2000 = 40% — sama untuk kedua material.
+    class TwoBoms:
+        async def list(self, product_id=None):
+            return [
+                SimpleNamespace(product_id="p1", material_id="m1", qty_per_unit=1),
+                SimpleNamespace(product_id="p1", material_id="m2", qty_per_unit=1),
+            ]
+
+    class TwoStock:
+        async def latest_stock(self, as_of=None):
+            return {"m1": (date(2026, 10, 1), 1000.0), "m2": (date(2026, 10, 1), 600.0)}
+
+    recs = [
+        SimpleNamespace(material_id=m, safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
+        for m in ("m1", "m2")
+    ]
+    svc, _ = _svc(
+        recs=recs, boms=TwoBoms(), stock=TwoStock(),
+        materials=[SimpleNamespace(id="m1", category="cap"), SimpleNamespace(id="m2", category=" Cap ")],
+    )
+    rows = [r for r in await svc.generate_for_run(USER, "r1") if r.period == date(2026, 11, 1)]
+    by_mat = {r.material_id: r for r in rows}
+    assert by_mat["m1"].ending_qty == 700 and by_mat["m2"].ending_qty == 100
+    for r in rows:
+        assert r.capacity_qty == 2000
+        assert r.utilization_opening_pct == pytest.approx(80)  # (1000 + 600) / 2000
+        assert r.utilization_ending_pct == pytest.approx(40)
+        assert r.is_within_capacity is True
+
+
+@pytest.mark.asyncio
+async def test_material_tanpa_grup_berkapasitas_utilisasi_kosong():
+    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
+    svc, _ = _svc(recs=[rec], materials=[SimpleNamespace(id="m1", category=None)])
+    rows = await svc.generate_for_run(USER, "r1")
+    assert all(r.capacity_qty is None and r.utilization_ending_pct is None for r in rows)
+    assert all(r.is_within_capacity is None for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_grup_unit_tidak_cocok_uom_kapasitas_tidak_dijumlahkan():
+    # Unit material diubah SETELAH kapasitas grup dibuat (PCS) → jangan jumlahkan KG + PCS.
+    rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
+    svc, _ = _svc(recs=[rec], materials=[SimpleNamespace(id="m1", category="cap", unit="KG")])
+    svc._configs = type("C", (), {"list": staticmethod(
+        lambda: _async([SimpleNamespace(item_type="material_group", material_group="cap", capacity_qty=2000, uom="PCS")])
+    )})()
+    rows = await svc.generate_for_run(USER, "r1")
+    assert all(r.capacity_qty is None and r.utilization_ending_pct is None for r in rows)
+
+
+async def _async(value):
+    return value

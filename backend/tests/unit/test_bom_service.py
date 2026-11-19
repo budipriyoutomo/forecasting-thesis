@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.schemas.bom import BomCreate, BomUpdate
+from app.schemas.bom import BomBulkCreate, BomCreate, BomUpdate
 from app.services.bom_service import BomService, compute_line_cost
 from app.utils.exceptions import (
     BomNotFoundError,
@@ -151,3 +151,67 @@ async def test_material_prices_map_id_ke_harga():
     )
     prices = await svc.material_prices()
     assert prices == {"m1": Decimal("14500"), "m2": None}
+
+
+# ── Input banyak material sekaligus (19 Nov 2026) ──
+
+
+def _multi_service():
+    def factory(**kw):
+        bom = FakeBom(**kw)
+        bom.id = None  # biarkan repo memberi id unik per baris
+        return bom
+
+    svc = _service(
+        materials=[
+            FakeMaterial(id="m1", code="M1", name="Cap", unit="PCS"),
+            FakeMaterial(id="m2", code="M2", name="Bottle", unit="PCS"),
+        ]
+    )
+    svc._model = factory
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_create_many_beberapa_material_satu_produk():
+    svc = _multi_service()
+    payload = BomBulkCreate(
+        product_id="p1",
+        items=[{"material_id": "m1", "qty_per_unit": 1}, {"material_id": "m2", "qty_per_unit": Decimal("2")}],
+    )
+    rows = await svc.create_many(payload)
+    assert [(r.product_id, r.material_id, r.qty_per_unit) for r in rows] == [
+        ("p1", "m1", Decimal(1)), ("p1", "m2", Decimal(2)),
+    ]
+    assert len(await svc.list("p1")) == 2
+
+
+@pytest.mark.asyncio
+async def test_create_many_satu_material_tak_ada_tidak_menyimpan_apapun():
+    svc = _multi_service()
+    payload = BomBulkCreate(
+        product_id="p1",
+        items=[{"material_id": "m1", "qty_per_unit": 1}, {"material_id": "ghost", "qty_per_unit": 1}],
+    )
+    with pytest.raises(MaterialNotFoundError):
+        await svc.create_many(payload)
+    assert await svc.list("p1") == []
+
+
+@pytest.mark.asyncio
+async def test_create_many_produk_tak_ada_404():
+    svc = _multi_service()
+    with pytest.raises(ProductNotFoundError):
+        await svc.create_many(BomBulkCreate(product_id="nope", items=[{"material_id": "m1", "qty_per_unit": 1}]))
+
+
+def test_bulk_schema_menolak_material_ganda_dan_daftar_kosong():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        BomBulkCreate(product_id="p1", items=[])
+    with pytest.raises(ValidationError):
+        BomBulkCreate(
+            product_id="p1",
+            items=[{"material_id": "m1", "qty_per_unit": 1}, {"material_id": "m1", "qty_per_unit": 2}],
+        )

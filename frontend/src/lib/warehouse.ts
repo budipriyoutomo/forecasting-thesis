@@ -33,3 +33,33 @@ export function computeEffectiveCapacity(
   if (!input.pcs_per_dus || input.pcs_per_dus <= 0) return null;
   return { dus, qty: dus * input.pcs_per_dus };
 }
+
+export interface MaterialGroupOption {
+  /** Nama grup seperti pertama kali ditemukan (dirapikan). */
+  name: string;
+  /** Kunci pencocokan tanpa beda besar/kecil huruf — sama dengan backend. */
+  key: string;
+  /** Unit bersama anggota grup; null bila unit anggota berbeda-beda. */
+  unit: string | null;
+  codes: string[];
+}
+
+export const materialGroupKey = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+
+// Grup material = `materials.category` (19 Nov 2026), dipakai kapasitas gudang per grup.
+export function materialGroups(
+  materials: { code: string; unit: string; category?: string | null }[],
+): MaterialGroupOption[] {
+  const groups = new Map<string, MaterialGroupOption>();
+  for (const m of materials) {
+    const key = materialGroupKey(m.category);
+    if (!key) continue;
+    const g = groups.get(key) ?? { name: (m.category ?? "").trim(), key, unit: m.unit, codes: [] };
+    if (g.unit !== null && g.unit.trim().toUpperCase() !== m.unit.trim().toUpperCase()) g.unit = null;
+    g.codes.push(m.code);
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, codes: [...g.codes].sort() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

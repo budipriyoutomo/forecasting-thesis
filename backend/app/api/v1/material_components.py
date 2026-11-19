@@ -1,6 +1,7 @@
 """
 Material component endpoints (Fase 11.3, 30 Oktober 2026) — BOM multi-level, REVISI_V2 §3.4.
 
+GET    /material-components         → seluruh komponen (tabel BOM kolom level, 19 Nov 2026)
 GET    /materials/{id}/components   → komponen level berikutnya
 POST   /materials/{id}/components   → tambah (admin); siklus → 422 BOM_CYCLE_DETECTED
 DELETE /material-components/{id}    → hapus (admin)
@@ -28,6 +29,11 @@ def _out(row) -> dict:
         "component_material_id": str(row.component_material_id),
         "qty_per_unit": float(row.qty_per_unit),
     }
+
+
+@router.get("/material-components", dependencies=[Depends(get_current_user)])
+async def list_all_components(service: MaterialComponentService = Depends(get_material_component_service)):
+    return {"success": True, "data": [_out(r) for r in await service.list(None)]}
 
 
 @router.get("/materials/{material_id}/components", dependencies=[Depends(get_current_user)])

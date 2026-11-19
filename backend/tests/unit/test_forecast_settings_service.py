@@ -41,6 +41,7 @@ def _factory(**kw):
             "es_alpha_metric": "mad",
             "ml_grid_search": False,
             "ml_winsorize": False,
+            "ma_window": 3,
             "service_level_pct": 95.0,
             "eoq_method": "classic",
             "rop_formula": "with_buffer",
@@ -244,3 +245,29 @@ async def test_update_rop_formula_dan_policy():
     # argumen None = tidak diubah
     await svc.update(user_id=ADMIN)
     assert repo.row.rop_formula == "standard" and repo.row.order_qty_policy == "eoq"
+
+
+# ── Window Moving Average (19 Nov 2026) — pindah dari env MOVING_AVERAGE_WINDOW ──
+
+
+@pytest.mark.asyncio
+async def test_engine_options_window_ma_default_3():
+    opts = await ForecastSettingsService(FakeSettingsRepo(), factory=_factory).engine_options()
+    assert opts.ma_window == 3
+
+
+@pytest.mark.asyncio
+async def test_engine_options_window_ma_tersimpan():
+    row = _factory(ma_window=6)
+    opts = await ForecastSettingsService(FakeSettingsRepo(row), factory=_factory).engine_options()
+    assert opts.ma_window == 6
+
+
+@pytest.mark.asyncio
+async def test_update_window_ma_dan_nilai_lama_tetap_bila_absen():
+    repo = FakeSettingsRepo()
+    svc = ForecastSettingsService(repo, factory=_factory)
+    s = await svc.update(user_id=ADMIN, ma_window=4)
+    assert s.ma_window == 4 and s.updated_by == ADMIN
+    s = await svc.update(user_id=ADMIN, es_alpha_metric="mape")
+    assert s.ma_window == 4

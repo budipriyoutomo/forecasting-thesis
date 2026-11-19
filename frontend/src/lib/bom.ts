@@ -1,4 +1,4 @@
-import type { Bom } from "@/types/bom";
+import type { Bom, MaterialComponent } from "@/types/bom";
 import type { Product } from "@/types/product";
 
 export interface ProductBomCost {
@@ -42,4 +42,57 @@ export function summarizeBomCosts(boms: Bom[], products: Product[]): ProductBomC
         productById.get(b.product_id)?.code ?? b.product_id,
       ),
     );
+}
+
+export interface BomLevelRow {
+  key: string;
+  level: number;
+  product_id: string;
+  /** Material induk (null untuk level 1 — induknya produk). */
+  parent_material_id: string | null;
+  material_id: string;
+  qty_per_unit: number;
+  /** Baris `boms` asli (hanya level 1) — untuk ubah/hapus. */
+  bom?: Bom;
+  /** Id baris `material_components` (level 2+). */
+  component_id?: string;
+}
+
+// Ratakan BOM multi-level ke baris tabel (19 Nov 2026): level 1 = baris `boms`,
+// level 2+ = komponen material induknya, diletakkan tepat di bawah induk.
+// `visited` per cabang menjaga data siklus tidak loop (backend juga menolak siklus).
+export function flattenBomLevels(boms: Bom[], components: MaterialComponent[]): BomLevelRow[] {
+  const byParent = new Map<string, MaterialComponent[]>();
+  for (const c of components) byParent.set(c.parent_material_id, [...(byParent.get(c.parent_material_id) ?? []), c]);
+
+  const rows: BomLevelRow[] = [];
+  const expand = (b: Bom, parent: string, level: number, visited: Set<string>, path: string) => {
+    for (const c of byParent.get(parent) ?? []) {
+      if (visited.has(c.component_material_id)) continue;
+      const key = `${path}/${c.id}`;
+      rows.push({
+        key,
+        level,
+        product_id: b.product_id,
+        parent_material_id: parent,
+        material_id: c.component_material_id,
+        qty_per_unit: Number(c.qty_per_unit),
+        component_id: c.id,
+      });
+      expand(b, c.component_material_id, level + 1, new Set([...visited, c.component_material_id]), key);
+    }
+  };
+  for (const b of boms) {
+    rows.push({
+      key: b.id,
+      level: b.level ?? 1,
+      product_id: b.product_id,
+      parent_material_id: null,
+      material_id: b.material_id,
+      qty_per_unit: Number(b.qty_per_unit),
+      bom: b,
+    });
+    expand(b, b.material_id, 2, new Set([b.material_id]), b.id);
+  }
+  return rows;
 }

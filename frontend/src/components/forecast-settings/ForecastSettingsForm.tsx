@@ -108,6 +108,9 @@ export function ForecastSettingsForm({
   const [alphaMetric, setAlphaMetric] = useState<AlphaMetric>(initial.es_alpha_metric ?? "mad");
   const [gridSearch, setGridSearch] = useState(Boolean(initial.ml_grid_search));
   const [winsorize, setWinsorize] = useState(Boolean(initial.ml_winsorize));
+  const [maWindowText, setMaWindowText] = useState(String(initial.ma_window ?? 3));
+  const maWindow = /^\d+$/.test(maWindowText.trim()) ? Number(maWindowText) : NaN;
+  const maWindowValid = Number.isInteger(maWindow) && maWindow >= 1 && maWindow <= 12;
   const [serviceLevel, setServiceLevel] = useState(initial.service_level_pct ?? 95);
   const [eoqMethod, setEoqMethod] = useState<EoqMethod>(initial.eoq_method ?? "classic");
   const [ropFormula, setRopFormula] = useState<RopFormula>(initial.rop_formula ?? "with_buffer");
@@ -141,6 +144,7 @@ export function ForecastSettingsForm({
           es_alpha_metric: alphaMetric,
           ml_grid_search: gridSearch,
           ml_winsorize: winsorize,
+          ma_window: maWindowValid ? maWindow : undefined,
           service_level_pct: serviceLevel,
           eoq_method: eoqMethod,
           rop_formula: ropFormula,
@@ -196,6 +200,27 @@ export function ForecastSettingsForm({
         {noneEnabled && (
           <p className="text-sm text-destructive">Pilih minimal satu metode.</p>
         )}
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-1 text-sm font-medium">Moving Average</legend>
+        <label className="flex flex-col gap-1 text-sm">
+          <span>Window Moving Average (periode)</span>
+          <input
+            aria-label="Window Moving Average"
+            type="number"
+            min={1}
+            max={12}
+            step={1}
+            className="h-9 w-28 rounded-md border bg-transparent px-3 text-sm"
+            value={maWindowText}
+            onChange={(e) => setMaWindowText(e.target.value)}
+          />
+          <span className="text-xs text-muted-foreground">
+            Rata-rata n periode terakhir. Default thesis: 3. Berlaku untuk run berikutnya; run lama tetap.
+          </span>
+        </label>
+        {!maWindowValid && <p className="text-sm text-destructive">Window harus bilangan bulat 1–12.</p>}
       </fieldset>
 
       <fieldset className="flex flex-col gap-3">
@@ -317,7 +342,7 @@ export function ForecastSettingsForm({
       )}
 
       <div>
-        <Button type="submit" disabled={pending || noneEnabled || noMetric || !alphaGrid}>
+        <Button type="submit" disabled={pending || noneEnabled || noMetric || !alphaGrid || !maWindowValid}>
           {pending ? "Menyimpan…" : "Simpan pengaturan"}
         </Button>
       </div>

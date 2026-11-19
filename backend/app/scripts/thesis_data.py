@@ -10,8 +10,8 @@ Sumber: `Simulasi Thesis.xlsx` versi 7 Nov 2026 (Noviana Asmoro):
 Asumsi / data yang BELUM ada di Excel (⛔ docs/TODO-v3.md Fase 11.11/11.12):
   - "Yoghurt SB" di BOM ambigu (KBYST Strawberry / KBYSR Slimberries) → keputusan user
     7 Nov 2026: KEDUANYA memakai Cap Red + Bottle White (Cap Red jadi material bersama).
-  - Kapasitas Cap = SATU angka untuk 6 warna (group); sistem menyimpan kapasitas per
-    material → hanya dicatat sebagai referensi (`CAP_GROUP_CAPACITY`), tidak di-seed.
+  - Kapasitas Cap = SATU angka untuk 6 warna (group). Sejak 19 Nov 2026 sistem menyimpan
+    kapasitas per GRUP material (`materials.category`) → di-seed sebagai grup "cap".
   - Lead time Bottle White tidak tercantum; dipakai 7 hari (= Preform, bahan bakunya).
   - Harga material, MOQ, biaya pesan (S), stok awal, kedatangan, pemakaian aktual
     belum ada → harga NULL (EOQ jatuh ke dinamis), MOQ 0, template biaya TIDAK aktif.
@@ -183,22 +183,28 @@ THESIS_COMPONENTS: tuple[ThesisComponent, ...] = (ThesisComponent("BTL-WHITE", "
 
 @dataclass(frozen=True)
 class ThesisMaterialCapacity:
-    material_code: str
+    material_group: str  # = ThesisMaterial.category
     capacity_mode: str
     pallet_qty: float
     dus_per_pallet: float
     pcs_per_dus: float
 
 
-# Kapasitas gudang Preform: 346 pallet = 346 CTN = 5.555.376 pcs (1 CTN/pallet, 16.056 pcs/CTN).
-THESIS_MATERIAL_CAPACITY: tuple[ThesisMaterialCapacity, ...] = (
-    ThesisMaterialCapacity("PRF-WHITE", "PALLET", pallet_qty=346, dus_per_pallet=1, pcs_per_dus=16_056),
-)
-
 # Kapasitas group Cap (6 warna berbagi): 171 pallet × 25 CTN × 3.000 pcs = 12.825.000 pcs.
-# Keputusan user 7 Nov 2026: TIDAK di-seed sampai penulis memberi angka per warna (utilisasi
-# Cap tampil "—"); tidak ada angka karangan.
+# Dulu (7 Nov 2026) tidak di-seed karena sistem hanya bisa per material; sejak 19 Nov 2026
+# kapasitas per grup material, jadi angka Excel ini dipakai apa adanya.
 CAP_GROUP_CAPACITY = {"pallet": 171, "ctn_per_pallet": 25, "pcs_per_ctn": 3000, "pcs": 12_825_000}
+
+THESIS_MATERIAL_CAPACITY: tuple[ThesisMaterialCapacity, ...] = (
+    # Preform: 346 pallet = 346 CTN = 5.555.376 pcs (1 CTN/pallet, 16.056 pcs/CTN).
+    ThesisMaterialCapacity("preform", "PALLET", pallet_qty=346, dus_per_pallet=1, pcs_per_dus=16_056),
+    ThesisMaterialCapacity(
+        "cap", "PALLET",
+        pallet_qty=CAP_GROUP_CAPACITY["pallet"],
+        dus_per_pallet=CAP_GROUP_CAPACITY["ctn_per_pallet"],
+        pcs_per_dus=CAP_GROUP_CAPACITY["pcs_per_ctn"],
+    ),
+)
 
 
 @dataclass

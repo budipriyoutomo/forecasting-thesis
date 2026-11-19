@@ -14,7 +14,7 @@ from app.models.forecast_setting import DISPLAY_METRICS
 from app.schemas.forecast_settings import ForecastSettingsOut, ForecastSettingsUpdate
 from app.services.forecast_settings_service import ForecastSettingsService
 from app.services.forecasting import registry
-from app.services.forecasting.types import THESIS_ALPHA_GRID
+from app.services.forecasting.types import DEFAULT_MA_WINDOW, THESIS_ALPHA_GRID
 
 router = APIRouter(prefix="/forecast-settings", tags=["forecast-settings"])
 
@@ -28,6 +28,7 @@ def _to_response(setting) -> dict:
         es_alpha_metric=setting.es_alpha_metric or "mad",
         ml_grid_search=bool(setting.ml_grid_search),
         ml_winsorize=bool(setting.ml_winsorize),
+        ma_window=int(getattr(setting, "ma_window", None) or DEFAULT_MA_WINDOW),
         service_level_pct=float(setting.service_level_pct or 95),
         eoq_method=setting.eoq_method or "classic",
         rop_formula=getattr(setting, "rop_formula", None) or "with_buffer",

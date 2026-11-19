@@ -1,6 +1,8 @@
 """
 Moving Average — 1 fungsi (v3.0). Fₜ₊₁ = rata-rata `n` periode terakhir;
-n dikonfigurasi lewat MOVING_AVERAGE_WINDOW (default 3). Baseline konvensional
+n dari master data Pengaturan Forecast (`options.ma_window`, default 3; sebelum
+19 Nov 2026 dari env MOVING_AVERAGE_WINDOW). Window lebih panjang dari data train →
+seluruh data train dirata-rata. Baseline konvensional
 pembanding metode ML (Bab III thesis).
 
 Kontrak: docs/ARCHITECTURE.md §6.4 dan engines/README.md.
@@ -12,12 +14,13 @@ from app.services.forecasting.engines._common import build_points, resid_std
 from app.services.forecasting.evaluation import backtest_metrics
 from app.services.forecasting.metrics import train_test_split_series
 from app.services.forecasting.preprocessing import to_period_series
-from app.services.forecasting.types import EngineResult
+from app.services.forecasting.types import EngineOptions, EngineResult
 
 
-def forecast_moving_average(df, horizon: int, options=None) -> EngineResult:  # options: tak dipakai (Fase 11.2)
+def forecast_moving_average(df, horizon: int, options: EngineOptions | None = None) -> EngineResult:
     settings = get_settings()
-    window = max(1, int(settings.MOVING_AVERAGE_WINDOW))
+    options = options or EngineOptions()
+    window = max(1, int(options.ma_window))
 
     series = to_period_series(df)
     train, test = train_test_split_series(series, horizon)
@@ -40,4 +43,6 @@ def forecast_moving_average(df, horizon: int, options=None) -> EngineResult:  # 
         f"terakhir ({final_ma:.2f}) secara flat. MAPE backtest: {metrics['mape']:.2f}% — "
         f"makin kecil makin akurat."
     )
-    return EngineResult(forecast=points, explanation=explanation, **metrics)
+    return EngineResult(
+        forecast=points, explanation=explanation, hyperparameters={"window": window}, **metrics
+    )

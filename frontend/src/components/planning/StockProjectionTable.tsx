@@ -39,6 +39,8 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
     byMaterial.set(r.material_id, [...(byMaterial.get(r.material_id) ?? []), r]);
   }
   const label = new Map(materials.map((m) => [m.id, `${m.code} — ${m.name}`]));
+  // Utilisasi = total stok grup material ÷ kapasitas grup (19 Nov 2026)
+  const groupOf = new Map(materials.map((m) => [m.id, m.category?.trim() || null]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -68,7 +70,14 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
 
       {[...byMaterial.entries()].map(([materialId, list]) => (
         <div key={materialId} className="flex flex-col gap-2">
-          <p className="text-sm font-medium">{label.get(materialId) ?? materialId}</p>
+          <p className="text-sm font-medium">
+            {label.get(materialId) ?? materialId}
+            {groupOf.get(materialId) && (
+              <span className="ml-2 font-normal text-muted-foreground">
+                · grup {groupOf.get(materialId)} (utilisasi = total stok grup)
+              </span>
+            )}
+          </p>
           <div className="overflow-x-auto rounded-lg border">
             <Table>
               <TableHeader>

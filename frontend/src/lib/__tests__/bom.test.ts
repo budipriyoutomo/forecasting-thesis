@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeBomCosts } from "@/lib/bom";
+import { flattenBomLevels, summarizeBomCosts } from "@/lib/bom";
 import type { Bom } from "@/types/bom";
 import type { Product } from "@/types/product";
 
@@ -38,5 +38,37 @@ describe("summarizeBomCosts", () => {
     expect(rows.map((r) => r.product_id)).toEqual(["p1", "p2"]);
     expect(rows[1].product_price).toBeNull();
     expect(rows[1].margin).toBeNull();
+  });
+});
+
+describe("flattenBomLevels", () => {
+  const boms = [
+    { id: "b1", product_id: "p1", material_id: "btl", qty_per_unit: "1" },
+    { id: "b2", product_id: "p1", material_id: "cap", qty_per_unit: "1" },
+  ];
+  const components = [
+    { id: "c1", parent_material_id: "btl", component_material_id: "pre", qty_per_unit: 1 },
+    { id: "c2", parent_material_id: "pre", component_material_id: "resin", qty_per_unit: 0.02 },
+  ];
+
+  it("level 1 dari BOM, level 2+ dari komponen, urut di bawah induknya", () => {
+    const rows = flattenBomLevels(boms, components);
+    expect(rows.map((r) => [r.level, r.material_id, r.parent_material_id])).toEqual([
+      [1, "btl", null],
+      [2, "pre", "btl"],
+      [3, "resin", "pre"],
+      [1, "cap", null],
+    ]);
+    expect(rows.every((r) => r.product_id === "p1")).toBe(true);
+    expect(rows[0].bom?.id).toBe("b1");
+    expect(rows[1].component_id).toBe("c1");
+  });
+
+  it("data siklus tidak membuat loop tak berujung", () => {
+    const cyc = [
+      { id: "c1", parent_material_id: "btl", component_material_id: "pre", qty_per_unit: 1 },
+      { id: "c2", parent_material_id: "pre", component_material_id: "btl", qty_per_unit: 1 },
+    ];
+    expect(flattenBomLevels([boms[0]], cyc).map((r) => r.material_id)).toEqual(["btl", "pre"]);
   });
 });
