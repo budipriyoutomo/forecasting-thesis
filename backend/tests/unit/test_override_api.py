@@ -61,6 +61,7 @@ async def test_create_override_201(client, auth_headers):
 @pytest.mark.asyncio
 async def test_create_override_material_requirement_422(client, auth_headers):
     """Guard regresi: target_type `material_requirement` sudah tak dikenal (Literal schema)."""
+    _override_service({})  # tanpa ini dependency membuka sesi DB → gagal di CI (tanpa DATABASE_URL)
     res = await client.post(
         "/api/v1/overrides",
         headers=auth_headers,
