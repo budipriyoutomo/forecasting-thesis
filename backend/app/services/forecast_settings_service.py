@@ -21,7 +21,7 @@ Argumen `update` yang None = nilai lama dipertahankan.
 from collections.abc import Callable
 from types import SimpleNamespace
 
-from app.models.forecast_setting import DISPLAY_METRICS, ForecastSetting
+from app.models.forecast_setting import DISPLAY_METRICS, ForecastSetting, effective_display_metrics
 from app.services.forecasting import registry
 from app.services.forecasting.types import DEFAULT_MA_WINDOW, THESIS_ALPHA_GRID, EngineOptions
 from app.utils.exceptions import UnsupportedForecastMethodError
@@ -53,7 +53,7 @@ class ForecastSettingsService:
         return SimpleNamespace(**_DEFAULTS, updated_by=None, updated_at=None)
 
     async def display_metrics(self) -> list[str]:
-        return list((await self.get()).display_metrics or DISPLAY_METRICS)
+        return effective_display_metrics((await self.get()).display_metrics)
 
     async def enabled_methods(self) -> set[str]:
         return registry.get_enabled_methods((await self.get()).enabled_methods)

@@ -27,7 +27,7 @@ export function useEnabledMethods() {
   });
 }
 
-// Daftar run milik user, terbaru dulu (pemilih run halaman Kedatangan Material).
+// Daftar run (semua role), terbaru dulu — halaman /forecast & RunPicker (CR v3.6 §1).
 export function useForecastRuns() {
   const token = getToken();
   return useQuery<ForecastRunListItem[]>({
@@ -42,11 +42,18 @@ export function useForecastRuns() {
 }
 
 export function useCreateForecastRun() {
+  const qc = useQueryClient();
   return useMutation<ForecastRunResponse, Error, ForecastRunInput>({
     mutationFn: async (input) => {
       const res = await api.forecast.createRun(input, getToken() as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data;
+    },
+    // CR v3.6 §1 — halaman detail run membaca dari cache ini tanpa fetch ulang.
+    onSuccess: (data) => {
+      qc.setQueryData(["forecast-run", data.run.run_id], data);
+      qc.invalidateQueries({ queryKey: ["forecast-runs"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 }
@@ -76,7 +83,10 @@ export function useSelectForecastMethod(runId: string | null) {
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["forecast-run", runId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forecast-run", runId] });
+      qc.invalidateQueries({ queryKey: ["forecast-runs"] });
+    },
   });
 }
 
@@ -88,6 +98,9 @@ export function useSelectForecastMethodForRun(runId: string | null) {
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["forecast-run", runId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forecast-run", runId] });
+      qc.invalidateQueries({ queryKey: ["forecast-runs"] });
+    },
   });
 }

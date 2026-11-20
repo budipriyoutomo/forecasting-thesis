@@ -156,3 +156,36 @@ def test_explanation_menyertakan_interpretasi_mape():
         _monthly([10 + (i % 4) for i in range(20)]), horizon=3, requested_method="moving_average"
     )
     assert "interpretasi mape" in record.explanation.lower()
+
+
+# ── CR v3.6 §7.2 — alasan gagal per produk (status_reason) ──
+def test_insufficient_data_menyertakan_alasan(too_short_df):
+    record = run_forecast_for_product(too_short_df, horizon=7, requested_method=None)
+    assert record.status_reason is not None
+    assert "5 periode" in record.status_reason
+    assert "minimal 12" in record.status_reason
+
+
+def test_tanpa_histori_menyertakan_alasan():
+    import pandas as pd
+
+    record = run_forecast_for_product(pd.DataFrame(columns=["date", "quantity"]), horizon=3)
+    assert record.status == "INSUFFICIENT_DATA"
+    assert "Belum ada histori" in record.status_reason
+
+
+def test_semua_metode_gagal_menyertakan_alasan(smooth_df, monkeypatch):
+    from app.services.forecasting import registry
+
+    def boom(df, horizon, options=None):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(registry, "MODEL_REGISTRY", {"moving_average": boom})
+    record = run_forecast_for_product(smooth_df, horizon=3, enabled_methods={"moving_average"})
+    assert record.status == "MODEL_SELECTION_FAILED"
+    assert "Semua metode" in record.status_reason
+
+
+def test_sukses_tanpa_alasan(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=3, requested_method="moving_average")
+    assert record.status_reason is None

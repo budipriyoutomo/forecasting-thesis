@@ -13,7 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <SidebarInset>
         <AppHeader />
         {/* tabIndex -1 supaya target lompatan benar-benar menerima fokus di semua peramban. */}
-        <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 p-4 outline-none md:p-6">
+        <main id={MAIN_CONTENT_ID} tabIndex={-1} className="mx-auto w-full max-w-screen-2xl flex-1 p-4 outline-none md:p-6">
           {children}
         </main>
       </SidebarInset>

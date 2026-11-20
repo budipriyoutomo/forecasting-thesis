@@ -47,7 +47,7 @@ export function BomCostSummary({ boms, products }: { boms: Bom[]; products: Prod
                   <TableCell>
                     <span className="font-medium">{p ? `${p.code} — ${p.name}` : r.product_id}</span>
                     {r.n_without_price > 0 && (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">
+                      <p className="text-xs text-warning">
                         {r.n_without_price} material belum punya harga — total belum lengkap
                       </p>
                     )}

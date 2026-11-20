@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { PermissionGate } from "@/components/common/PermissionGate";
+import { NewForecastSteps } from "@/components/forecast/NewForecastSteps";
 import { DemandTemplateCard } from "@/components/upload/DemandTemplateCard";
 import { UploadHistory } from "@/components/upload/UploadHistory";
 import { UploadPanel } from "@/components/upload/UploadPanel";
@@ -15,12 +16,12 @@ export default function UploadPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Upload Data Demand Produk"
-        description="Unggah CSV histori demand produk jadi. Satu file boleh berisi banyak SKU."
+        title="Forecast baru"
+        description="Langkah 1 — unggah CSV histori demand produk jadi (satu file boleh berisi banyak SKU), atau lewati bila data sudah ada."
         actions={
           canRun && (
             <Button variant="outline" asChild>
-              <Link href="/forecast/new/config">Lanjut ke konfigurasi</Link>
+              <Link href="/forecast/new/config">Lanjut: produk & parameter</Link>
             </Button>
           )
         }
@@ -30,9 +31,11 @@ export default function UploadPage() {
       <PermissionGate
         action="forecast.run"
         message="Hanya PPIC/Admin yang dapat menjalankan forecast."
-        readHref="/material-arrivals"
-        readLabel="Kedatangan Material"
+        readHref="/forecast"
+        readLabel="daftar forecast run"
       >
+        <NewForecastSteps current={0} />
+
         <DemandTemplateCard />
 
         <UploadPanel />

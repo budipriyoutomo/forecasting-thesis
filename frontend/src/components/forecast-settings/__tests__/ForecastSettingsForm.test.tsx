@@ -13,7 +13,7 @@ describe("ForecastSettingsForm", () => {
     const group = screen.getByRole("group", { name: /metrik yang ditampilkan/i });
     expect(within(group).queryAllByRole("radio")).toHaveLength(0);
     const boxes = within(group).getAllByRole("checkbox") as HTMLInputElement[];
-    expect(boxes.map((b) => b.value)).toEqual(["mad", "mfe", "mse", "mape"]);
+    expect(boxes.map((b) => b.value)).toEqual(["mad", "mfe", "mape"]); // hanya MAD, MFE, MAPE (21 Nov 2026)
     expect(boxes.every((b) => b.checked)).toBe(true);
     expect(screen.queryByText(/metrik penentu metode pemenang/i)).toBeNull();
   });
@@ -28,7 +28,7 @@ describe("ForecastSettingsForm", () => {
       />,
     );
 
-    expect((screen.getByRole("checkbox", { name: /^mse/i }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("checkbox", { name: /^mfe/i }) as HTMLInputElement).checked).toBe(false);
     await userEvent.click(screen.getByRole("checkbox", { name: /^mfe/i }));
     await userEvent.click(screen.getByRole("checkbox", { name: /^mape/i }));
     await userEvent.click(screen.getByRole("button", { name: /simpan/i }));
@@ -37,6 +37,19 @@ describe("ForecastSettingsForm", () => {
       expect.objectContaining({ display_metrics: ["mad", "mfe"], enabled_methods: AVAILABLE }),
     );
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty("ranking_metric");
+  });
+
+  it("tanpa MSE & MASE; pengaturan lama yang memuatnya disaring", () => {
+    render(
+      <ForecastSettingsForm
+        initial={{ display_metrics: ["mase", "mse", "mad"] as never, enabled_methods: null }}
+        available={AVAILABLE}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("checkbox", { name: /^mse/i })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /^mase/i })).toBeNull();
+    expect((screen.getByRole("checkbox", { name: /^mad/i }) as HTMLInputElement).checked).toBe(true);
   });
 
   it("minimal satu metrik tampil", async () => {

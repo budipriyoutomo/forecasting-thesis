@@ -58,7 +58,7 @@ async def test_get_tanpa_baris_default_semua_metrik_tampil():
     repo = FakeSettingsRepo()
     s = await ForecastSettingsService(repo, factory=_factory).get()
 
-    assert s.display_metrics == ["mad", "mfe", "mse", "mape"]
+    assert s.display_metrics == ["mad", "mfe", "mape"]  # hanya MAD, MFE, MAPE (21 Nov 2026)
     assert s.updated_at is None
     assert repo.saved == 0  # default tidak dipersist
 
@@ -107,8 +107,26 @@ async def test_display_metrics_helper():
     svc = ForecastSettingsService(FakeSettingsRepo(_factory(display_metrics=["mape"])), factory=_factory)
     assert await svc.display_metrics() == ["mape"]
     assert await ForecastSettingsService(FakeSettingsRepo(), factory=_factory).display_metrics() == [
-        "mad", "mfe", "mse", "mape"
+        "mad", "mfe", "mape"
     ]
+
+
+@pytest.mark.asyncio
+async def test_display_metrics_lama_berisi_mse_mase_disaring():
+    # MSE & MASE bukan lagi metrik tampil (21 Nov 2026); baris lama tetap terbaca
+    svc = ForecastSettingsService(FakeSettingsRepo(_factory(display_metrics=["mase", "mse", "mape"])), factory=_factory)
+    assert await svc.display_metrics() == ["mape"]
+    only_old = ForecastSettingsService(FakeSettingsRepo(_factory(display_metrics=["mse"])), factory=_factory)
+    assert await only_old.display_metrics() == ["mad", "mfe", "mape"]  # kosong setelah disaring → default
+
+
+@pytest.mark.asyncio
+async def test_update_display_metrics_urutan_baku_mad_mfe_mape():
+    existing = _factory(display_metrics=["mad"])
+    await ForecastSettingsService(FakeSettingsRepo(existing), factory=_factory).update(
+        user_id=ADMIN, display_metrics=["mape", "mfe"]
+    )
+    assert existing.display_metrics == ["mfe", "mape"]
 
 
 # ── Daftar metode aktif (pindah dari env FORECAST_ENGINES_ENABLED) ──

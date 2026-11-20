@@ -42,3 +42,17 @@ export function formatDate(value: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return EMPTY;
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
+
+/** Qty dengan satuan (CR v3.6 §8.7) — "1.200,5 kg". Tanpa UoM tampil angka saja. */
+export function formatQty(value: Numeric, uom?: string | null, maximumFractionDigits = 2): string {
+  const text = formatNumber(value, maximumFractionDigits);
+  if (text === EMPTY || !uom) return text;
+  return `${text} ${uom}`;
+}
+
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return EMPTY;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return EMPTY;
+  return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+}

@@ -88,7 +88,7 @@ export function CostTemplateSummaryPanel({
           Dari harga beli di master material — ditampilkan sebagai informasi, tidak dijumlahkan
           ke total biaya persediaan (TIC).
           {unpriced > 0 && (
-            <span className="text-amber-600 dark:text-amber-500">
+            <span className="text-warning">
               {" "}
               {unpriced} material belum punya harga.
             </span>

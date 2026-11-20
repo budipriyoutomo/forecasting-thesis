@@ -4,9 +4,11 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
 import { DataTable } from "@/components/common/DataTable";
+import { ITEM_STATUS_NOTE, ROP_FORMULA_LABEL, ReorderDetail } from "@/components/dashboard/ReorderDetail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatMoney, formatNumber } from "@/lib/format";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { formatMoney, formatNumber, formatPercent, formatQty } from "@/lib/format";
 import type { Material } from "@/types/material";
 import type { ReorderRecommendation, ReorderStatus } from "@/types/reorder";
 
@@ -24,44 +26,52 @@ const STATUS_VARIANT: Record<ReorderStatus, "destructive" | "secondary" | "outli
 
 const FILTERS: (ReorderStatus | "all")[] = ["all", "urgent", "safe", "overstock"];
 
-const ITEM_STATUS_NOTE: Record<string, string> = {
-  MISSING_UNIT_PRICE: "Harga material belum diisi — EOQ dinamis",
-  MISSING_HOLDING_RATE: "i (%) template biaya belum diisi — EOQ dinamis",
-};
-
-const ROP_FORMULA_LABEL: Record<string, string> = {
-  standard: "μ·L + SS",
-  with_buffer: "μ·L + SS + B",
-};
+const ADJUST_LABEL: Record<string, string> = { suggested: "usulan", custom: "kustom" };
 
 interface ReorderRow extends ReorderRecommendation {
   materialLabel: string;
+  unit?: string;
+}
+
+export function isAdjusted(r: ReorderRecommendation): boolean {
+  return Boolean(r.adjustment_source);
 }
 
 // Tabel rekomendasi reorder dengan filter status (Fase 5).
 // `materials` opsional: bila diberikan, kolom Material menampilkan kode + nama
-// alih-alih UUID mentah. `onOverride` opsional: menambah kolom Aksi (override planner).
+// alih-alih UUID mentah. `onOverride` opsional: menambah tombol Override (planner).
+// CR v3.6 §6 — kolom inti saja (Material, Stok, Safety stock + hasil adjust kapasitas,
+// Service level efektif, ROP + rumus, Qty pesan, Status, Biaya); Buffer & EOQ bisa
+// ditampilkan lewat "Kolom", dan seluruh field ada di Sheet "Rincian" per baris.
 export function ReorderTable({
   recommendations,
   materials = [],
   onOverride,
+  targetServiceLevel,
+  initialStatus = "all",
 }: {
   recommendations: ReorderRecommendation[];
   materials?: Material[];
   onOverride?: (rec: ReorderRecommendation, materialLabel: string) => void;
+  /** Target α (%) dari Pengaturan Forecast — SL efektif di bawahnya ditandai merah. */
+  targetServiceLevel?: number;
+  initialStatus?: ReorderStatus | "all";
 }) {
-  const [filter, setFilter] = useState<ReorderStatus | "all">("all");
+  const [filter, setFilter] = useState<ReorderStatus | "all">(initialStatus);
+  const [onlyAdjusted, setOnlyAdjusted] = useState(false);
+  const [detail, setDetail] = useState<ReorderRow | null>(null);
+  const nAdjusted = recommendations.filter(isAdjusted).length;
 
   const rows = useMemo<ReorderRow[]>(() => {
     const byId = new Map(materials.map((m) => [m.id, m]));
-    const filtered =
-      filter === "all" ? recommendations : recommendations.filter((r) => r.status === filter);
-
-    return filtered.map((r) => {
-      const m = byId.get(r.material_id);
-      return { ...r, materialLabel: m ? `${m.code} — ${m.name}` : r.material_id };
-    });
-  }, [recommendations, materials, filter]);
+    return recommendations
+      .filter((r) => filter === "all" || r.status === filter)
+      .filter((r) => !onlyAdjusted || isAdjusted(r))
+      .map((r) => {
+        const m = byId.get(r.material_id);
+        return { ...r, materialLabel: m ? `${m.code} — ${m.name}` : r.material_id, unit: m?.unit };
+      });
+  }, [recommendations, materials, filter, onlyAdjusted]);
 
   const columns = useMemo<ColumnDef<ReorderRow>[]>(
     () => [
@@ -71,11 +81,59 @@ export function ReorderTable({
         cell: ({ row }) => <span className="font-medium">{row.original.materialLabel}</span>,
       },
       {
+        accessorKey: "current_stock_used",
+        header: "Stok dipakai",
+        cell: ({ row }) => (
+          <span className="flex flex-col tabular-nums">
+            {formatQty(row.original.current_stock_used ?? null, row.original.unit)}
+            {row.original.stock_source && (
+              <span className="text-xs text-muted-foreground">
+                {row.original.stock_source === "snapshot" ? "Stok ERP" : "Input manual"}
+              </span>
+            )}
+          </span>
+        ),
+      },
+      {
         accessorKey: "safety_stock",
         header: "Safety stock",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{formatNumber(row.original.safety_stock)}</span>
-        ),
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <span className="flex flex-col items-start gap-0.5 tabular-nums">
+              {formatQty(r.safety_stock, r.unit)}
+              {isAdjusted(r) && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    dari <s>{formatNumber(r.safety_stock_system ?? null)}</s>
+                  </span>
+                  <Badge variant="warning" className="font-normal">
+                    Disesuaikan kapasitas ({ADJUST_LABEL[r.adjustment_source as string]})
+                  </Badge>
+                </>
+              )}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "service_level_effective",
+        header: "Service level efektif",
+        cell: ({ row }) => {
+          const v = row.original.service_level_effective;
+          if (v == null) return <span className="text-muted-foreground">—</span>;
+          const below = targetServiceLevel != null && Number(v) < targetServiceLevel;
+          return (
+            <span className="flex flex-col tabular-nums">
+              <span className={below ? "font-semibold text-destructive" : undefined}>{formatPercent(v, 1)}</span>
+              {targetServiceLevel != null && (
+                <span className={below ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                  {below ? "di bawah" : "target"} {formatPercent(targetServiceLevel, 1)}
+                </span>
+              )}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "buffer_stock",
@@ -118,10 +176,7 @@ export function ReorderTable({
             return (
               <span className="flex flex-col tabular-nums">
                 <span className="font-semibold">{formatNumber(ov)}</span>
-                <span
-                  className="text-xs text-amber-700 dark:text-amber-400"
-                  title={row.original.override_reason ?? undefined}
-                >
+                <span className="text-xs text-warning" title={row.original.override_reason ?? undefined}>
                   Override · sistem {formatNumber(row.original.recommended_order_qty)}
                 </span>
               </span>
@@ -141,17 +196,26 @@ export function ReorderTable({
       {
         accessorKey: "eoq_qty",
         header: "EOQ (info)",
+        cell: ({ row }) => (
+          <span className="flex flex-col tabular-nums">
+            {formatNumber(row.original.eoq_qty ?? null)}
+            {row.original.eoq_method && (
+              <span className="text-xs text-muted-foreground">
+                {row.original.eoq_method === "classic" ? "Klasik √(2AS/iC)" : "Dinamis"}
+              </span>
+            )}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
         cell: ({ row }) => {
           const note = ITEM_STATUS_NOTE[row.original.item_status ?? ""];
           return (
-            <span className="flex flex-col tabular-nums">
-              {formatNumber(row.original.eoq_qty ?? null)}
-              {row.original.eoq_method && (
-                <span className="text-xs text-muted-foreground">
-                  {row.original.eoq_method === "classic" ? "Klasik √(2AS/iC)" : "Dinamis"}
-                </span>
-              )}
-              {note && <span className="text-xs text-amber-700 dark:text-amber-400">{note}</span>}
+            <span className="flex flex-col items-start gap-1">
+              <Badge variant={STATUS_VARIANT[row.original.status]}>{STATUS_LABEL[row.original.status]}</Badge>
+              {note && <span className="text-xs text-warning">{note}</span>}
             </span>
           );
         },
@@ -181,68 +245,82 @@ export function ReorderTable({
         },
       },
       {
-        accessorKey: "current_stock_used",
-        header: "Stok dipakai",
+        id: "actions",
+        header: "Aksi",
+        enableHiding: false,
+        enableSorting: false,
         cell: ({ row }) => (
-          <span className="flex flex-col tabular-nums">
-            {formatNumber(row.original.current_stock_used ?? null)}
-            {row.original.stock_source && (
-              <span className="text-xs text-muted-foreground">
-                {row.original.stock_source === "snapshot" ? "Stok ERP" : "Input manual"}
-              </span>
+          <span className="flex gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`Rincian ${row.original.materialLabel}`}
+              onClick={() => setDetail(row.original)}
+            >
+              Rincian
+            </Button>
+            {onOverride && (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={`Override ${row.original.materialLabel}`}
+                disabled={!row.original.id}
+                title={row.original.id ? undefined : "Generate ulang rekomendasi untuk mengaktifkan override"}
+                onClick={() => onOverride(row.original, row.original.materialLabel)}
+              >
+                Override
+              </Button>
             )}
           </span>
         ),
       },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => (
-          <Badge variant={STATUS_VARIANT[row.original.status]}>
-            {STATUS_LABEL[row.original.status]}
-          </Badge>
-        ),
-      },
-      ...(onOverride
-        ? [
-            {
-              id: "actions",
-              header: "Aksi",
-              cell: ({ row }: { row: { original: ReorderRow } }) => (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={`Override ${row.original.materialLabel}`}
-                  disabled={!row.original.id}
-                  title={row.original.id ? undefined : "Generate ulang rekomendasi untuk mengaktifkan override"}
-                  onClick={() => onOverride(row.original, row.original.materialLabel)}
-                >
-                  Override
-                </Button>
-              ),
-            } satisfies ColumnDef<ReorderRow>,
-          ]
-        : []),
     ],
-    [onOverride],
+    [onOverride, targetServiceLevel],
   );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
-          <Button
-            key={f}
-            size="sm"
-            variant={filter === f ? "default" : "outline"}
-            onClick={() => setFilter(f)}
-          >
+          <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} onClick={() => setFilter(f)}>
             {f === "all" ? "Semua" : STATUS_LABEL[f]}
           </Button>
         ))}
+        {nAdjusted > 0 && (
+          <Button
+            size="sm"
+            variant={onlyAdjusted ? "default" : "outline"}
+            aria-pressed={onlyAdjusted}
+            onClick={() => setOnlyAdjusted((v) => !v)}
+          >
+            Hanya yang disesuaikan ({nAdjusted})
+          </Button>
+        )}
       </div>
 
-      <DataTable columns={columns} data={rows} emptyMessage="Tidak ada rekomendasi." />
+      <DataTable
+        columns={columns}
+        data={rows}
+        pageSize={25}
+        enableColumnVisibility
+        // Buffer & EOQ ada di Rincian; bisa ditampilkan lewat menu "Kolom".
+        initialColumnVisibility={{ buffer_stock: false, eoq_qty: false }}
+        emptyMessage="Tidak ada rekomendasi."
+      />
+
+      <Sheet open={detail !== null} onOpenChange={(open) => !open && setDetail(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          {detail && (
+            <>
+              <SheetHeader className="mb-4">
+                <SheetTitle>{detail.materialLabel}</SheetTitle>
+                <SheetDescription>Rincian rekomendasi reorder & parameter yang dipakai.</SheetDescription>
+              </SheetHeader>
+              <ReorderDetail rec={detail} unit={detail.unit} />
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

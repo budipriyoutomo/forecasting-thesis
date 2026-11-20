@@ -22,8 +22,11 @@ export function useRunPlanning() {
     mutationFn: async ({ runId, currentStock }) =>
       unwrap(await api.planning.run(runId, currentStock ?? null, getToken() as string)),
     onSuccess: (_, { runId }) => {
-      for (const key of ["stock-projection", "reorder-list", "cost-summary", "inventory-metrics"])
+      for (const key of ["stock-projection", "reorder-list", "cost-summary", "inventory-metrics", "warehouse-validation"])
         qc.invalidateQueries({ queryKey: [key, runId] });
+      // CR v3.6 §1 — daftar run (has_planning) & dashboard ikut diperbarui
+      qc.invalidateQueries({ queryKey: ["forecast-runs"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 }

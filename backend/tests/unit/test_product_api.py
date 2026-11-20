@@ -144,3 +144,44 @@ async def test_create_product_harga_negatif_ditolak(client):
     body = {"code": "A", "name": "A", "unit": "PCS", "selling_price": -1}
     res = await client.post("/api/v1/products", headers=_headers("admin"), json=body)
     assert res.status_code == 422
+
+
+# ── CR v3.6 §5 — cakupan histori demand per produk (pemilihan produk sebelum run) ──
+class FakeDemandCoverage:
+    def __init__(self, rows):
+        self._rows = rows  # {product_code: (n_periods, last_period)}
+
+    async def coverage_by_product_code(self):
+        return self._rows
+
+
+def _override_coverage(products, coverage):
+    from datetime import date  # noqa: F401
+
+    app.dependency_overrides[get_product_service] = lambda: ProductService(
+        FakeProductRepository(products), model_factory=FakeProduct, demand=FakeDemandCoverage(coverage)
+    )
+
+
+@pytest.mark.asyncio
+async def test_demand_coverage_per_produk(client):
+    from datetime import date
+
+    _override_coverage(
+        [FakeProduct(id="p1", code="A", name="A", unit="PCS"), FakeProduct(id="p2", code="B", name="B", unit="PCS")],
+        {"A": (14, date(2026, 10, 1))},
+    )
+    res = await client.get("/api/v1/products/demand-coverage", headers=_headers("viewer"))
+
+    assert res.status_code == 200
+    assert res.json()["data"] == [
+        {"product_id": "p1", "n_periods": 14, "last_period": "2026-10-01"},
+        {"product_id": "p2", "n_periods": 0, "last_period": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_demand_coverage_tanpa_token_401(client):
+    _override_coverage([], {})
+    res = await client.get("/api/v1/products/demand-coverage")
+    assert res.status_code == 401

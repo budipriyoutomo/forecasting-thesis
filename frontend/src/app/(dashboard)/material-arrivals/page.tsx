@@ -8,17 +8,11 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RunPicker } from "@/components/forecast/RunPicker";
 import { Button } from "@/components/ui/button";
 import { useForecastRuns } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useReorderList, useStockProjection } from "@/hooks/usePlanning";
-
-function runLabel(createdAt: string | null, runId: string, createdBy?: string | null) {
-  const by = createdBy ? ` · oleh ${createdBy}` : "";
-  if (!createdAt) return `${runId.slice(0, 8)}${by}`;
-  const d = new Date(createdAt);
-  return `${d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} · ${runId.slice(0, 8)}${by}`;
-}
 
 // Kedatangan material hasil hitungan sistem (20 Nov 2026): pesanan ROP di proyeksi stok
 // skenario usulan untuk run terpilih. Read-only — kedatangan tidak lagi diinput/diupload.
@@ -49,26 +43,20 @@ export default function MaterialArrivalsPage() {
           hint="Buat forecast lalu jalankan perencanaan untuk menghitung kedatangan material."
           action={
             <Button asChild variant="outline">
-              <Link href="/forecast/new">Ke halaman Forecast</Link>
+              <Link href="/forecast">Ke halaman Forecast</Link>
             </Button>
           }
         />
       ) : (
         <>
-          <label className="flex w-fit flex-col gap-1 text-sm">
-            <span>Forecast run</span>
-            <select
-              className="h-9 rounded-md border bg-transparent px-3 text-sm"
-              value={runId ?? ""}
-              onChange={(e) => setChosen(e.target.value)}
-            >
-              {runs.data.map((r) => (
-                <option key={r.run_id} value={r.run_id}>
-                  {runLabel(r.created_at, r.run_id, r.created_by)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-end gap-3">
+            <RunPicker runs={runs.data} value={runId} onChange={setChosen} />
+            {runId && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/forecast/runs/${runId}`}>Lihat detail run</Link>
+              </Button>
+            )}
+          </div>
 
           {projection.isPending ? (
             <TableSkeleton />
@@ -79,7 +67,7 @@ export default function MaterialArrivalsPage() {
           ) : !projection.data?.length ? (
             <EmptyState
               message="Run ini belum punya proyeksi stok."
-              hint="Jalankan perencanaan (tahap 2→4) di halaman konfigurasi forecast run ini."
+              hint="Jalankan perencanaan (langkah 3) di halaman detail run ini."
             />
           ) : (
             <MaterialArrivalsTable rows={projection.data} recommendations={recs.data ?? []} materials={materials ?? []} />

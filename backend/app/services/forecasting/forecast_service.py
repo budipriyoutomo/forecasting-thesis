@@ -43,6 +43,8 @@ class ForecastResultRecord:
     explanation: str | None = None
     feature_importance: dict | None = None  # Fase 11.2 — RF/XGB (mode manual)
     hyperparameters: dict | None = None  # α ES / hasil grid search / outlier di-cap
+    # CR v3.6 §7.2 — alasan bahasa natural bila status gagal (None = sukses)
+    status_reason: str | None = None
 
 
 def _candidate_row(method: str, r: EngineResult) -> dict:
@@ -96,12 +98,19 @@ def run_forecast_for_product(
     enabled = registry.get_enabled_methods(enabled_methods)
 
     if df.empty or "date" not in df.columns or df["quantity"].dropna().empty:
-        return ForecastResultRecord(status="INSUFFICIENT_DATA")
+        return ForecastResultRecord(
+            status="INSUFFICIENT_DATA",
+            status_reason="Belum ada histori demand (kolom actual) untuk produk ini.",
+        )
 
     series = to_period_series(df)
     min_periods = settings.LSTM_MIN_PERIODS if requested_method == "lstm" else settings.BACKTEST_MIN_PERIODS
     if len(series) < min_periods:
-        return ForecastResultRecord(status="INSUFFICIENT_DATA")
+        return ForecastResultRecord(
+            status="INSUFFICIENT_DATA",
+            status_reason=f"Histori {len(series)} periode, minimal {min_periods} periode"
+            + (" untuk LSTM." if requested_method == "lstm" else "."),
+        )
 
     # ── MODE MANUAL ──────────────────────────────────────────────────────
     if requested_method is not None:
@@ -115,7 +124,11 @@ def run_forecast_for_product(
         except Exception:  # TIDAK fallback di mode manual (AGENTS.md §5/#14)
             log.warning("Metode manual '%s' gagal", requested_method, exc_info=True)
             return ForecastResultRecord(
-                status="MODEL_SELECTION_FAILED", method_used=requested_method, selection_mode="manual"
+                status="MODEL_SELECTION_FAILED",
+                method_used=requested_method,
+                selection_mode="manual",
+                status_reason=f"Metode {requested_method} gagal dijalankan untuk data produk ini "
+                "(mode manual tidak dialihkan ke metode lain).",
             )
         return _completed(requested_method, "manual", result, [_candidate_row(requested_method, result)])
 
@@ -129,7 +142,10 @@ def run_forecast_for_product(
             log.warning("Metode '%s' gagal saat backtest/fit, dikecualikan", method_name, exc_info=True)
 
     if not evaluated:
-        return ForecastResultRecord(status="MODEL_SELECTION_FAILED")
+        return ForecastResultRecord(
+            status="MODEL_SELECTION_FAILED",
+            status_reason="Semua metode aktif gagal saat backtest/fit untuk data produk ini.",
+        )
 
     candidates = [_candidate_row(name, r) for name, r in evaluated]
     return ForecastResultRecord(

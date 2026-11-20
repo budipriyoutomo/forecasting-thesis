@@ -1,55 +1,35 @@
 "use client";
 
-import { Download, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { EmptyState } from "@/components/common/EmptyState";
+import { FormError } from "@/components/common/FormError";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PermissionGate } from "@/components/common/PermissionGate";
 import { MethodSelector } from "@/components/config/MethodSelector";
-import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
-import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
-import { ReorderTable } from "@/components/dashboard/ReorderTable";
-import { ForecastResults } from "@/components/forecast/ForecastResults";
-import { MethodSelectionDialog } from "@/components/forecast/MethodSelectionDialog";
-import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
-import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
-import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
-import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
-import { FormError } from "@/components/common/FormError";
-import { EmptyState } from "@/components/common/EmptyState";
+import { NewForecastSteps } from "@/components/forecast/NewForecastSteps";
+import { ProductPicker } from "@/components/forecast/ProductPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
-import { useExport } from "@/hooks/useExport";
-import {
-  useCreateForecastRun,
-  useForecastRun,
-  useSelectForecastMethod,
-  useSelectForecastMethodForRun,
-} from "@/hooks/useForecast";
-import { useForecastSettings } from "@/hooks/useForecastSettings";
-import { useMaterials } from "@/hooks/useMaterials";
-import { useCostSummary, useInventoryMetrics } from "@/hooks/useMetrics";
-import { useProducts } from "@/hooks/useProducts";
-import { useReorderList, useRunPlanning, useStockProjection } from "@/hooks/usePlanning";
-import { useGenerateReorder } from "@/hooks/useReorder";
-import { useWarehouseValidation } from "@/hooks/useWarehouse";
-import type { ReorderRecommendation } from "@/types/reorder";
+import { useCreateForecastRun } from "@/hooks/useForecast";
+import { useProductDemandCoverage, useProducts } from "@/hooks/useProducts";
 
-// CR v3.5 §3.2: seluruh aksi di halaman ini (run, pilih metode, override, perencanaan,
-// adjust kapasitas) milik Admin/PPIC — role lain diarahkan ke halaman baca. Gate di luar
-// konten supaya hook data & mutasi tidak dipasang untuk role tanpa izin.
+// CR v3.5 §3.2: membuat run milik Admin/PPIC — role lain diarahkan ke halaman baca.
+// CR v3.6 §1/§4: halaman ini HANYA langkah "Produk & parameter → Generate" di wizard Forecast
+// baru. Hasil tidak lagi dirender di sini (dulu hilang saat refresh) — setelah run dibuat,
+// planner diarahkan ke /forecast/runs/{id}.
 export default function ForecastConfigPage() {
   return (
     <PermissionGate
       action="forecast.run"
       message="Hanya PPIC/Admin yang dapat menjalankan forecast."
-      readHref="/material-arrivals"
-      readLabel="Kedatangan Material"
+      readHref="/forecast"
+      readLabel="daftar forecast run"
     >
       <ForecastConfigContent />
     </PermissionGate>
@@ -57,112 +37,52 @@ export default function ForecastConfigPage() {
 }
 
 function ForecastConfigContent() {
+  const router = useRouter();
   const { data: products } = useProducts();
-  const { data: materials } = useMaterials();
+  const { data: coverage } = useProductDemandCoverage();
   const run = useCreateForecastRun();
-  const reorder = useGenerateReorder();
-  const warehouse = useWarehouseValidation();
-  const exporter = useExport();
-  const runId = run.data?.run.run_id;
-  // Fase 11.15 — hasil dengan metode pilihan planner; diperbarui setiap kali planner memilih.
-  const runView = useForecastRun(runId ?? null, run.data);
-  const runData = runView.data ?? run.data;
-  const nPendingSelection = runData?.run.n_pending_selection ?? 0;
-  const { data: forecastSettings } = useForecastSettings();
-  const selectMethod = useSelectForecastMethod(runId ?? null);
-  const selectAll = useSelectForecastMethodForRun(runId ?? null);
-  const [choosing, setChoosing] = useState<{ resultId: string | null; method: string; label: string } | null>(
-    null,
-  );
-  const selecting = choosing?.resultId ? selectMethod : selectAll;
-  const closeChoosing = () => {
-    setChoosing(null);
-    selectMethod.reset();
-    selectAll.reset();
-  };
-  const onChooseReason = (reason: string) => {
-    if (!choosing) return;
-    const done = { onSuccess: closeChoosing };
-    if (choosing.resultId) {
-      selectMethod.mutate({ resultId: choosing.resultId, method: choosing.method, reason }, done);
-    } else {
-      selectAll.mutate({ method: choosing.method, reason }, done);
-    }
-  };
-
-  // Fase 11.8: pipeline tahap 2→4 (reorder → proyeksi stok → evaluasi → biaya) sekali klik.
-  const planning = useRunPlanning();
-  const planned = Boolean(planning.data) && Boolean(runId);
-  const projection = useStockProjection(planned ? (runId as string) : null);
-  const reorderList = useReorderList((planned || reorder.isSuccess) && runId ? runId : null);
-  const recommendations = reorderList.data ?? reorder.data;
-
-  // Biaya & metrik inventory bermakna setelah reorder dihitung (butuh recs persisted).
-  const metricsRunId = (reorder.data || planned) && runId ? runId : null;
-  const cost = useCostSummary(metricsRunId);
-  const inventoryMetrics = useInventoryMetrics(metricsRunId);
-
   const [selected, setSelected] = useState<string[]>([]);
   // Data demand bulanan: horizon = jumlah bulan. 12 = default kolom Kelengkapan variabel eksternal (CR v3.4).
   const [horizon, setHorizon] = useState(12);
   const [method, setMethod] = useState("");
-  // Override planner (AGENTS §5): rekomendasi yang sedang di-override + label materialnya.
-  const [overriding, setOverriding] = useState<{ rec: ReorderRecommendation; label: string } | null>(null);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-
-  const onGenerate = () => {
-    run.mutate({
-      product_ids: selected,
-      horizon,
-      method: method === "" ? null : method,
-    });
-  };
+  const onGenerate = () =>
+    run.mutate(
+      { product_ids: selected, horizon, method: method === "" ? null : method },
+      { onSuccess: (data) => router.push(`/forecast/runs/${data.run.run_id}`) },
+    );
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Konfigurasi Forecast"
-        description="Pilih produk, horizon, dan metode. Mode otomatis membandingkan seluruh metode aktif lalu memilih yang paling akurat."
+        title="Forecast baru"
+        description="Pilih produk, horizon, dan metode. Mode otomatis menjalankan seluruh metode aktif berdampingan — planner memilih metode per produk setelah run."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/forecast/new">Kembali ke data demand</Link>
+          </Button>
+        }
       />
+      <NewForecastSteps current={run.isPending ? 2 : 1} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pilih produk</CardTitle>
             <CardDescription>
-              {selected.length > 0
-                ? `${selected.length} produk dipilih.`
-                : "Belum ada produk dipilih."}
+              {selected.length > 0 ? `${selected.length} produk dipilih.` : "Belum ada produk dipilih."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {products && products.length > 0 ? (
-              <div className="flex flex-col gap-3">
-                {products.map((p) => (
-                  <div key={p.id} className="flex items-center gap-3">
-                    <Checkbox
-                      id={`produk-${p.id}`}
-                      checked={selected.includes(p.id)}
-                      onCheckedChange={() => toggle(p.id)}
-                    />
-                    <Label htmlFor={`produk-${p.id}`} className="font-normal">
-                      <span className="font-medium">{p.code}</span> — {p.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
+              <ProductPicker products={products} coverage={coverage} selected={selected} onChange={setSelected} />
             ) : (
-              <EmptyState
-                message="Belum ada produk."
-                hint="Tambah dulu di menu Produk sebelum menjalankan forecast."
-              />
+              <EmptyState message="Belum ada produk." hint="Tambah dulu di menu Produk sebelum menjalankan forecast." />
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-fit">
           <CardHeader>
             <CardTitle className="text-base">Parameter</CardTitle>
             <CardDescription>Berlaku untuk seluruh produk yang dipilih.</CardDescription>
@@ -190,204 +110,6 @@ function ForecastConfigContent() {
           </CardContent>
         </Card>
       </div>
-
-      {run.data && runId && (
-        <>
-          <Separator />
-
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-medium">Hasil</h2>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={exporter.isPending}
-                onClick={() => exporter.mutate({ kind: "forecast", runId })}
-              >
-                <Download />
-                Export forecast (Excel)
-              </Button>
-            </div>
-            <ForecastResults
-              data={runData ?? run.data}
-              products={products ?? []}
-              displayMetrics={forecastSettings?.display_metrics}
-              onSelectMethod={(result, method) => {
-                const product = products?.find((p) => p.id === result.product_id);
-                setChoosing({
-                  resultId: result.id,
-                  method,
-                  label: product ? `${product.code} — ${product.name}` : result.product_id,
-                });
-              }}
-              onSelectAll={(method) => setChoosing({ resultId: null, method, label: "semua produk di run ini" })}
-            />
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-medium">Perencanaan Persediaan</h2>
-                <p className="text-sm text-muted-foreground">
-                  MRP (safety stock, buffer, EOQ) → proyeksi stok & utilisasi gudang material → evaluasi inventory.
-                  Stok awal diambil dari snapshot ERP terakhir (menu Persediaan Material).
-                </p>
-              </div>
-              <Button disabled={planning.isPending} onClick={() => planning.mutate({ runId: runId as string })}>
-                {planning.isPending ? "Menjalankan…" : "Jalankan perencanaan"}
-              </Button>
-            </div>
-            {nPendingSelection > 0 && (
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                {nPendingSelection} produk belum dipilih metodenya dan akan dilewati. Pilih metode di
-                bagian Hasil, lalu jalankan perencanaan lagi.
-              </p>
-            )}
-            <FormError message={planning.isError ? planning.error.message : null} />
-            {planning.data && <PlanningSummaryCard summary={planning.data} />}
-            {planning.data && runId && (
-              <CapacityAdjustmentPanel
-                runId={runId}
-                suggestion={planning.data.capacity?.suggestion}
-                adjustedCount={planning.data.capacity?.n_adjusted_materials ?? 0}
-                materials={materials ?? []}
-                onReplan={() => planning.mutate({ runId })}
-              />
-            )}
-            {projection.data && projection.data.length > 0 && (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {(["xlsx", "pdf"] as const).map((format) => (
-                    <Button
-                      key={format}
-                      variant="outline"
-                      size="sm"
-                      disabled={exporter.isPending}
-                      onClick={() => exporter.mutate({ kind: "stockProjection", runId, format })}
-                    >
-                      <Download />
-                      Proyeksi stok ({format === "xlsx" ? "Excel" : "PDF"})
-                    </Button>
-                  ))}
-                </div>
-                <StockProjectionTable rows={projection.data} materials={materials ?? []} />
-              </>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-medium">Rekomendasi Reorder</h2>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={reorder.isPending}
-                  onClick={() => reorder.mutate({ runId })}
-                >
-                  {reorder.isPending ? "Menghitung…" : "Hitung reorder"}
-                </Button>
-                {recommendations && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={exporter.isPending}
-                      onClick={() => exporter.mutate({ kind: "reorder", runId, format: "xlsx" })}
-                    >
-                      <Download />
-                      Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={exporter.isPending}
-                      onClick={() => exporter.mutate({ kind: "reorder", runId, format: "pdf" })}
-                    >
-                      <Download />
-                      PDF
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-            <FormError message={reorder.isError ? reorder.error.message : null} />
-            <FormError message={exporter.isError ? exporter.error.message : null} />
-            {recommendations && (
-              <ReorderTable
-                recommendations={recommendations}
-                materials={materials ?? []}
-                onOverride={(rec, label) => setOverriding({ rec, label })}
-              />
-            )}
-          </section>
-
-          {recommendations && (
-            <section className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-medium">Kapasitas Gudang Produk Jadi</h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={warehouse.isPending}
-                  onClick={() => warehouse.mutate(runId)}
-                >
-                  {warehouse.isPending ? "Memvalidasi…" : "Cek kapasitas"}
-                </Button>
-              </div>
-              <FormError message={warehouse.isError ? warehouse.error.message : null} />
-              {warehouse.data && (
-                <WarehouseCapacityBadge validation={warehouse.data} products={products ?? []} />
-              )}
-            </section>
-          )}
-
-          {recommendations && (cost.data || inventoryMetrics.data) && (
-            <section className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-medium">Biaya &amp; Kinerja Inventory</h2>
-                {inventoryMetrics.data && (
-                  <div className="flex flex-wrap gap-2">
-                    {(["xlsx", "pdf"] as const).map((format) => (
-                      <Button
-                        key={format}
-                        variant="outline"
-                        size="sm"
-                        disabled={exporter.isPending}
-                        onClick={() => exporter.mutate({ kind: "metrics", runId, format })}
-                      >
-                        <Download />
-                        Metrik ({format === "xlsx" ? "Excel" : "PDF"})
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {cost.data && <CostSummaryCard summary={cost.data} />}
-              {inventoryMetrics.data && (
-                <InventoryMetricsTable
-                  metrics={inventoryMetrics.data}
-                  materials={materials ?? []}
-                  products={products ?? []}
-                />
-              )}
-            </section>
-          )}
-        </>
-      )}
-      <MethodSelectionDialog
-        target={choosing}
-        onSubmit={onChooseReason}
-        onClose={closeChoosing}
-        pending={selecting.isPending}
-        error={selecting.error?.message ?? null}
-      />
-      <ReorderOverrideDialog
-        runId={runId ?? null}
-        recommendation={overriding?.rec ?? null}
-        materialLabel={overriding?.label ?? ""}
-        onClose={() => setOverriding(null)}
-      />
     </div>
   );
 }

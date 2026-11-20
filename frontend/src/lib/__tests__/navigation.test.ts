@@ -19,7 +19,7 @@ describe("NAV_GROUPS", () => {
       "/forecast-settings",
       "/external-variables",
       "/inventory",
-      "/forecast/new",
+      "/forecast",
       "/material-arrivals",
     ]);
     expect(new Set(hrefs).size).toBe(hrefs.length);
@@ -74,11 +74,26 @@ describe("breadcrumbsFor", () => {
     ]);
   });
 
-  it("menambahkan jejak sub-halaman tanpa tautan", () => {
+  // CR v3.6 §1 — /forecast = daftar run; sub-halaman wizard & detail run
+  it("menambahkan jejak sub-halaman: wizard forecast baru", () => {
+    expect(breadcrumbsFor("/forecast/new")).toEqual([
+      { label: "Operasional" },
+      { label: "Forecast", href: "/forecast" },
+      { label: "Forecast baru" },
+    ]);
     expect(breadcrumbsFor("/forecast/new/config")).toEqual([
       { label: "Operasional" },
-      { label: "Forecast", href: "/forecast/new" },
+      { label: "Forecast", href: "/forecast" },
+      { label: "Forecast baru", href: "/forecast/new" },
       { label: "Konfigurasi" },
+    ]);
+  });
+
+  it("detail run (segmen dinamis) berlabel 'Detail run'", () => {
+    expect(breadcrumbsFor("/forecast/runs/3f2a")).toEqual([
+      { label: "Operasional" },
+      { label: "Forecast", href: "/forecast" },
+      { label: "Detail run" },
     ]);
   });
 

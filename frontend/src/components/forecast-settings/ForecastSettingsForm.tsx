@@ -16,6 +16,7 @@ import type {
 
 // Fase 11.15 — metrik yang DITAMPILKAN di hasil forecast (checkbox). Tidak ada lagi metrik
 // penentu pemenang: planner membandingkan nilainya lalu memilih metode per produk.
+// Pengujian peramalan hanya MAD, MFE, MAPE (keputusan user 21 Nov 2026).
 export const DISPLAY_METRIC_OPTIONS: { value: DisplayMetric; label: string; description: string }[] = [
   {
     value: "mad",
@@ -26,11 +27,6 @@ export const DISPLAY_METRIC_OPTIONS: { value: DisplayMetric; label: string; desc
     value: "mfe",
     label: "MFE",
     description: "Bias forecast. Positif = under-estimate, negatif = over-estimate.",
-  },
-  {
-    value: "mse",
-    label: "MSE",
-    description: "Rata-rata kuadrat selisih — lebih menghukum galat besar.",
   },
   {
     value: "mape",
@@ -99,7 +95,8 @@ export function ForecastSettingsForm({
   readOnly?: boolean;
 }) {
   const [metrics, setMetrics] = useState<Set<DisplayMetric>>(
-    () => new Set(initial.display_metrics ?? ALL_DISPLAY_METRICS),
+    // Pengaturan lama bisa memuat "mse"/"mase" — disaring ke opsi yang ada.
+    () => new Set((initial.display_metrics ?? ALL_DISPLAY_METRICS).filter((m) => ALL_DISPLAY_METRICS.includes(m))),
   );
   const noMetric = metrics.size === 0;
   const [enabled, setEnabled] = useState<Set<string>>(

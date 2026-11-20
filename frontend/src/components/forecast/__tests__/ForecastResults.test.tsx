@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -66,71 +66,111 @@ function runOf(results: ForecastResult[], nPending = 0): ForecastRunResponse {
 
 const data = runOf([selected]);
 
-describe("ForecastResults", () => {
-  it("menampilkan kode — nama produk, bukan UUID", () => {
+async function bukaDetail(code: string) {
+  await userEvent.click(screen.getByRole("button", { name: `Detail ${code}` }));
+}
+
+describe("ForecastResults (CR v3.6 §5 — tabel ringkasan + Sheet)", () => {
+  it("menampilkan kode & nama produk, bukan UUID", () => {
     render(<ForecastResults data={data} products={products} />);
 
-    expect(screen.getByText("SKU-001 — Kursi Lipat")).toBeDefined();
+    expect(screen.getByText("SKU-001")).toBeDefined();
+    expect(screen.getByText("Kursi Lipat")).toBeDefined();
     expect(screen.queryByText(PID)).toBeNull();
   });
 
   it("jatuh ke product_id saat produk tidak ada di master data", () => {
     render(<ForecastResults data={data} products={[]} />);
 
-    expect(screen.getByText(PID)).toBeDefined();
+    expect(screen.getAllByText(PID).length).toBeGreaterThan(0);
   });
 
   it("tetap jalan tanpa prop products", () => {
     render(<ForecastResults data={data} />);
 
-    expect(screen.getByText(PID)).toBeDefined();
+    expect(screen.getAllByText(PID).length).toBeGreaterThan(0);
+  });
+
+  it("baris ringkasan: metode, MAD/MFE/MAPE (tanpa MSE & MASE), total & rata-rata forecast, sumber", () => {
+    render(<ForecastResults data={{ ...data, results: [{ ...selected, mad: 3.5, mfe: -1.25, mase: 0.7 }] }} products={products} />);
+
+    expect(screen.getByText("3.50")).toBeDefined();
+    expect(screen.getByText("-1.25")).toBeDefined();
+    expect(screen.queryByText("0.70")).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: /mase|mse/i })).toBeNull();
+
+    expect(screen.getByText("Moving Average")).toBeDefined();
+    expect(screen.getByText("8.20%")).toBeDefined();
+    expect(screen.getByText("100 pcs")).toBeDefined(); // total + UoM
+    expect(screen.getByText(/dipilih planner/i)).toBeDefined();
+  });
+
+  it("filter status & pencarian", async () => {
+    render(<ForecastResults data={runOf([selected, pending], 1)} products={products} />);
+
+    expect(screen.getByRole("button", { name: "Belum dipilih (1)" })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Belum dipilih (1)" }));
+    expect(screen.queryByText("SKU-001")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Semua (2)" }));
+    await userEvent.type(screen.getByRole("searchbox", { name: /cari kode/i }), "kursi");
+    expect(screen.getByText("SKU-001")).toBeDefined();
+    expect(screen.queryByText(PID2)).toBeNull();
   });
 
   // ── Fase 11.15: tanpa pemenang, planner memilih ──
 
-  it("tidak pernah mengaku 'dipilih otomatis'; pilihan planner + alasannya tampil", () => {
-    render(<ForecastResults data={data} />);
+  it("tidak pernah mengaku 'dipilih otomatis'; pilihan planner + alasannya tampil di Sheet", async () => {
+    render(<ForecastResults data={data} products={products} />);
 
     expect(screen.queryByText(/dipilih otomatis/i)).toBeNull();
-    expect(screen.getByText(/dipilih planner/i)).toBeDefined();
+    await bukaDetail("SKU-001");
     expect(screen.getByText(/paling stabil/i)).toBeDefined();
   });
 
-  it("hasil belum dipilih: badge, ringkasan, tabel terbuka, tombol Pilih", async () => {
+  it("hasil belum dipilih: badge, ringkasan, tab perbandingan terbuka, tombol Pilih", async () => {
     const onSelectMethod = vi.fn();
     render(<ForecastResults data={runOf([pending], 1)} onSelectMethod={onSelectMethod} />);
 
-    expect(screen.getAllByText(/metode belum dipilih/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/belum dipilih/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/1 produk menunggu pemilihan metode/i)).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: /pilih xgboost/i }));
+    await userEvent.click(screen.getByRole("button", { name: `Detail ${PID2}` }));
+    await userEvent.click(await screen.findByRole("button", { name: /pilih xgboost/i }));
 
     expect(onSelectMethod).toHaveBeenCalledWith(pending, "xgboost");
   });
 
   it("hasil yang sudah dipilih tetap bisa diganti metodenya", async () => {
     const onSelectMethod = vi.fn();
-    render(<ForecastResults data={data} onSelectMethod={onSelectMethod} />);
+    render(<ForecastResults data={data} products={products} onSelectMethod={onSelectMethod} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /perbandingan metode/i }));
-    await userEvent.click(screen.getByRole("button", { name: /pilih xgboost/i }));
+    await bukaDetail("SKU-001");
+    await userEvent.click(screen.getByRole("tab", { name: /perbandingan metode/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /pilih xgboost/i }));
 
     expect(onSelectMethod).toHaveBeenCalledWith(selected, "xgboost");
   });
 
-  it("pakai satu metode untuk semua produk", async () => {
+  it("pakai satu metode untuk semua produk (ui/select)", async () => {
     const onSelectAll = vi.fn();
     render(<ForecastResults data={runOf([selected, pending], 1)} onSelectAll={onSelectAll} />);
 
-    await userEvent.selectOptions(screen.getByLabelText(/metode untuk semua produk/i), "xgboost");
+    await userEvent.click(screen.getByRole("combobox", { name: /metode untuk semua produk/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "XGBoost" }));
     await userEvent.click(screen.getByRole("button", { name: /pakai untuk semua produk/i }));
 
     expect(onSelectAll).toHaveBeenCalledWith("xgboost");
   });
 
-  it("kolom metrik mengikuti displayMetrics", async () => {
+  it("kolom metrik perbandingan mengikuti displayMetrics", async () => {
     render(<ForecastResults data={runOf([pending], 1)} displayMetrics={["mape"]} onSelectMethod={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: `Detail ${PID2}` }));
 
-    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Metode", "MAPE", "Aksi"]);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Metode",
+      "MAPE",
+      "Aksi",
+    ]);
   });
 
   it("mode manual: disebut dipilih sebelum run", () => {
@@ -143,7 +183,7 @@ describe("ForecastResults", () => {
     expect(screen.getByText(/dipilih manual/i)).toBeDefined();
   });
 
-  it("metode ML: tampil variabel eksternal dipakai / di-drop (CR v3.4)", () => {
+  it("metode ML: tab Faktor menampilkan variabel eksternal dipakai / di-drop (CR v3.4)", async () => {
     render(
       <ForecastResults
         data={runOf([{
@@ -151,18 +191,41 @@ describe("ForecastResults", () => {
           method_used: "xgboost",
           hyperparameters: { exog_used: ["suhu"], exog_dropped: { promo: "missing_horizon" } },
         }])}
+        products={products}
       />,
     );
-    expect(screen.getByText("Variabel eksternal dipakai 1 / 2")).toBeDefined();
+    await bukaDetail("SKU-001");
+    await userEvent.click(screen.getByRole("tab", { name: /faktor/i }));
+    expect(await screen.findByText("Variabel eksternal dipakai 1 / 2")).toBeDefined();
     expect(screen.getByText(/nilai horizon belum lengkap/i)).toBeDefined();
   });
 
-  it("hasil belum dipilih: info variabel eksternal tidak tampil", () => {
+  it("hasil belum dipilih: info variabel eksternal tidak tampil", async () => {
     render(
       <ForecastResults
         data={runOf([{ ...pending, hyperparameters: { exog_used: ["suhu"], exog_dropped: {} } }], 1)}
       />,
     );
+    await userEvent.click(screen.getByRole("button", { name: `Detail ${PID2}` }));
+    await userEvent.click(screen.getByRole("tab", { name: /faktor/i }));
     expect(screen.queryByText(/variabel eksternal dipakai/i)).toBeNull();
+  });
+
+  it("produk gagal: Alert alasan + langkah perbaikan + link upload (CR v3.6 §7.2)", async () => {
+    const failed: ForecastResult = {
+      ...pending,
+      id: "r3",
+      status: "INSUFFICIENT_DATA",
+      selection_status: null,
+      candidates_evaluated: null,
+      status_reason: "Histori 8 periode, minimal 12 periode.",
+    };
+    render(<ForecastResults data={runOf([failed])} />);
+    await userEvent.click(screen.getByRole("button", { name: `Detail ${PID2}` }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Histori 8 periode, minimal 12 periode.")).toBeDefined();
+    expect(within(dialog).getByText(/lengkapi histori demand/i)).toBeDefined();
+    expect(within(dialog).getByRole("link", { name: /upload data demand/i }).getAttribute("href")).toBe("/forecast/new");
   });
 });

@@ -12,7 +12,9 @@ describe("Breadcrumbs", () => {
     render(<Breadcrumbs />);
 
     expect(screen.getByText("Operasional")).toBeDefined();
-    expect(screen.getByRole("link", { name: "Forecast" }).getAttribute("href")).toBe("/forecast/new");
+    // CR v3.6 §1 — Forecast = daftar run; wizard "Forecast baru" sebagai jejak antara
+    expect(screen.getByRole("link", { name: "Forecast" }).getAttribute("href")).toBe("/forecast");
+    expect(screen.getByRole("link", { name: "Forecast baru" }).getAttribute("href")).toBe("/forecast/new");
     expect(screen.getByText("Konfigurasi")).toBeDefined();
   });
 

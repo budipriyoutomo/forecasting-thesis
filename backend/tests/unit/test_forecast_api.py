@@ -99,6 +99,8 @@ async def test_create_run_auto_mode(client, auth_headers, smooth_df):
     assert all(len(c["forecast"]) == 7 for c in result["candidates_evaluated"])
     assert body["data"]["run"]["n_pending_selection"] == 1
     assert "ranking_metric" not in body["data"]["run"]
+    assert result["status_reason"] is None
+    assert len(result["history"]) == 24 and set(result["history"][0]) == {"date", "value"}
 
 
 @pytest.mark.asyncio
@@ -148,6 +150,9 @@ async def test_create_run_insufficient_data_ditandai(client, auth_headers, too_s
     assert res.status_code == 201  # run selesai; kegagalan per produk
     assert res.json()["data"]["results"][0]["status"] == "INSUFFICIENT_DATA"
     assert res.json()["data"]["run"]["n_failed"] == 1
+    # CR v3.6 §7.1/§7.2 — alasan gagal & histori aktual ikut di result
+    assert "minimal" in res.json()["data"]["results"][0]["status_reason"]
+    assert len(res.json()["data"]["results"][0]["history"]) == 5
 
 
 @pytest.mark.asyncio
@@ -370,7 +375,15 @@ async def test_list_runs_milik_user(client, auth_headers, smooth_df):
     body = res.json()
     assert body["success"] is True
     assert [r["run_id"] for r in body["data"]] == [run_id]
-    assert set(body["data"][0]) == {"run_id", "status", "horizon", "horizon_unit", "created_at", "created_by"}
+    # CR v3.6 §1 — counts per run (additive) untuk tabel daftar run
+    assert set(body["data"][0]) == {
+        "run_id", "status", "horizon", "horizon_unit", "created_at", "created_by",
+        "n_products", "n_completed", "n_failed", "n_pending_selection", "has_planning",
+    }
+    assert body["data"][0]["n_products"] == 1
+    assert body["data"][0]["n_completed"] == 1
+    assert body["data"][0]["n_pending_selection"] == 0  # mode manual langsung berlaku
+    assert body["data"][0]["has_planning"] is False
 
 
 @pytest.mark.asyncio
@@ -388,7 +401,9 @@ async def test_list_runs_menampilkan_run_user_lain_dengan_pembuat(client, auth_h
 
     assert res.json()["data"] == [
         {"run_id": "rx", "status": "done", "horizon": 3, "horizon_unit": "months",
-         "created_at": None, "created_by": "PPIC Planner"}
+         "created_at": None, "created_by": "PPIC Planner",
+         "n_products": 0, "n_completed": 0, "n_failed": 0, "n_pending_selection": 0,
+         "has_planning": False}
     ]
 
 
@@ -396,3 +411,22 @@ async def test_list_runs_menampilkan_run_user_lain_dengan_pembuat(client, auth_h
 async def test_list_runs_tanpa_token_401(client):
     res = await client.get("/api/v1/forecast/runs")
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_runs_has_planning_dari_proyeksi_stok(client, auth_headers, smooth_df):
+    # CR v3.6 §1 — has_planning = run sudah punya proyeksi stok (pipeline perencanaan).
+    _override([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+    payload = {"product_ids": ["p1"], "horizon": 3, "method": "moving_average"}
+    run_id = (await client.post("/api/v1/forecast/runs", headers=auth_headers, json=payload)).json()["data"]["run"]["run_id"]
+
+    class FakeProjections:
+        async def list_by_run(self, rid):
+            return [object()] if str(rid) == run_id else []
+
+    selection = app.dependency_overrides[get_forecast_selection_service]()
+    selection._projections = FakeProjections()
+
+    res = await client.get("/api/v1/forecast/runs", headers=auth_headers)
+
+    assert res.json()["data"][0]["has_planning"] is True

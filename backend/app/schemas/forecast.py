@@ -24,6 +24,11 @@ class ForecastPointOut(BaseModel):
     upper: float
 
 
+class HistoryPointOut(BaseModel):
+    date: str
+    value: float
+
+
 class ForecastRunSummary(BaseModel):
     run_id: str
     status: str  # PENDING / PROCESSING / COMPLETED / FAILED
@@ -56,6 +61,26 @@ class ForecastResultOut(BaseModel):
     metrics: dict | None = None
     feature_importance: dict | None = None  # Fase 11.2 — RF/XGB
     hyperparameters: dict | None = None
+    # CR v3.6 §7.1/§7.2 — snapshot histori aktual (≤24 periode terakhir) & alasan gagal.
+    # Dibaca dari `metrics` JSONB; run sebelum v3.6 → [] / None.
+    history: list[HistoryPointOut] = []
+    status_reason: str | None = None
+
+
+class ForecastRunListItem(BaseModel):
+    """GET /forecast/runs — satu baris daftar run (CR v3.6 §1: counts additive)."""
+
+    run_id: str
+    status: str
+    horizon: int
+    horizon_unit: str
+    created_at: str | None = None
+    created_by: str | None = None
+    n_products: int = 0
+    n_completed: int = 0
+    n_failed: int = 0
+    n_pending_selection: int = 0
+    has_planning: bool = False
 
 
 class MethodSelectionRequest(BaseModel):

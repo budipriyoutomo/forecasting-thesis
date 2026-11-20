@@ -53,3 +53,14 @@ class SqlDemandHistoryRepository:
             .order_by(DemandHistory.period)
         )
         return list(result.scalars().all())
+
+    async def coverage_by_product_code(self) -> dict[str, tuple[int, object]]:
+        """{product_code: (jumlah periode unik, periode terakhir)} — CR v3.6 §5."""
+        result = await self._session.execute(
+            select(
+                DemandHistory.product_code,
+                func.count(DemandHistory.period.distinct()),
+                func.max(DemandHistory.period),
+            ).group_by(DemandHistory.product_code)
+        )
+        return {code: (n, last) for code, n, last in result.all()}

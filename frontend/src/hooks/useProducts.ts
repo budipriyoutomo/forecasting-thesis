@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { Product, ProductInput } from "@/types/product";
+import type { Product, ProductDemandCoverage, ProductInput } from "@/types/product";
 
 const KEY = ["products"];
 
@@ -15,6 +15,20 @@ export function useProducts() {
     enabled: Boolean(token),
     queryFn: async () => {
       const res = await api.products.list(token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+  });
+}
+
+// CR v3.6 §5 — cakupan histori demand per produk (tabel pemilihan produk sebelum run).
+export function useProductDemandCoverage() {
+  const token = getToken();
+  return useQuery<ProductDemandCoverage[]>({
+    queryKey: ["products", "demand-coverage"],
+    enabled: Boolean(token),
+    queryFn: async () => {
+      const res = await api.products.demandCoverage(token as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data;
     },

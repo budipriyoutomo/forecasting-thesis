@@ -31,6 +31,19 @@ from app.utils.exceptions import (
 )
 
 
+# CR v3.6 §7.1 — histori aktual yang dilihat model disimpan bersama hasil (snapshot saat run)
+HISTORY_POINTS = 24
+
+
+def result_metrics(points, history: list[dict], status_reason: str | None) -> dict:
+    """`forecast_results.metrics`: ringkasan forecast + histori aktual + alasan gagal (CR v3.6)."""
+    return {
+        **(forecast_summary(points) or {}),
+        "history": history[-HISTORY_POINTS:],
+        "status_reason": status_reason,
+    }
+
+
 def forecast_summary(points) -> dict | None:
     if not points:
         return None
@@ -92,7 +105,7 @@ class ForecastRunService:
 
         results = []
         for product in products:
-            record = await self._forecast_one(product, horizon, method, enabled, options)
+            record, history = await self._forecast_one(product, horizon, method, enabled, options)
             results.append(
                 ForecastResult(
                     run_id=run.id,
@@ -108,7 +121,7 @@ class ForecastRunService:
                     mase=record.mase,
                     explanation=record.explanation,
                     forecast_data=[p.__dict__ for p in record.forecast] if record.forecast else None,
-                    metrics=forecast_summary(record.forecast),
+                    metrics=result_metrics(record.forecast, history, record.status_reason),
                     feature_importance=record.feature_importance,
                     hyperparameters=record.hyperparameters,
                 )
@@ -136,7 +149,10 @@ class ForecastRunService:
             [{"date": str(r.period), "quantity": float(r.actual)} for r in rows],
             columns=["date", "quantity"],
         )
-        return forecast_service.run_forecast_for_product(
+        history = sorted(
+            ({"date": str(r.period), "value": float(r.actual)} for r in rows), key=lambda h: h["date"]
+        )
+        record = forecast_service.run_forecast_for_product(
             df,
             horizon,
             requested_method=method,
@@ -145,6 +161,7 @@ class ForecastRunService:
             if self._external
             else options,
         )
+        return record, history
 
     async def get_run(self, user_id: str, run_id: str):
         run = await self._require_run(user_id, run_id)

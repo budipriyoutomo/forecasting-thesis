@@ -18,7 +18,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-DISPLAY_METRICS = ("mad", "mfe", "mse", "mape")  # urutan baku tampilan
+# Urutan baku metrik tampil pengujian peramalan: MAD, MFE, MAPE (keputusan user 21 Nov 2026).
+# MSE & MASE tetap DIHITUNG & disimpan di forecast_results — hanya tidak ditampilkan.
+DISPLAY_METRICS = ("mad", "mfe", "mape")
+
+
+def effective_display_metrics(stored) -> list[str]:
+    """Metrik tampil efektif: baris lama bisa memuat "mse"/"mase" → disaring;
+    kosong/NULL → semua DISPLAY_METRICS."""
+    kept = [m for m in DISPLAY_METRICS if m in set(stored or ())]
+    return kept or list(DISPLAY_METRICS)
 
 
 class ForecastSetting(Base):

@@ -13,7 +13,7 @@ const candidates: ForecastCandidate[] = [
   { method: "random_forest", mad: 9.9, mfe: 1.2, mse: 160.2, mape: 9.75, mase: null, forecast: POINT },
 ];
 
-const ALL = ["mad", "mfe", "mse", "mape"] as const;
+const ALL = ["mad", "mfe", "mape"] as const;
 
 async function buka() {
   await userEvent.click(screen.getByRole("button", { name: /perbandingan metode/i }));
@@ -43,7 +43,7 @@ describe("CandidatesTable (Fase 11.15 — tanpa pemenang)", () => {
     expect(headers).toEqual(["Metode", "MAD", "MAPE"]);
     expect(screen.queryByText(/rank/i)).toBeNull();
     expect(screen.getByText("11.42%")).toBeDefined();
-    expect(screen.queryByText("240.40")).toBeNull(); // MSE tidak dicentang
+    expect(screen.queryByText("240.40")).toBeNull(); // MSE bukan metrik tampil
   });
 
   it("MFE ditampilkan bertanda (arah bias)", async () => {
@@ -92,5 +92,34 @@ describe("CandidatesTable (Fase 11.15 — tanpa pemenang)", () => {
     );
 
     expect(container.innerHTML).toBe("");
+  });
+});
+
+
+describe("CandidatesTable — hanya MAD, MFE, MAPE + tooltip (21 Nov 2026)", () => {
+  it("MSE & MASE tidak pernah tampil, walau ada di pengaturan lama", async () => {
+    const rows = [
+      ...candidates,
+      { method: "lstm", mad: 1, mfe: 0, mse: 1, mape: 30, mase: 1.3, forecast: POINT },
+    ];
+    render(
+      <CandidatesTable candidates={rows} selectedMethod="xgboost" displayMetrics={["mase", "mse", "mape"] as never} />,
+    );
+    await buka();
+
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Metode", "MAPE"]);
+    expect(screen.queryByText(/naive/i)).toBeNull();
+    expect(screen.getByText("Cukup")).toBeDefined(); // label MAPE Lewis 30%
+  });
+
+  it("setiap header metrik punya tombol definisi", async () => {
+    render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={[...ALL]} />);
+    await buka();
+
+    for (const label of ["MAD", "MFE", "MAPE"]) {
+      expect(screen.getByRole("button", { name: `Definisi ${label}` })).toBeDefined();
+    }
+    await userEvent.hover(screen.getByRole("button", { name: "Definisi MFE" }));
+    expect((await screen.findAllByText(/bias/i)).length).toBeGreaterThan(0);
   });
 });

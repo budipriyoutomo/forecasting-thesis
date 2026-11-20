@@ -1,7 +1,11 @@
 // Master data Pengaturan Forecast (Fase 11.2a).
 // Fase 11.15: tidak ada metode pemenang — `display_metrics` hanya mengatur metrik yang
 // DITAMPILKAN di hasil forecast; planner memilih metode per produk.
-export type DisplayMetric = "mad" | "mfe" | "mse" | "mape";
+// CR v3.6 §2: "mase" (metrik utama thesis) ditambahkan; kolom MASE selalu tampil di FE walau
+// tidak dicentang (lihat lib/metrics.ts metricColumns).
+// Pengujian peramalan hanya MAD, MFE, MAPE (keputusan user 21 Nov 2026). MSE & MASE tetap
+// ada di respons ForecastResult/Candidate tapi tidak ditampilkan.
+export type DisplayMetric = "mad" | "mfe" | "mape";
 
 export interface ForecastSettings {
   display_metrics: DisplayMetric[];

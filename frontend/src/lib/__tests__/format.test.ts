@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, formatMoney, formatNumber, formatPercent } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatNumber, formatPercent, formatQty } from "@/lib/format";
 
 // Nilai Decimal datang dari backend sebagai string (AGENTS.md §4), jadi formatter
 // wajib menerima string apa adanya tanpa pemanggil perlu mengonversi lebih dulu.
@@ -67,5 +67,25 @@ describe("formatDate", () => {
   it("mengembalikan em dash untuk nilai kosong atau tidak valid", () => {
     expect(formatDate(null)).toBe("—");
     expect(formatDate("bukan tanggal")).toBe("—");
+  });
+});
+
+// CR v3.6 §8.7 — qty selalu dengan satuan
+describe("formatQty", () => {
+  it("angka + UoM", () => {
+    expect(formatQty("1200.5000", "kg")).toBe("1.200,5 kg");
+    expect(formatQty(3, "PCS")).toBe("3 PCS");
+  });
+
+  it("tanpa UoM → angka saja; null → —", () => {
+    expect(formatQty(3, null)).toBe("3");
+    expect(formatQty(null, "kg")).toBe("—");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("tanggal + jam id-ID; null → —", () => {
+    expect(formatDateTime("2026-11-20T08:30:00Z")).toMatch(/2026/);
+    expect(formatDateTime(null)).toBe("—");
   });
 });

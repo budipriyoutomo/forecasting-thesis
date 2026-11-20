@@ -52,6 +52,8 @@ export interface DataTableProps<TData, TValue> {
   emptyMessage?: string;
   /** Kontrol tambahan di baris alat, sebelah kanan kotak pencarian. */
   toolbar?: ReactNode;
+  /** Kolom yang disembunyikan di awal (id/accessorKey → false); user bisa menampilkannya lewat "Kolom". */
+  initialColumnVisibility?: VisibilityState;
 }
 
 export function DataTable<TData, TValue>({
@@ -63,10 +65,11 @@ export function DataTable<TData, TValue>({
   enableColumnVisibility = false,
   emptyMessage = "Tidak ada data.",
   toolbar,
+  initialColumnVisibility = {},
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialColumnVisibility);
 
   const table = useReactTable({
     data,

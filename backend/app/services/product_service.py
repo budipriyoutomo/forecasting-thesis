@@ -32,12 +32,25 @@ class _ProductRepository(Protocol):
 
 
 class ProductService:
-    def __init__(self, repo: _ProductRepository, model_factory: Callable[..., object] = Product):
+    def __init__(self, repo: _ProductRepository, model_factory: Callable[..., object] = Product, demand=None):
         self._repo = repo
         self._model = model_factory
+        self._demand = demand  # CR v3.6 §5 — repo demand_history, hanya untuk cakupan histori
 
     async def list(self):
         return await self._repo.list()
+
+    async def demand_coverage(self) -> list[dict]:
+        """Jumlah periode histori demand & periode terakhir per produk (CR v3.6 §5).
+
+        Dicocokkan lewat `product_code` (product_id di demand_history bisa null —
+        RECONCILIATION #14). Produk tanpa histori → 0 / None."""
+        coverage = await self._demand.coverage_by_product_code() if self._demand else {}
+        rows = []
+        for p in await self._repo.list():
+            n, last = coverage.get(p.code, (0, None))
+            rows.append({"product_id": str(p.id), "n_periods": n, "last_period": last.isoformat() if last else None})
+        return rows
 
     async def get(self, product_id: str):
         product = await self._repo.get_by_id(product_id)

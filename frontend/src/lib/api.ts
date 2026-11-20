@@ -36,7 +36,7 @@ import type {
 } from "@/types/planning";
 import type { ForecastSettings, ForecastSettingsInput } from "@/types/forecastSettings";
 import type { Override, OverrideInput } from "@/types/override";
-import type { Product, ProductInput } from "@/types/product";
+import type { Product, ProductDemandCoverage, ProductInput } from "@/types/product";
 import type {
   WarehouseConfig,
   WarehouseCapacityInput,
@@ -116,6 +116,10 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),
+
+    // CR v3.6 §5 — jumlah periode histori demand & periode terakhir per produk
+    demandCoverage: (token: string): Promise<ApiResponse<ProductDemandCoverage[]>> =>
+      request<ProductDemandCoverage[]>("/api/v1/products/demand-coverage", authed(token)),
 
     create: (input: ProductInput, token: string): Promise<ApiResponse<Product>> =>
       request<Product>("/api/v1/products", {

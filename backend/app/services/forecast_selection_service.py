@@ -97,10 +97,18 @@ class RunSelectionOutcome:
 
 
 class ForecastSelectionService:
-    def __init__(self, forecast_repo, override_repo, override_service):
+    def __init__(self, forecast_repo, override_repo, override_service, projections=None):
         self._repo = forecast_repo
         self._overrides = override_repo
         self._override_service = override_service
+        # CR v3.6 §1 — repo proyeksi stok, opsional: hanya untuk flag `has_planning` daftar run.
+        self._projections = projections
+
+    async def has_planning(self, run_id: str) -> bool:
+        """Run sudah menjalankan pipeline perencanaan (ada proyeksi stok tersimpan)."""
+        if self._projections is None:
+            return False
+        return bool(await self._projections.list_by_run(str(run_id)))
 
     # ── Adapter baca untuk hilir ──
 

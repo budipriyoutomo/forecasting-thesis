@@ -50,3 +50,17 @@ async def test_list_unnormalized_dan_normalized_keys():
     assert "EXTRACT(day FROM demand_history.period) =" in _sql(s.execute.await_args.args[0])
     await repo.flush()
     s.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_coverage_by_product_code():
+    # CR v3.6 §5 — jumlah periode unik & periode terakhir per kode produk
+    s = MagicMock()
+    result = MagicMock()
+    result.all.return_value = [("A", 14, date(2026, 10, 1))]
+    s.execute = AsyncMock(return_value=result)
+
+    assert await SqlDemandHistoryRepository(s).coverage_by_product_code() == {"A": (14, date(2026, 10, 1))}
+    sql = _sql(s.execute.await_args.args[0])
+    assert "count(DISTINCT demand_history.period)" in sql
+    assert "GROUP BY demand_history.product_code" in sql

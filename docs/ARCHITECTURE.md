@@ -80,8 +80,9 @@ forecastiq/
 │   │   │   │   ├── boms/               ← CRUD Bill of Materials
 │   │   │   │   ├── warehouse/          ← master kapasitas gudang (pallet/dus/kombinasi)
 │   │   │   │   ├── cost-templates/     ← master template biaya (S, H, overhead, depresiasi aset)
-│   │   │   │   ├── forecast/new/       ← upload + konfigurasi
-│   │   │   │   ├── forecast/[id]/      ← hasil forecast per run (produk-only; reorder & validasi gudang menyusul)
+│   │   │   │   ├── forecast/           ← daftar run (CR v3.6 §1)
+│   │   │   │   ├── forecast/new/       ← wizard Forecast baru: data demand → (config/) produk & parameter → generate
+│   │   │   │   ├── forecast/runs/[id]/ ← detail run, stepper Forecast → Pilih metode → Perencanaan → Reorder & biaya (?step=)
 │   │   │   │   ├── inventory/          ← stok ERP & pemakaian aktual (input)
 │   │   │   │   ├── material-arrivals/  ← kedatangan material hasil ROP per run (read-only, 20 Nov 2026)
 │   │   │   │   └── settings/
@@ -283,7 +284,7 @@ forecastiq/
 | selection_mode | VARCHAR(10) | `auto` (comparative) / `manual` |
 | candidates_evaluated | JSONB | `[{method, mad, mfe, mse, mape, mase, forecast, explanation, feature_importance, hyperparameters}]` — semua metode yang dijalankan. `forecast` (deret per metode) sejak Fase 11.15 — dipakai saat planner memilih metode; run lama tanpa `forecast` tidak bisa ganti metode |
 | mad / mfe / mse / mape | NUMERIC, nullable | metrik akurasi metode terpilih |
-| mase | NUMERIC, nullable | metrik tambahan opsional (lihat `RECONCILIATION.md` Keputusan Terbuka v3.0 poin 3), tidak ditampilkan default di UI thesis |
+| mase | NUMERIC, nullable | dihitung bila `COMPUTE_MASE`; disimpan tapi **tidak ditampilkan** di UI (21 Nov 2026: metrik tampil hanya MAD, MFE, MAPE) |
 | explanation | TEXT | penjelasan bahasa natural |
 | forecast_data | JSONB, nullable | `[{date, value, lower, upper}]` — mode manual / run lama. Mode otomatis (Fase 11.15) NULL; deret berlaku diambil dari kandidat pilihan planner |
 | metrics | JSONB | `{avg_forecast, trend_direction, trend_pct, gap_vs_existing_pct, ...}` |
@@ -373,7 +374,7 @@ Master data Pengaturan Forecast — **satu baris global** (`CHECK id = 1`). Tanp
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | id | SMALLINT | PK, selalu 1 |
-| display_metrics | VARCHAR(10)[], nullable | Fase 11.15 — metrik yang **ditampilkan** di hasil forecast (checkbox, ⊂ `mad`/`mfe`/`mse`/`mape`, urutan baku). NULL = semua. Bukan penentu pemenang — `ranking_metric` di-drop (migration `d7e8f9a0b1c2`) |
+| display_metrics | VARCHAR(10)[], nullable | Fase 11.15 — metrik yang **ditampilkan** di hasil forecast (checkbox, ⊂ `mad`/`mfe`/`mape`, urutan baku — 21 Nov 2026; nilai lama `mse`/`mase` disaring saat dibaca). NULL = semua. Bukan penentu pemenang — `ranking_metric` di-drop (migration `d7e8f9a0b1c2`) |
 | enabled_methods | VARCHAR(50)[], nullable | metode aktif (kunci `MODEL_REGISTRY`, terurut). NULL = seluruh metode terdaftar; array kosong ditolak CHECK. Pengganti env `FORECAST_ENGINES_ENABLED` |
 | es_alpha_grid, es_alpha_metric, ml_grid_search, ml_winsorize, service_level_pct, eoq_method | — | Fase 11.2/11.4, lihat §6.10 |
 | ma_window | SMALLINT | 19 Nov 2026 — window Moving Average (CHECK 1–12), default 3. Pengganti env `MOVING_AVERAGE_WINDOW`; nilai yang dipakai tercatat di `candidates_evaluated[].hyperparameters.window` |
@@ -477,8 +478,9 @@ GET    /api/v1/uploads/{session_id}       # API-only (CR v3.5 §5.2): FE memakai
 GET    /api/v1/uploads
 
 POST   /api/v1/forecast/runs              # trigger forecast run (horizon, method opsional)
-GET    /api/v1/forecast/runs                  # daftar SEMUA run (semua user, CR v3.5 §3.4), terbaru dulu (?limit=, maks 200) + `created_by` (nama, fallback email) — 20 Nov 2026
-GET    /api/v1/forecast/runs/{run_id}
+GET    /api/v1/forecast/runs                  # daftar SEMUA run (semua user, CR v3.5 §3.4), terbaru dulu (?limit=, maks 200) + `created_by` (nama, fallback email) — 20 Nov 2026; CR v3.6 §1 + n_products, n_completed, n_failed, n_pending_selection, has_planning (ada proyeksi stok)
+GET    /api/v1/forecast/runs/{run_id}         # CR v3.6 §7: tiap result + `history` [{date,value}] (≤24 periode terakhir, snapshot saat run, disimpan di metrics JSONB) & `status_reason` (alasan gagal)
+GET    /api/v1/products/demand-coverage       # CR v3.6 §5 — [{product_id, n_periods, last_period}] cakupan histori demand per produk (pemilihan produk sebelum run)
 GET    /api/v1/forecast/results?product_id=...
 POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; role selain admin/ppic → 403 AUTH_FORBIDDEN (`forecast.select`)
 POST   /api/v1/forecast/runs/{run_id}/selection        # Fase 11.15 — satu metode untuk semua produk di run {method, reason} → {n_selected, skipped_product_ids, results}; produk tanpa metode itu dilewati
@@ -495,7 +497,7 @@ DELETE /api/v1/warehouse/config/{id}                # hapus (admin)
 GET    /api/v1/forecast/runs/{run_id}/warehouse-validation
 
 GET    /api/v1/forecast-settings                   # pengaturan forecast + available_methods (semua role; default semua metrik & semua metode bila belum disimpan)
-PUT    /api/v1/forecast-settings                   # ubah display_metrics & enabled_methods (admin); display_metrics di luar mad|mfe|mse|mape atau [] → 422; enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; field absen = tidak diubah; ma_window bukan bilangan bulat 1–12 → 422 (19 Nov 2026)
+PUT    /api/v1/forecast-settings                   # ubah display_metrics & enabled_methods (admin); display_metrics di luar mad|mfe|mape atau [] → 422; enabled_methods [] → 422; nama metode tak dikenal → 400 UNSUPPORTED_FORECAST_METHOD; field absen = tidak diubah; ma_window bukan bilangan bulat 1–12 → 422 (19 Nov 2026)
 GET    /api/v1/cost-templates                      # daftar template biaya
 GET    /api/v1/cost-templates/active               # template aktif (404 COST_TEMPLATE_NOT_FOUND bila belum ada)
 GET    /api/v1/cost-templates/{id}                 # detail + items
@@ -513,6 +515,7 @@ GET    /api/v1/overrides?target_id=...
 GET    /api/v1/overrides/reorder?run_id=...&material_id=...   # v3.3 — riwayat per (run, material)
 
 GET    /api/v1/dashboard/summary         # latest_run = run terbaru organisasi; latest_run.n_products = jumlah produk di run (CR v3.5 §4, dulu n_materials); n_materials level atas = jumlah master material
+                                         # CR v3.6 (additive): latest_run.{avg_mad, avg_mfe (21 Nov 2026), created_at, created_by, n_pending_selection, total_inventory_cost_baseline, savings_pct}; warehouse.products_over [{product_id, code, name, excess_qty}] (maks 10); attention {n_failed_products, n_missing_cost_data, n_shortage_periods}
 ```
 
 > **Perubahan 2 Oktober 2026 (Konsolidasi Master Data):**
@@ -590,7 +593,8 @@ Post-MVP (Opsi B): `forecast_runs.approval_status` (`DRAFT`/`FINAL`), `approved_
 
 Frontend: halaman tetap bisa dibuka semua role (baca); tombol tulis tidak dirender tanpa izin;
 `/forecast/new` & `/forecast/new/config` menampilkan "Hanya PPIC/Admin yang dapat menjalankan forecast"
-+ link ke Kedatangan Material untuk Purchasing/Viewer. Middleware (`src/middleware.ts`) memproteksi
++ link ke daftar forecast run (`/forecast`, CR v3.6) untuk Purchasing/Viewer; detail run `/forecast/runs/[id]`
+terbaca semua role dengan tombol aksi disembunyikan `useCan`. Middleware (`src/middleware.ts`) memproteksi
 setiap prefix `href` di `lib/navigation.ts` — halaman baru di sidebar otomatis butuh login.
 Sesi berakhir (CR v3.5 §5.3): response **401 pada request yang membawa Bearer token** (`lib/api.ts` `request()`,
 `lib/download.ts`) → `lib/session.ts` `handleSessionExpired()` menghapus cookie dan full-navigate ke

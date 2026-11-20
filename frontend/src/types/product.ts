@@ -17,3 +17,10 @@ export interface ProductInput {
   unit: string;
   selling_price?: number | null;
 }
+
+// GET /products/demand-coverage (CR v3.6 §5) — cakupan histori demand per produk
+export interface ProductDemandCoverage {
+  product_id: string;
+  n_periods: number;
+  last_period: string | null;
+}

@@ -1071,3 +1071,31 @@ Dokumen lengkap: `docs/Change Request v3.5.md`.
   OpenAPI `internal` + `x-internal: true`. Endpoint tidak disembunyikan dari schema supaya test kelengkapan RBAC
   (`test_rbac.py`) tetap mencakupnya; RBAC tetap `master.write`. Input harian master data lewat form CRUD.
 
+
+
+## UI/UX Modernisasi & Kelengkapan Informasi — CR v3.6 (21 Nov 2026)
+
+Sumber: `docs/Change Request v3.6.md`. Keputusan §9 dijalankan dengan **usulan default** CR (status CR masih Draft — menunggu konfirmasi Budi):
+
+| # | Keputusan | Diterapkan |
+|---|---|---|
+| 1 | Route `/forecast` (daftar) + `/forecast/runs/[id]` (detail) + wizard `/forecast/new` | Ya. Placeholder kosong `forecast/[id]/` dihapus. |
+| 2 | "Hitung reorder" & "Cek kapasitas" keluar dari alur utama | Ya. Reorder parsial di menu "⋯ Hitung ulang sebagian". **Koreksi CR:** pipeline perencanaan ternyata *tidak* mencakup validasi kapasitas gudang produk jadi — penggantinya: langkah 4 memuat otomatis `GET /forecast/runs/{id}/warehouse-validation` (GET yang sudah ada, idempoten), bukan tombol. |
+| 3 | MASE wajib di perbandingan metode | Ya — `display_metrics` enum + `"mase"` (paling depan, default aktif); FE `metricColumns()` selalu menyertakan MASE; checkbox di Pengaturan Forecast terkunci. Baris tersimpan lama tanpa `mase` tetap valid. |
+| 4 | Indikator MASE < 1 bukan "peringkat" | Ya — badge absolut per metode ("lebih baik / tidak lebih baik dari naive"), urutan kandidat tetap dari backend (Fase 11.15 utuh). |
+| 5 | Histori aktual di result | Ya — `ForecastResult.history` (≤24 periode terakhir) **disimpan sebagai snapshot saat run** di `forecast_results.metrics` JSONB (tanpa migrasi), bersama `status_reason`. Run sebelum v3.6 → `[]`/`null`. |
+| 6 | Warna brand | **Belum** — menunggu input Budi (§8.1 tidak dikerjakan). |
+
+**Metrik pengujian peramalan — DIPUTUSKAN user 21 Nov 2026: hanya MAD, MFE, MAPE yang ditampilkan.** Ini menggantikan keputusan CR v3.6 §2 / §9 #3–#4 (MASE wajib tampil) dan kembali dekat ke Rekonsiliasi v3.0 Keputusan Terbuka #3 (metrik thesis), minus MSE. Hari yang sama sempat ada keputusan "hapus MAPE" yang langsung dibatalkan — tidak ada sisa perubahannya.
+- **Tampilan saja:** `display_metrics` enum = `mad, mfe, mape` (default semua). PUT berisi `mse`/`mase` → 422; baris tersimpan lama yang memuatnya disaring `effective_display_metrics` (kosong → default). FE: kolom tabel ringkasan produk = MAD, MFE, MAPE; perbandingan metode sesuai checkbox; badge MASE "naive" & checkbox MASE terkunci dihapus.
+- **Tetap dihitung & disimpan:** `mse`, `mase` (kolom `forecast_results`, `candidates_evaluated[]`, field API, `avg_mase` dashboard, kolom `mase` di export Excel) — data tidak dibuang, test golden thesis tetap valid.
+- **Tile akurasi dashboard:** dari rata-rata MAD, MFE, MAPE run terakhir, tampil yang error-nya paling kecil (MFE dibandingkan |nilai|, bias terdekat 0) beserta namanya; dua lainnya di hint. Dashboard menambah `latest_run.avg_mad` & `avg_mfe` (additive). Catatan: satuannya berbeda (MAD & MFE dalam unit produk, MAPE dalam %), jadi "terkecil" adalah perbandingan angka apa adanya sesuai permintaan user, bukan perbandingan setara.
+- Ranking antar metode tetap tidak ada (Fase 11.15).
+
+Keputusan turunan:
+- **Stepper** (`lib/runSteps.ts`) diturunkan dari data run + ada/tidaknya proyeksi stok. Perencanaan terkunci hanya bila *belum ada satu pun* produk dengan metode berlaku; bila sebagian pending, perencanaan tetap boleh (produk pending dilewati — perilaku Fase 11.15) dan langkah 2 ditandai "perlu tindakan".
+- **Daftar run counts** dihitung lewat `ForecastSelectionService` per run (N+1 query, limit default 50) — cukup untuk skala single-tenant; agregasi SQL bila daftar run membesar.
+- **Dashboard** baseline TIC & savings lewat `CostService.get_cost_summary` (rumus tidak diduplikasi); bila gagal (mis. BOM tidak ada) field `null`, dashboard tetap jalan.
+- **`GET /products/demand-coverage`** baru (baca, semua role) untuk kolom histori di pemilihan produk.
+- §7.4 (penanda override di chart/qty) **tidak berlaku**: tidak ada override *nilai* forecast — override `forecast_result` = pemilihan metode, yang sudah tampil (sumber & alasan pilihan).
+- §8.4 `StatTile.trend` tersedia sebagai prop, belum di-wire (BE belum mengirim delta run sebelumnya); sparkline tidak dibuat.

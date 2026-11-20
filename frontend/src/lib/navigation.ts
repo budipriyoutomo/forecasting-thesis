@@ -51,7 +51,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operasional",
     items: [
       { href: "/inventory", label: "Persediaan Material", icon: Archive },
-      { href: "/forecast/new", label: "Forecast", icon: LineChart },
+      // CR v3.6 §1 — daftar run; forecast baru & detail run adalah sub-halamannya.
+      { href: "/forecast", label: "Forecast", icon: LineChart },
       { href: "/material-arrivals", label: "Kedatangan Material", icon: Truck },
     ],
   },
@@ -61,16 +62,29 @@ export function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// Label untuk segmen di bawah menu — halaman yang tidak punya entri sidebar sendiri.
-const SUB_PAGE_LABELS: Record<string, string> = {
-  "/forecast/new/config": "Konfigurasi",
-};
-
 export interface Crumb {
   label: string;
   /** Tanpa href berarti jejak tidak bisa diklik: label grup, atau halaman saat ini. */
   href?: string;
 }
+
+// Jejak untuk halaman di bawah menu yang tidak punya entri sidebar sendiri. Urutan
+// penting: pola lebih spesifik dulu. Segmen dinamis (id run) dicocokkan dengan regex.
+const SUB_PAGES: { match: RegExp; trail: Crumb[] }[] = [
+  {
+    match: /^\/forecast\/new\/config$/,
+    trail: [{ label: "Forecast baru", href: "/forecast/new" }, { label: "Konfigurasi" }],
+  },
+  { match: /^\/forecast\/new$/, trail: [{ label: "Forecast baru" }] },
+  { match: /^\/forecast\/runs\/[^/]+$/, trail: [{ label: "Detail run" }] },
+];
+
+/** Label sub-halaman (dipakai test & judul) — kompatibel dengan peta lama. */
+export const SUB_PAGE_LABELS: Record<string, string> = {
+  "/forecast/new": "Forecast baru",
+  "/forecast/new/config": "Konfigurasi",
+  "/forecast/runs/[id]": "Detail run",
+};
 
 export function breadcrumbsFor(pathname: string): Crumb[] {
   for (const group of NAV_GROUPS) {
@@ -82,8 +96,8 @@ export function breadcrumbsFor(pathname: string): Crumb[] {
       if (group.label !== "Utama") crumbs.push({ label: group.label });
       crumbs.push({ label: item.label, href: item.href });
 
-      const sub = SUB_PAGE_LABELS[pathname];
-      if (sub) crumbs.push({ label: sub });
+      const sub = SUB_PAGES.find((p) => p.match.test(pathname));
+      if (sub) crumbs.push(...sub.trail);
 
       return crumbs;
     }

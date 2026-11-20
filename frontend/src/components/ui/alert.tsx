@@ -11,6 +11,8 @@ const alertVariants = cva(
         default: "bg-background text-foreground",
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        // CR v3.6 §8.2 — peringatan non-fatal (prasyarat belum terpenuhi, data biaya kurang).
+        warning: "border-warning/50 bg-warning/10 text-foreground [&>svg]:text-warning",
       },
     },
     defaultVariants: {

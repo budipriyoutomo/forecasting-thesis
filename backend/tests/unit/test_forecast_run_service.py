@@ -320,3 +320,27 @@ async def test_list_runs_semua_user_terbaru_dulu():
     for rid, uid in (("r1", "u1"), ("r2", "u2"), ("r3", "u1")):
         repo.runs[rid] = SimpleNamespace(id=rid, user_id=uid)
     assert [r.id for r, _ in await service.list_runs()] == ["r3", "r2", "r1"]
+
+
+# ── CR v3.6 §7.1/§7.2 — histori aktual & alasan gagal disimpan di `metrics` ──
+@pytest.mark.asyncio
+async def test_hasil_menyimpan_histori_aktual_maks_24(smooth_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=3, horizon_unit="months", method="moving_average")
+
+    history = results[0].metrics["history"]
+    assert len(history) == 24  # fixture 40 baris → 24 terakhir
+    assert history[-1] == {"date": str(smooth_df["date"].iloc[-1]), "value": float(smooth_df["quantity"].iloc[-1])}
+    assert results[0].metrics["status_reason"] is None
+    assert "avg_forecast" in results[0].metrics  # ringkasan lama tetap ada
+
+
+@pytest.mark.asyncio
+async def test_hasil_gagal_menyimpan_alasan(too_short_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(too_short_df)})
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=3, horizon_unit="months", method=None)
+
+    assert "minimal" in results[0].metrics["status_reason"]
+    assert len(results[0].metrics["history"]) == 5

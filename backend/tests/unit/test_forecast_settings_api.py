@@ -48,7 +48,10 @@ async def test_get_default(client):
     assert res.status_code == 200
     body = res.json()
     assert body["success"] is True
-    assert body["data"]["display_metrics"] == ["mad", "mfe", "mse", "mape"]
+    # CR v3.6 §2 — MASE (metrik utama thesis) ikut default, paling depan
+    # CR v3.6 §2 — MASE (metrik utama thesis) ikut default, paling depan
+    # Keputusan user 21 Nov 2026 — pengujian peramalan hanya MAD, MFE, MAPE
+    assert body["data"]["display_metrics"] == ["mad", "mfe", "mape"]
     assert "ranking_metric" not in body["data"]
     assert body["data"]["updated_at"] is None
     assert body["data"]["enabled_methods"] is None  # belum diatur = semua metode
@@ -91,7 +94,7 @@ async def test_put_tanpa_token_401(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("metrics", [[], ["rmse"], ["mfe_abs"], [""], "mad"])
+@pytest.mark.parametrize("metrics", [[], ["rmse"], ["mfe_abs"], [""], "mad", ["mse"], ["mase"]])
 async def test_put_display_metrics_tidak_valid_422(client, metrics):
     repo = _override()
     res = await client.put(BASE, json={"display_metrics": metrics}, headers=_headers("admin"))
@@ -239,3 +242,14 @@ async def test_put_window_moving_average_invalid_422(client, window):
     res = await client.put(BASE, json={"ma_window": window}, headers=_headers("admin"))
     assert res.status_code == 422
     assert repo.saved == 0
+
+
+@pytest.mark.asyncio
+async def test_get_baris_lama_berisi_mse_mase_disaring(client):
+    # Baris tersimpan sebelum 21 Nov 2026 bisa memuat "mse"/"mase" → disaring, bukan 500
+    from tests.unit.test_forecast_settings_service import _factory as factory
+
+    _override(factory(display_metrics=["mase", "mad", "mse"]))
+    res = await client.get(BASE, headers=_headers("viewer"))
+    assert res.status_code == 200
+    assert res.json()["data"]["display_metrics"] == ["mad"]

@@ -120,7 +120,7 @@ def get_material_service(session: AsyncSession = Depends(get_db)) -> MaterialSer
 
 
 def get_product_service(session: AsyncSession = Depends(get_db)) -> ProductService:
-    return ProductService(SqlProductRepository(session))
+    return ProductService(SqlProductRepository(session), demand=SqlDemandHistoryRepository(session))
 
 
 def get_bom_service(session: AsyncSession = Depends(get_db)) -> BomService:
@@ -277,6 +277,10 @@ def get_dashboard_service(session: AsyncSession = Depends(get_db)) -> DashboardS
         override_repo=SqlOverrideRepository(session),
         warehouse_repo=SqlWarehouseValidationRepository(session),
         inventory_metrics_repo=SqlInventoryMetricsRepository(session),
+        # CR v3.6 §3 — produk melebihi kapasitas, periode kekurangan, TIC baseline
+        products=SqlProductRepository(session),
+        projections=SqlStockProjectionRepository(session),
+        cost_service=get_cost_service(session),
     )
 
 
@@ -284,7 +288,10 @@ def _selected_forecast(session: AsyncSession) -> ForecastSelectionService:
     """Hasil forecast dengan metode pilihan planner diterapkan (Fase 11.15) — dipakai
     endpoint forecast & SEMUA service hilir sebagai `forecast_repo`."""
     return ForecastSelectionService(
-        SqlForecastRepository(session), SqlOverrideRepository(session), get_override_service(session)
+        SqlForecastRepository(session),
+        SqlOverrideRepository(session),
+        get_override_service(session),
+        projections=SqlStockProjectionRepository(session),
     )
 
 

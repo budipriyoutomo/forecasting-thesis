@@ -46,6 +46,8 @@ describe("MaterialArrivalsPage", () => {
     expect(await screen.findByText("BTL-WHITE — Bottle White")).toBeDefined();
     expect(projection).toHaveBeenCalledWith("r2", "tok");
     expect(screen.queryByRole("button", { name: /import/i })).toBeNull(); // read-only
+    // CR v3.6 §1 — tautan ke detail run
+    expect(screen.getByRole("link", { name: /lihat detail run/i }).getAttribute("href")).toBe("/forecast/runs/r2");
   });
 
   it("ganti run memuat proyeksi run itu", async () => {
@@ -53,7 +55,9 @@ describe("MaterialArrivalsPage", () => {
     const projection = vi.spyOn(api.planning, "projection").mockResolvedValue({ success: true, data: [] } as never);
     renderPage();
 
-    await userEvent.selectOptions(await screen.findByLabelText(/forecast run/i), "r1");
+    // CR v3.6 §8.3 — RunPicker memakai ui/select (Radix): buka dulu, lalu pilih opsi
+    await userEvent.click(await screen.findByRole("combobox", { name: /forecast run/i }));
+    await userEvent.click((await screen.findAllByRole("option"))[1]);
     await waitFor(() => expect(projection).toHaveBeenCalledWith("r1", "tok"));
   });
 
@@ -64,6 +68,7 @@ describe("MaterialArrivalsPage", () => {
     vi.spyOn(api.planning, "projection").mockResolvedValue({ success: true, data: [] } as never);
     renderPage();
 
+    await userEvent.click(await screen.findByRole("combobox", { name: /forecast run/i }));
     const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
     expect(options[0]).toMatch(/oleh Planner PPIC/);
     expect(options[1]).not.toMatch(/oleh/);

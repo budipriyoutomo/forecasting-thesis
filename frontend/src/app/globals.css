@@ -26,6 +26,11 @@
        terang, memenuhi ambang teks WCAG AA. */
     --success: 142 72% 29%;
     --success-foreground: 0 0% 100%;
+    /* CR v3.6 §8.2 — status "peringatan", pengganti text-amber-* hardcode. Teks
+       `text-warning` di atas latar terang ≥ 4,5:1 (WCAG AA); badge memakai teks
+       putih di atas amber gelap. */
+    --warning: 32 95% 36%;
+    --warning-foreground: 0 0% 100%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
@@ -70,6 +75,9 @@
     /* Di-step ulang untuk latar gelap, bukan nilai terang yang dibalik. Kontras 11,45:1. */
     --success: 142 69% 58%;
     --success-foreground: 222.2 47.4% 11.2%;
+    /* Di-step ulang untuk latar gelap. */
+    --warning: 38 92% 58%;
+    --warning-foreground: 222.2 47.4% 11.2%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;

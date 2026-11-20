@@ -2,48 +2,27 @@
 
 import { useState } from "react";
 
-import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
-import { CandidatesTable } from "@/components/forecast/CandidatesTable";
-import { ExogUsage } from "@/components/forecast/ExogUsage";
-import { FeatureImportance } from "@/components/forecast/FeatureImportance";
-import { ForecastChart } from "@/components/forecast/ForecastChart";
-import { ForecastQtyTable } from "@/components/forecast/ForecastQtyTable";
+import { ProductResultSheet } from "@/components/forecast/ProductResultSheet";
+import { ProductResultsTable } from "@/components/forecast/ProductResultsTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatNumber } from "@/lib/format";
-import { mapeLabel } from "@/lib/mape";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { methodLabel } from "@/lib/methods";
+import { isPendingResult } from "@/lib/status";
 import type { ForecastResult, ForecastRunResponse } from "@/types/forecast";
 import type { DisplayMetric } from "@/types/forecastSettings";
 import type { Product } from "@/types/product";
 
-const STATUS_LABEL: Record<string, string> = {
-  COMPLETED: "Selesai",
-  INSUFFICIENT_DATA: "Data kurang",
-  MODEL_SELECTION_FAILED: "Semua metode gagal",
-};
-
-const ALL_METRICS: DisplayMetric[] = ["mad", "mfe", "mse", "mape"];
-
-function isPending(r: ForecastResult): boolean {
-  return r.status === "COMPLETED" && r.selection_status === "PENDING_SELECTION";
-}
-
-function sourceLabel(r: ForecastResult): string {
-  if (r.selection_mode === "manual") return "dipilih manual sebelum run";
-  if (r.selection_reason) return "dipilih planner";
-  return "hasil run lama"; // pemenang otomatis sebelum Fase 11.15
-}
-
 // Fase 11.15 — tidak ada metode pemenang. Mode otomatis menjalankan semua metode aktif;
 // planner memilih metode per produk (onSelectMethod) atau satu metode untuk semua produk
 // (onSelectAll). Produk yang belum dipilih dilewati di perencanaan persediaan.
-// `products` opsional: bila diberikan, judul kartu memakai "kode — nama" alih-alih UUID.
+// CR v3.6 §5 — tampilan: tabel ringkasan produk + Sheet detail per produk (bukan satu Card
+// panjang per produk). Logika pemilihan metode tidak berubah.
 export function ForecastResults({
   data,
   products = [],
-  displayMetrics = ALL_METRICS,
+  displayMetrics,
   onSelectMethod,
   onSelectAll,
 }: {
@@ -55,7 +34,7 @@ export function ForecastResults({
 }) {
   const { run, results } = data;
   const productById = new Map(products.map((p) => [p.id, p]));
-  const nPending = run.n_pending_selection ?? results.filter(isPending).length;
+  const nPending = run.n_pending_selection ?? results.filter(isPendingResult).length;
   // Metode yang bisa dipilih di minimal satu produk (punya deret forecast).
   const bulkMethods = [
     ...new Set(
@@ -67,109 +46,58 @@ export function ForecastResults({
     ),
   ].sort();
   const [bulkMethod, setBulkMethod] = useState("");
+  // Simpan id, bukan objek: setelah memilih metode data run di-refetch dan Sheet harus
+  // menampilkan hasil terbaru.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = results.find((r) => (r.id ?? r.product_id) === openId) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge variant={run.status === "COMPLETED" ? "secondary" : "outline"}>{run.status}</Badge>
-        <span>
-          {run.n_completed} berhasil · {run.n_failed} gagal dari {run.n_products} produk.
-        </span>
-      </div>
-
       {nPending > 0 && (
-        <Alert>
+        <Alert variant="warning">
           <AlertDescription>
-            {nPending} produk menunggu pemilihan metode. Sistem tidak memilih metode otomatis —
-            bandingkan metrik tiap metode lalu pilih. Produk yang belum dipilih dilewati di
-            perencanaan persediaan.
+            {nPending} produk menunggu pemilihan metode. Sistem tidak memilih metode otomatis — bandingkan metrik
+            tiap metode lalu pilih. Produk yang belum dipilih dilewati di perencanaan persediaan.
           </AlertDescription>
         </Alert>
       )}
 
       {onSelectAll && bulkMethods.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span>Metode untuk semua produk</span>
-            <select
-              className="h-9 rounded-md border bg-transparent px-3 text-sm"
-              value={bulkMethod}
-              onChange={(e) => setBulkMethod(e.target.value)}
-            >
-              <option value="">Pilih metode…</option>
-              {bulkMethods.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex w-64 flex-col gap-1">
+            <Label htmlFor="bulk-method">Metode untuk semua produk</Label>
+            <Select value={bulkMethod || undefined} onValueChange={setBulkMethod}>
+              <SelectTrigger id="bulk-method">
+                <SelectValue placeholder="Pilih metode…" />
+              </SelectTrigger>
+              <SelectContent>
+                {bulkMethods.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {methodLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" disabled={!bulkMethod} onClick={() => onSelectAll(bulkMethod)}>
             Pakai untuk semua produk
           </Button>
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {results.map((r) => {
-          const product = productById.get(r.product_id);
-          const pending = isPending(r);
-          return (
-            <Card key={r.id ?? r.product_id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="flex flex-col gap-1">
-                    <CardTitle className="text-base">
-                      {product ? `${product.code} — ${product.name}` : r.product_id}
-                    </CardTitle>
-                    {r.status === "COMPLETED" && !pending && (
-                      <CardDescription>
-                        Metode <span className="font-medium">{r.method_used}</span> ({sourceLabel(r)})
-                        {r.mape != null && (
-                          <>
-                            {" "}
-                            · MAPE {formatNumber(r.mape)}% ({mapeLabel(r.mape)})
-                          </>
-                        )}
-                        {typeof r.hyperparameters?.alpha === "number" && <> · α {r.hyperparameters.alpha}</>}
-                        {r.selection_reason && <> · Alasan: {r.selection_reason}</>}
-                      </CardDescription>
-                    )}
-                    {pending && <CardDescription>Metode belum dipilih.</CardDescription>}
-                  </div>
-                  <Badge variant={r.status !== "COMPLETED" ? "destructive" : pending ? "outline" : "secondary"}>
-                    {pending ? "Metode belum dipilih" : (STATUS_LABEL[r.status] ?? r.status)}
-                  </Badge>
-                </div>
-              </CardHeader>
+      <ProductResultsTable
+        results={results}
+        products={products}
+        onOpen={(r) => setOpenId(r.id ?? r.product_id)}
+      />
 
-              {r.status === "COMPLETED" && (
-                <CardContent className="flex flex-col gap-4">
-                  <ExplanationBox explanation={r.explanation} />
-                  <CandidatesTable
-                    candidates={r.candidates_evaluated ?? []}
-                    selectedMethod={pending ? null : r.method_used}
-                    displayMetrics={displayMetrics}
-                    onSelect={
-                      onSelectMethod && r.selection_mode !== "manual"
-                        ? (method) => onSelectMethod(r, method)
-                        : undefined
-                    }
-                  />
-                  {!pending && (
-                    <>
-                      <ExogUsage hyperparameters={r.hyperparameters} />
-                      <FeatureImportance importance={r.feature_importance ?? null} />
-                      <ForecastChart forecast={r.forecast} />
-                      <ForecastQtyTable forecast={r.forecast} />
-                    </>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
-      </div>
+      <ProductResultSheet
+        result={open}
+        product={open ? productById.get(open.product_id) : undefined}
+        displayMetrics={displayMetrics}
+        onSelectMethod={onSelectMethod}
+        onClose={() => setOpenId(null)}
+      />
     </div>
   );
 }

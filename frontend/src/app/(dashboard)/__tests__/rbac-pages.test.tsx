@@ -40,7 +40,7 @@ const fx = vi.hoisted(() => {
 });
 
 vi.mock("@/hooks/useProducts", () => ({
-  useProducts: stubs.query([fx.PRODUCT]),
+  useProducts: stubs.query([fx.PRODUCT]), useProductDemandCoverage: stubs.query([]),
   useCreateProduct: stubs.mutation, useUpdateProduct: stubs.mutation, useDeleteProduct: stubs.mutation,
 }));
 vi.mock("@/hooks/useMaterials", () => ({
@@ -214,7 +214,8 @@ describe.each([
   it.each(["purchasing", "viewer"] as Role[])("%s melihat pesan & link ke halaman baca", (role) => {
     renderAs(role, Page);
     expect(screen.getByText(/hanya ppic\/admin yang dapat menjalankan forecast/i)).toBeDefined();
-    expect(screen.getByRole("link", { name: /kedatangan material/i }).getAttribute("href")).toBe("/material-arrivals");
+    // CR v3.6 §1 — halaman baca = daftar forecast run (detail run read-only untuk semua role)
+    expect(screen.getByRole("link", { name: /daftar forecast run/i }).getAttribute("href")).toBe("/forecast");
   });
 
   it("profil belum dimuat → tidak menampilkan pesan terlarang (tidak berkedip)", () => {

@@ -71,3 +71,18 @@ export function useWarehouseValidation() {
     },
   });
 }
+
+// CR v3.6 §4 — validasi kapasitas produk jadi dimuat otomatis di langkah "Reorder & biaya"
+// (GET idempoten: backend menghitung ulang & menyimpan per run), tanpa tombol "Cek kapasitas".
+export function useRunWarehouseValidation(runId: string | null) {
+  const token = getToken();
+  return useQuery<WarehouseValidation>({
+    queryKey: ["warehouse-validation", runId],
+    enabled: Boolean(token && runId),
+    queryFn: async () => {
+      const res = await api.warehouse.validateRun(runId as string, token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+  });
+}

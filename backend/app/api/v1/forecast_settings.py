@@ -10,7 +10,7 @@ RBAC: baca semua role terautentikasi, tulis admin. Logika lewat ForecastSettings
 from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUser, get_current_user, get_forecast_settings_service, require_permission
-from app.models.forecast_setting import DISPLAY_METRICS
+from app.models.forecast_setting import effective_display_metrics
 from app.schemas.forecast_settings import ForecastSettingsOut, ForecastSettingsUpdate
 from app.services.forecast_settings_service import ForecastSettingsService
 from app.services.forecasting import registry
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/forecast-settings", tags=["forecast-settings"])
 
 def _to_response(setting) -> dict:
     return ForecastSettingsOut(
-        display_metrics=list(getattr(setting, "display_metrics", None) or DISPLAY_METRICS),
+        display_metrics=effective_display_metrics(getattr(setting, "display_metrics", None)),
         enabled_methods=setting.enabled_methods,
         available_methods=registry.available_methods(),
         es_alpha_grid=[float(a) for a in (setting.es_alpha_grid or THESIS_ALPHA_GRID)],

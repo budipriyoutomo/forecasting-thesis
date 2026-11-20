@@ -44,6 +44,15 @@ export interface ForecastResult {
   metrics: Record<string, unknown> | null;
   feature_importance?: Record<string, number> | null;
   hyperparameters?: Record<string, unknown> | null;
+  /** CR v3.6 §7.1 — histori aktual (≤24 periode terakhir) yang dilihat model; [] untuk run lama. */
+  history?: HistoryPoint[];
+  /** CR v3.6 §7.2 — alasan gagal bahasa natural; null bila sukses / run lama. */
+  status_reason?: string | null;
+}
+
+export interface HistoryPoint {
+  date: string;
+  value: number;
 }
 
 export interface ForecastRunSummary {
@@ -66,6 +75,13 @@ export interface ForecastRunListItem {
   horizon_unit: string;
   created_at: string | null;
   created_by?: string | null; // nama/email pembuat run (CR v3.5 §3.4 — semua run terlihat semua role)
+  // CR v3.6 §1 — counts per run (opsional: respons sebelum v3.6 tidak membawanya)
+  n_products?: number;
+  n_completed?: number;
+  n_failed?: number;
+  n_pending_selection?: number;
+  /** Sudah menjalankan pipeline perencanaan (ada proyeksi stok). */
+  has_planning?: boolean;
 }
 
 export interface MethodSelectionInput {

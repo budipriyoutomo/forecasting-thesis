@@ -34,6 +34,13 @@ async def list_products(service: ProductService = Depends(get_product_service)):
     return {"success": True, "data": [_to_response(p) for p in products]}
 
 
+@router.get("/demand-coverage", dependencies=[Depends(get_current_user)])
+async def demand_coverage(service: ProductService = Depends(get_product_service)):
+    """Cakupan histori demand per produk (CR v3.6 §5) — dipakai tabel pemilihan produk
+    sebelum run supaya planner tahu produk mana yang datanya cukup."""
+    return {"success": True, "data": await service.demand_coverage()}
+
+
 @router.get("/{product_id}", dependencies=[Depends(get_current_user)])
 async def get_product(product_id: str, service: ProductService = Depends(get_product_service)):
     product = await service.get(product_id)

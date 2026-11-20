@@ -58,7 +58,7 @@ export function MaterialArrivalsTable({
         {arrivals.length} kedatangan dari {nMaterials} material
       </p>
       {nLongLead > 0 && (
-        <p className="text-sm text-amber-700 dark:text-amber-400">
+        <p className="text-sm text-warning">
           {nLongLead} material dengan lead time ≥ {LEAD_TIME_PERIOD_DAYS} hari — asumsi kedatangan di periode yang
           sama tidak berlaku untuk material tersebut (batasan model), periksa jadwal pesannya secara manual.
         </p>

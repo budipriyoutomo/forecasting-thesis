@@ -2,7 +2,7 @@
 Endpoint forecast — /api/v1/forecast (Fase 4), docs/ARCHITECTURE.md §5/§6.8.
 
 POST /forecast/runs   → trigger run banyak produk jadi (mode otomatis / manual).
-GET  /forecast/runs   → daftar run milik user, terbaru dulu (?limit=, maks 200) — ringkas.
+GET  /forecast/runs   → daftar run (semua role), terbaru dulu (?limit=, maks 200) — ringkas + counts (CR v3.6 §1).
 GET  /forecast/runs/{id} → polling status + hasil.
 GET  /forecast/results?product_id=... → riwayat hasil per produk.
 POST /forecast/results/{id}/selection → planner memilih metode untuk satu produk (Fase 11.15).
@@ -30,6 +30,7 @@ from app.api.deps import (
 from app.services.export_service import ExportService
 from app.schemas.forecast import (
     ForecastResultOut,
+    ForecastRunListItem,
     ForecastRunRequest,
     ForecastRunSummary,
     MethodSelectionRequest,
@@ -65,6 +66,7 @@ def _result_model(result) -> ForecastResultOut:
     if not isinstance(result, SelectedResult):
         result = SelectedResult(result)
     selected_at = result.selected_at
+    metrics = result.metrics or {}
     return ForecastResultOut(
         id=str(result.id),
         product_id=str(result.product_id),
@@ -85,6 +87,8 @@ def _result_model(result) -> ForecastResultOut:
         metrics=result.metrics,
         feature_importance=getattr(result, "feature_importance", None),
         hyperparameters=getattr(result, "hyperparameters", None),
+        history=metrics.get("history") or [],
+        status_reason=metrics.get("status_reason"),
     )
 
 
@@ -128,19 +132,27 @@ async def list_forecast_runs(
     limit: int = Query(50, ge=1, le=200),
     current_user: CurrentUser = Depends(get_current_user),
     service: ForecastRunService = Depends(get_forecast_run_service),
+    selection: ForecastSelectionService = Depends(get_forecast_selection_service),
 ):
-    runs = await service.list_runs(limit)
-    data = [
-        {
-            "run_id": str(r.id),
-            "status": r.status,
-            "horizon": r.horizon,
-            "horizon_unit": r.horizon_unit,
-            "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
-            "created_by": created_by,
-        }
-        for r, created_by in runs
-    ]
+    data = []
+    for r, created_by in await service.list_runs(limit):
+        # CR v3.6 §1 — counts lewat ForecastSelectionService (pilihan planner diterapkan).
+        counts = _summary(r, await selection.list_results(str(r.id)))
+        data.append(
+            ForecastRunListItem(
+                run_id=str(r.id),
+                status=r.status,
+                horizon=r.horizon,
+                horizon_unit=r.horizon_unit,
+                created_at=r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+                created_by=created_by,
+                n_products=counts["n_products"],
+                n_completed=counts["n_completed"],
+                n_failed=counts["n_failed"],
+                n_pending_selection=counts["n_pending_selection"],
+                has_planning=await selection.has_planning(str(r.id)),
+            ).model_dump()
+        )
     return {"success": True, "data": data}
 
 
