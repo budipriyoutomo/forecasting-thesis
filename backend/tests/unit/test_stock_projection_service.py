@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.stock_projection_service import StockProjectionService
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 USER = "u1"
 
@@ -147,9 +147,9 @@ async def test_list_filter_dan_akses():
 
     with pytest.raises(ForecastRunNotFoundError):
         await svc.list_for_run(USER, "zz")
+    # CR v3.5 §3.4 Opsi A: run milik user lain tetap bisa diproses.
     other, _ = _svc(run=SimpleNamespace(id="r1", user_id="u2"))
-    with pytest.raises(ForbiddenRoleError):
-        await other.generate_for_run(USER, "r1")
+    assert isinstance(await other.generate_for_run(USER, "r1"), list)
 
 
 @pytest.mark.asyncio

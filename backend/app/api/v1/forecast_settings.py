@@ -9,7 +9,7 @@ RBAC: baca semua role terautentikasi, tulis admin. Logika lewat ForecastSettings
 """
 from fastapi import APIRouter, Depends
 
-from app.api.deps import CurrentUser, get_current_user, get_forecast_settings_service, require_role
+from app.api.deps import CurrentUser, get_current_user, get_forecast_settings_service, require_permission
 from app.models.forecast_setting import DISPLAY_METRICS
 from app.schemas.forecast_settings import ForecastSettingsOut, ForecastSettingsUpdate
 from app.services.forecast_settings_service import ForecastSettingsService
@@ -46,7 +46,7 @@ async def get_forecast_settings(service: ForecastSettingsService = Depends(get_f
 @router.put("")
 async def update_forecast_settings(
     payload: ForecastSettingsUpdate,
-    current_user: CurrentUser = Depends(require_role("admin")),
+    current_user: CurrentUser = Depends(require_permission("settings.write")),
     service: ForecastSettingsService = Depends(get_forecast_settings_service),
 ):
     setting = await service.update(user_id=current_user.user_id, **payload.model_dump())

@@ -50,26 +50,31 @@ async def test_get_result():
 
 
 @pytest.mark.asyncio
-async def test_get_latest_run_for_user():
+async def test_get_latest_run():
+    # CR v3.5 §3.4 Opsi A: run terbaru organisasi, bukan milik user.
     session = _session()
     result = MagicMock()
     result.scalar_one_or_none.return_value = "run"
     session.execute.return_value = result
     repo = SqlForecastRepository(session)
 
-    assert await repo.get_latest_run_for_user("u1") == "run"
+    assert await repo.get_latest_run() == "run"
+    assert "WHERE" not in str(session.execute.await_args.args[0])
 
 
 @pytest.mark.asyncio
-async def test_list_runs_for_user():
+async def test_list_runs_semua_user_dengan_pembuat():
+    # CR v3.5 §3.4: semua run (tanpa filter pemilik) + label pembuat (nama, fallback email).
     session = _session()
     result = MagicMock()
-    result.scalars.return_value.all.return_value = ["r2", "r1"]
+    result.all.return_value = [("r2", "Budi", "b@x.id"), ("r1", None, None), ("r0", "", "e@x.id")]
     session.execute.return_value = result
     repo = SqlForecastRepository(session)
 
-    assert await repo.list_runs_for_user("u1", limit=10) == ["r2", "r1"]
+    assert await repo.list_runs(limit=10) == [("r2", "Budi"), ("r1", None), ("r0", "e@x.id")]
     session.execute.assert_awaited_once()
+    sql = str(session.execute.await_args.args[0])
+    assert "LEFT OUTER JOIN users" in sql and "WHERE" not in sql
 
 
 @pytest.mark.asyncio

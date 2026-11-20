@@ -18,7 +18,6 @@ from app.services.warehouse_service import (
 )
 from app.utils.exceptions import (
     MaterialNotFoundError,
-    ForbiddenRoleError,
     ForecastRunNotFoundError,
     ProductNotFoundError,
     WarehouseCapacityInvalidError,
@@ -364,11 +363,11 @@ async def test_validate_for_run_tanpa_config_404():
 
 
 @pytest.mark.asyncio
-async def test_validate_for_run_milik_user_lain_403():
+async def test_validate_for_run_milik_user_lain_diizinkan():
+    # CR v3.5 §3.4 Opsi A.
     run = SimpleNamespace(id="r1", user_id=OTHER)
     svc = _service(run=run, configs=[_config()])
-    with pytest.raises(ForbiddenRoleError):
-        await svc.validate_for_run(USER, "r1")
+    assert (await svc.validate_for_run(USER, "r1")) is not None
 
 
 @pytest.mark.asyncio

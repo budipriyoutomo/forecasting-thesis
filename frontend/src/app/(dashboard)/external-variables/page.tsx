@@ -8,6 +8,7 @@ import { ImportButton } from "@/components/common/ImportButton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
 import { ExternalVariableForm } from "@/components/external-variables/ExternalVariableForm";
+import { ExternalVariableValuesTable } from "@/components/external-variables/ExternalVariableValuesTable";
 import { ExternalVariablesTable } from "@/components/external-variables/ExternalVariablesTable";
 import { ImportValidationResult } from "@/components/external-variables/ImportValidationResult";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -18,10 +19,13 @@ import {
   useDownloadExternalTemplate,
   useExternalVariableCoverage,
   useExternalVariables,
+  useExternalVariableValues,
   useImportExternalValues,
   useSaveExternalVariable,
   useValidateExternalValues,
 } from "@/hooks/useExternalVariables";
+import { useCan } from "@/hooks/usePermission";
+import { useProducts } from "@/hooks/useProducts";
 import { importSummary } from "@/lib/externalVariable";
 import type { ExternalVariable } from "@/types/externalVariable";
 
@@ -37,8 +41,14 @@ export default function ExternalVariablesPage() {
   const importValues = useImportExternalValues();
   const validateValues = useValidateExternalValues();
   const template = useDownloadExternalTemplate();
+  // CR v3.5 §3.2: definisi hanya admin; import nilai bulanan (+ dry-run) admin & PPIC.
+  const canDefine = useCan("extvar.define");
+  const canImport = useCan("extvar.import");
   const [editing, setEditing] = useState<ExternalVariable | null>(null);
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState<ExternalVariable | null>(null);
+  const values = useExternalVariableValues(viewing?.id ?? null);
+  const { data: products } = useProducts();
 
   const onError = (e: Error) => toast.error(e.message);
 
@@ -53,34 +63,40 @@ export default function ExternalVariablesPage() {
               <Download />
               Unduh template
             </Button>
-            <ImportButton
-              label="Validasi file"
-              pendingLabel="Memvalidasi…"
-              pending={validateValues.isPending}
-              onFile={(file) => validateValues.mutate(file, { onError })}
-            />
-            <ImportButton
-              label="Import nilai"
-              pending={importValues.isPending}
-              onFile={(file) =>
-                importValues.mutate(file, {
-                  onSuccess: (r) => {
-                    validateValues.reset();
-                    toast.success(importSummary(r));
-                  },
-                  onError,
-                })
-              }
-            />
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setOpen(true);
-              }}
-            >
-              <Plus />
-              Tambah variabel
-            </Button>
+            {canImport && (
+              <>
+                <ImportButton
+                  label="Validasi file"
+                  pendingLabel="Memvalidasi…"
+                  pending={validateValues.isPending}
+                  onFile={(file) => validateValues.mutate(file, { onError })}
+                />
+                <ImportButton
+                  label="Import nilai"
+                  pending={importValues.isPending}
+                  onFile={(file) =>
+                    importValues.mutate(file, {
+                      onSuccess: (r) => {
+                        validateValues.reset();
+                        toast.success(importSummary(r));
+                      },
+                      onError,
+                    })
+                  }
+                />
+              </>
+            )}
+            {canDefine && (
+              <Button
+                onClick={() => {
+                  setEditing(null);
+                  setOpen(true);
+                }}
+              >
+                <Plus />
+                Tambah variabel
+              </Button>
+            )}
           </div>
         }
       />
@@ -113,15 +129,43 @@ export default function ExternalVariablesPage() {
         <ExternalVariablesTable
           variables={data ?? []}
           coverage={coverageById}
-          onToggle={(v, next) => save.mutate({ id: v.id, input: { is_active: next } }, { onError })}
-          onEdit={(v) => {
-            setEditing(v);
-            setOpen(true);
-          }}
-          onClearValues={(v) => remove.mutate({ id: v.id, valuesOnly: true }, { onError })}
-          onDelete={(v) => remove.mutate({ id: v.id }, { onError })}
+          onToggle={canDefine ? (v, next) => save.mutate({ id: v.id, input: { is_active: next } }, { onError }) : undefined}
+          onEdit={
+            canDefine
+              ? (v) => {
+                  setEditing(v);
+                  setOpen(true);
+                }
+              : undefined
+          }
+          onClearValues={canDefine ? (v) => remove.mutate({ id: v.id, valuesOnly: true }, { onError }) : undefined}
+          onDelete={canDefine ? (v) => remove.mutate({ id: v.id }, { onError }) : undefined}
+          onViewValues={setViewing}
         />
       )}
+
+      <Dialog open={viewing !== null} onOpenChange={(o) => !o && setViewing(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nilai {viewing?.code}</DialogTitle>
+            <DialogDescription>
+              {viewing?.name}
+              {viewing?.unit ? ` (${viewing.unit})` : ""} — nilai per periode bulanan, terbaru di atas.
+            </DialogDescription>
+          </DialogHeader>
+          {values.isPending ? (
+            <TableSkeleton />
+          ) : values.isError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{values.error.message}</AlertDescription>
+            </Alert>
+          ) : (
+            viewing && (
+              <ExternalVariableValuesTable values={values.data ?? []} scope={viewing.scope} products={products ?? []} />
+            )
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -1019,3 +1019,45 @@ yang sama). User ingin kedatangan dihitung sistem, bukan diupload.
   `moq` | `cycle_stock`.
 - Error code `MATERIAL_RECEIPT_NOT_FOUND` tidak lagi dipakai (dibiarkan terdaftar, deprecated).
 - Hasil golden thesis tidak berubah (seed thesis tidak punya data kedatangan manual).
+
+---
+
+## Keselarasan FE↔BE & Matriks Role — CR v3.5 (20 Nov 2026)
+
+**Konteks:** audit FE↔BE (commit `8c6a370`) menemukan: error validasi/500 keluar dari envelope
+(`{"detail": ...}` / teks polos) sehingga FE crash saat membaca `res.error.message`; 5 halaman tidak
+diproteksi middleware; RBAC tidak konsisten (`upload`, `forecast run`, `override`, `plan`, `capacity`
+terbuka untuk semua role, `require_role` tersebar); dan setiap service membatasi baca run ke pemiliknya
+sehingga Purchasing tidak pernah melihat reorder buatan PPIC (bertentangan dengan user story #5).
+Dokumen lengkap: `docs/Change Request v3.5.md`.
+
+**Keputusan user (20 Nov 2026):**
+1. Import nilai variabel eksternal (+ dry-run) → **Admin + PPIC**; definisi tetap Admin.
+2. **Viewer boleh export** (semua `GET` terbuka untuk semua role, termasuk export & template).
+3. **Visibilitas run Opsi A untuk MVP** — semua run terlihat semua role (single-tenant). Opsi B (run
+   "Final/Disetujui") dicatat post-MVP (`ARCHITECTURE.md` §5.1).
+4. **Admin = superset PPIC.**
+
+**Implementasi & pilihan teknis:**
+- Validasi Pydantic tetap **422** (`VALIDATION_ERROR`) — bawaan FastAPI yang sudah diandalkan ±25 test sejak
+  v3.0 — meski tabel status AGENTS §4 menyebut 400 untuk "input validation error"; 400 tetap untuk validasi
+  isi file (`UPLOAD_INVALID_FORMAT`). Error code baru `VALIDATION_ERROR`, `INTERNAL_ERROR`, `HTTP_<status>`
+  didaftarkan di AGENTS §4 & ARCHITECTURE §5.
+- `require_permission` diletakkan di `app/api/deps.py` (di samping `require_role`), sedangkan peta
+  `PERMISSIONS` di `app/utils/permissions.py` — menyimpang sedikit dari snippet CR (keduanya di utils)
+  supaya `utils` tidak mengimpor layer `api`.
+- Sinkronisasi peta BE↔FE: test backend mem-parse `frontend/src/lib/permissions.ts` (CI meng-checkout
+  seluruh repo; di-skip bila frontend tidak ada, mis. image Docker backend-only) — tanpa endpoint baru.
+- Kelengkapan RBAC dicek dari `app.openapi()` (bukan introspeksi `app.routes`, yang di FastAPI 0.139 berisi
+  `_IncludedRouter` lazy): setiap operasi non-GET harus terdaftar di matriks test.
+- Upload session tetap per user (riwayat upload sendiri) — di luar cakupan Opsi A yang hanya mengatur run.
+- Repository: `list_runs_for_user`/`get_latest_run_for_user` diganti `list_runs()` (outer join `users` →
+  `created_by` = nama, fallback email) dan `get_latest_run()`.
+- Dashboard `latest_run.n_materials` → `n_products` (breaking kecil, satu-satunya konsumen FE ikut diubah).
+
+**Konsekuensi (disadari):**
+- Purchasing/Viewer tidak lagi bisa upload demand, menjalankan forecast, memilih metode, override, generate
+  reorder/plan/proyeksi, atau adjust kapasitas (sebelumnya terbuka) — sesuai FR-8.2.
+- PPIC tidak bisa membuat/menghapus definisi variabel eksternal, hanya mengimpor nilainya.
+- Siapa pun bisa membaca/export run siapa pun — wajar untuk single-tenant; Opsi B bila butuh "rencana resmi".
+

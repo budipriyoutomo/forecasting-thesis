@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { DataTable } from "@/components/common/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import type { Material } from "@/types/material";
 import type { ReorderRecommendation, ReorderStatus } from "@/types/reorder";
 
@@ -152,6 +152,30 @@ export function ReorderTable({
                 </span>
               )}
               {note && <span className="text-xs text-amber-700 dark:text-amber-400">{note}</span>}
+            </span>
+          );
+        },
+      },
+      {
+        // CR v3.5 §5.4 — TIC per material + komponen & parameter yang dipakai.
+        accessorKey: "total_inventory_cost",
+        header: "Biaya persediaan",
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.total_inventory_cost == null) return <span className="text-muted-foreground">—</span>;
+          return (
+            <span className="flex flex-col tabular-nums">
+              {formatMoney(r.total_inventory_cost)}
+              <span className="text-xs text-muted-foreground">
+                Pesan {formatMoney(r.ordering_cost ?? null)} · Simpan {formatMoney(r.holding_cost ?? null)}
+              </span>
+              {(r.unit_price_used != null || r.holding_rate_used != null) && (
+                <span className="text-xs text-muted-foreground">
+                  {r.unit_price_used != null && <>C {formatMoney(r.unit_price_used, 2)}</>}
+                  {r.unit_price_used != null && r.holding_rate_used != null && " · "}
+                  {r.holding_rate_used != null && <>i {formatNumber(r.holding_rate_used)}%</>}
+                </span>
+              )}
             </span>
           );
         },

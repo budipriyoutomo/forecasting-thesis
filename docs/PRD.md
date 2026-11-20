@@ -160,7 +160,22 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 
 ### FR-8 User Management
 - FR-8.1 Login dengan role: Admin, PPIC (Planner), Purchasing, Viewer.
-- FR-8.2 Role menentukan akses (mis. Purchasing hanya bisa lihat rekomendasi reorder, tidak bisa override atau ubah master data). Akses yang ditolak karena role mengembalikan `AUTH_FORBIDDEN` (403).
+- FR-8.2 Role menentukan akses. Akses yang ditolak karena role mengembalikan `AUTH_FORBIDDEN` (403). Matriks final (CR v3.5, keputusan 20 Nov 2026; ✅ tulis · 👁 baca · ❌ tidak ada akses — Admin = superset PPIC):
+
+  | Modul / aksi | Admin | PPIC | Purchasing | Viewer |
+  |---|:-:|:-:|:-:|:-:|
+  | Master data: produk, material, BOM, komponen material, kapasitas gudang, template biaya (CRUD + import) | ✅ | 👁 | 👁 | 👁 |
+  | Pengaturan Forecast | ✅ | 👁 | 👁 | 👁 |
+  | Variabel eksternal — definisi (CRUD, hapus nilai) | ✅ | 👁 | 👁 | 👁 |
+  | Variabel eksternal — import nilai bulanan (+ dry-run) | ✅ | ✅ | 👁 | 👁 |
+  | Upload demand | ✅ | ✅ | ❌ | ❌ |
+  | Import stok ERP & pemakaian aktual | ✅ | ✅ | ❌ | ❌ |
+  | Jalankan forecast run, pilih metode, override forecast & qty reorder | ✅ | ✅ | ❌ | ❌ |
+  | Generate reorder / plan / proyeksi stok, adjust kapasitas | ✅ | ✅ | ❌ | ❌ |
+  | Lihat run, reorder, kedatangan material, proyeksi, metrik, biaya, dashboard, audit trail | ✅ | ✅ | ✅ | ✅ |
+  | Export (xlsx/pdf) & download template | ✅ | ✅ | ✅ | ✅ |
+
+- FR-8.3 Visibilitas run (MVP, single-tenant): **semua run terlihat semua role** — Purchasing melihat reorder & kedatangan material dari run buatan PPIC (user story #5). Yang dibatasi hanya aksi tulis (FR-8.2); pelaku tetap tercatat (`user_id`). Post-MVP: run berstatus "Final/Disetujui" (`DRAFT`/`FINAL`) yang menjadi default tampilan Purchasing & Viewer.
 
 ### FR-9 BOM Breakdown & Kebutuhan Material **[REMOVED 24 Agustus 2026]**
 > **Dibatalkan.** Hasil forecast adalah **produk**, titik — tidak ada entitas kebutuhan material yang tersimpan per run. Tabel `material_requirements`, endpoint `GET /forecast/runs/{run_id}/material-requirements`, dan target override `material_requirement` dihapus (lihat `RECONCILIATION.md` §"Forecast produk-only").

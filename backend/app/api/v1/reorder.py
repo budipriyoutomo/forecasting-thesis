@@ -18,6 +18,7 @@ from app.api.deps import (
     get_current_user,
     get_export_service,
     get_reorder_service,
+    require_permission,
 )
 from app.schemas.reorder import ReorderGenerateRequest, ReorderRecommendationOut
 from app.services.export_service import ExportService
@@ -67,7 +68,7 @@ def _out(rec, override=None) -> dict:
 @router.post("/recommendations", status_code=201)
 async def generate_recommendations(
     payload: ReorderGenerateRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("planning.run")),
     service: ReorderService = Depends(get_reorder_service),
 ):
     recs = await service.generate_for_run(current_user.user_id, payload.run_id, payload.current_stock)

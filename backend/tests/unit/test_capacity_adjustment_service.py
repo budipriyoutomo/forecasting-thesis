@@ -26,7 +26,6 @@ from app.services.capacity_adjustment_service import CapacityAdjustmentReader, C
 from app.services.reorder_service import ReorderService
 from app.services.stock_projection_service import StockProjectionService
 from app.utils.exceptions import (
-    ForbiddenRoleError,
     ForecastRunNotFoundError,
     MaterialNotFoundError,
     OverrideReasonRequiredError,
@@ -277,8 +276,7 @@ async def test_akses_run():
     svc, *_ = _build(capacity=2450)
     with pytest.raises(ForecastRunNotFoundError):
         await svc.suggest(USER, "zz")
+    # CR v3.5 §3.4 Opsi A: run milik user lain boleh diakses (RBAC capacity.adjust membatasi).
     other, *_ = _build(capacity=2450, run=_run(user="u2"))
-    with pytest.raises(ForbiddenRoleError):
-        await other.suggest(USER, "r1")
-    with pytest.raises(ForbiddenRoleError):
-        await other.save(USER, "r1", "custom", [], "x")
+    await other.suggest(USER, "r1")
+    await other.save(USER, "r1", "custom", [], "x")

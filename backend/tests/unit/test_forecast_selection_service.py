@@ -13,7 +13,6 @@ import pytest
 from app.services.forecast_selection_service import ForecastSelectionService
 from app.services.override_service import OverrideService
 from app.utils.exceptions import (
-    ForbiddenRoleError,
     ForecastRunNotFoundError,
     OverrideReasonRequiredError,
     OverrideTargetNotFoundError,
@@ -210,11 +209,12 @@ async def test_pilih_hasil_tidak_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_pilih_hasil_run_milik_user_lain_403():
-    svc, _ = _svc([_auto_result()], runs={"run1": SimpleNamespace(id="run1", user_id=OTHER)})
+async def test_pilih_hasil_run_milik_user_lain_diizinkan():
+    # CR v3.5 §3.4 Opsi A: RBAC (forecast.select) yang membatasi, bukan kepemilikan run.
+    svc, overrides = _svc([_auto_result()], runs={"run1": SimpleNamespace(id="run1", user_id=OTHER)})
 
-    with pytest.raises(ForbiddenRoleError):
-        await svc.select(USER, "r1", "xgboost", "alasan")
+    await svc.select(USER, "r1", "xgboost", "alasan")
+    assert len(overrides.items) == 1
 
 
 @pytest.mark.asyncio
@@ -276,8 +276,8 @@ async def test_pilih_massal_run_tidak_ada_dan_milik_user_lain():
 
     with pytest.raises(ForecastRunNotFoundError):
         await svc.select_for_run(USER, "ghost", "xgboost", "alasan")
-    with pytest.raises(ForbiddenRoleError):
-        await svc.select_for_run(USER, "run1", "xgboost", "alasan")
+    # CR v3.5 §3.4 Opsi A: run milik user lain boleh dipilih metodenya.
+    await svc.select_for_run(USER, "run1", "xgboost", "alasan")
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,13 @@ export interface ExternalVariable {
   n_values: number;
 }
 
+// GET /external-variables/{id}/values (CR v3.5 §5.2)
+export interface ExternalVariableValue {
+  product_id: string | null;
+  period: string;
+  value: number;
+}
+
 export interface ExternalVariableInput {
   code?: string;
   name?: string;

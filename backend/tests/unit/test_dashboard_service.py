@@ -24,7 +24,7 @@ class FakeForecast:
         self._run = run
         self._results = results
 
-    async def get_latest_run_for_user(self, user_id):
+    async def get_latest_run(self):
         return self._run
 
     async def list_results(self, run_id):
@@ -89,6 +89,9 @@ async def test_summary_dengan_run_terbaru():
 
     assert summary["n_materials"] == 3
     assert summary["latest_run"]["n_completed"] == 2
+    # CR v3.5 §4: forecast_results per PRODUK — bukan material.
+    assert summary["latest_run"]["n_products"] == 3
+    assert "n_materials" not in summary["latest_run"]
     assert summary["latest_run"]["n_failed"] == 1
     assert summary["latest_run"]["avg_mase"] == pytest.approx(0.5)
     assert summary["reorder_status_counts"] == {"urgent": 2, "safe": 1, "overstock": 0}

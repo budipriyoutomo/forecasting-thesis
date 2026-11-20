@@ -22,7 +22,7 @@ from app.config import get_settings
 from app.services.bom_service import BomLine, breakdown_requirements_series
 from app.services.cost_template_service import load_cost_params
 from app.services.reorder_service import DEFAULT_EOQ_METHOD, choose_eoq, compute_savings_pct, days_in_period
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 
 def _dec(value) -> Decimal:
@@ -182,9 +182,9 @@ class CostService:
         return _dec(baseline)
 
     async def _require_run(self, user_id: str, run_id: str):
+        # CR v3.5 §3.4 Opsi A: run terlihat semua role (single-tenant) — tidak ada cek
+        # pemilik; pembatasan tulis lewat RBAC endpoint (app/utils/permissions.py).
         run = await self._forecast.get_run(run_id)
         if run is None:
             raise ForecastRunNotFoundError("Forecast run tidak ditemukan.")
-        if str(run.user_id) != str(user_id):
-            raise ForbiddenRoleError("Anda tidak berhak mengakses run ini.")
         return run

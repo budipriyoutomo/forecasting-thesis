@@ -36,6 +36,7 @@ import {
   useUpdateBom,
 } from "@/hooks/useBoms";
 import { useMaterials } from "@/hooks/useMaterials";
+import { useCan } from "@/hooks/usePermission";
 import { useBomComponent, useBomTree } from "@/hooks/usePlanning";
 import { useProducts } from "@/hooks/useProducts";
 import type { Bom, BomBulkInput, BomInput } from "@/types/bom";
@@ -55,6 +56,7 @@ export default function BomsPage() {
   const { data: components } = useMaterialComponents();
   const update = useUpdateBom();
   const remove = useDeleteBom();
+  const canWrite = useCan("master.write");
   // Fase 11.3: tree multi-level FG → material → komponen untuk produk yang difilter.
   const tree = useBomTree(productFilter);
   const component = useBomComponent();
@@ -75,15 +77,17 @@ export default function BomsPage() {
         title="Bill of Materials"
         description="Takaran material per unit produk. Inilah yang menurunkan hasil forecast produk menjadi kebutuhan material."
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus />
-            Tambah BOM
-          </Button>
+          canWrite && (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus />
+              Tambah BOM
+            </Button>
+          )
         }
       />
 
@@ -122,14 +126,16 @@ export default function BomsPage() {
               informasi — Bottle dibeli jadi.
             </p>
           </div>
-          <BomTree tree={tree.data} onRemove={(id) => component.mutate({ removeId: id })} />
-          <BomComponentForm
-            parents={tree.data.children.map((c) => ({ id: c.material_id as string, code: c.code ?? "" }))}
-            materials={materials ?? []}
-            submitting={component.isPending}
-            error={component.error?.message ?? null}
-            onSubmit={(input) => component.mutate(input)}
-          />
+          <BomTree tree={tree.data} onRemove={canWrite ? (id) => component.mutate({ removeId: id }) : undefined} />
+          {canWrite && (
+            <BomComponentForm
+              parents={tree.data.children.map((c) => ({ id: c.material_id as string, code: c.code ?? "" }))}
+              materials={materials ?? []}
+              submitting={component.isPending}
+              error={component.error?.message ?? null}
+              onSubmit={(input) => component.mutate(input)}
+            />
+          )}
         </section>
       )}
       {boms && (
@@ -138,11 +144,15 @@ export default function BomsPage() {
           components={components ?? []}
           products={products ?? []}
           materials={materials ?? []}
-          onEdit={(b) => {
-            setEditing(b);
-            setOpen(true);
-          }}
-          onDelete={(b) => remove.mutate(b.id)}
+          onEdit={
+            canWrite
+              ? (b) => {
+                  setEditing(b);
+                  setOpen(true);
+                }
+              : undefined
+          }
+          onDelete={canWrite ? (b) => remove.mutate(b.id) : undefined}
         />
       )}
 

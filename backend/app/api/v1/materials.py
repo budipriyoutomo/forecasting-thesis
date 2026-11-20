@@ -7,7 +7,7 @@ import) hanya `admin`. Semua logika lewat MaterialService, tidak inline.
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.api.deps import get_current_user, get_material_service, require_role
+from app.api.deps import get_current_user, get_material_service, require_permission
 from app.schemas.material import MaterialCreate, MaterialResponse, MaterialUpdate
 from app.services.material_service import MaterialService
 
@@ -43,7 +43,7 @@ async def get_material(material_id: str, service: MaterialService = Depends(get_
     return {"success": True, "data": _to_response(material)}
 
 
-@router.post("", dependencies=[Depends(require_role("admin"))])
+@router.post("", dependencies=[Depends(require_permission("master.write"))])
 async def create_material(
     payload: MaterialCreate, service: MaterialService = Depends(get_material_service)
 ):
@@ -51,7 +51,7 @@ async def create_material(
     return JSONResponse(status_code=201, content={"success": True, "data": _to_response(material)})
 
 
-@router.put("/{material_id}", dependencies=[Depends(require_role("admin"))])
+@router.put("/{material_id}", dependencies=[Depends(require_permission("master.write"))])
 async def update_material(
     material_id: str, payload: MaterialUpdate, service: MaterialService = Depends(get_material_service)
 ):
@@ -59,13 +59,13 @@ async def update_material(
     return {"success": True, "data": _to_response(material)}
 
 
-@router.delete("/{material_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{material_id}", dependencies=[Depends(require_permission("master.write"))])
 async def delete_material(material_id: str, service: MaterialService = Depends(get_material_service)):
     await service.delete(material_id)
     return {"success": True, "data": {"id": material_id, "deleted": True}}
 
 
-@router.post("/import", dependencies=[Depends(require_role("admin"))])
+@router.post("/import", dependencies=[Depends(require_permission("master.write"))])
 async def import_materials(
     file: UploadFile, service: MaterialService = Depends(get_material_service)
 ):

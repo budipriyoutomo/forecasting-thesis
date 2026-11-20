@@ -44,7 +44,8 @@ class DashboardService:
 
     async def summary(self, user_id: str) -> dict:
         materials = await self._materials.list()
-        latest_run = await self._forecast.get_latest_run_for_user(user_id)
+        # CR v3.5 §3.4 Opsi A: run terakhir organisasi, bukan milik user.
+        latest_run = await self._forecast.get_latest_run()
 
         latest_run_summary = None
         reorder_counts = {"urgent": 0, "safe": 0, "overstock": 0}
@@ -66,7 +67,7 @@ class DashboardService:
             latest_run_summary = {
                 "run_id": str(latest_run.id),
                 "status": latest_run.status,
-                "n_materials": len(results),
+                "n_products": len(results),  # forecast_results per produk (CR v3.5 §4)
                 "n_completed": len(completed),
                 "n_failed": len(results) - len(completed),
                 "avg_mase": avg_mase,

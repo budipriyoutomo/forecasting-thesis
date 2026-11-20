@@ -15,7 +15,7 @@ from app.services.export_service import (
     build_reorder_pdf,
     build_reorder_xlsx,
 )
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 USER = "u1"
 OTHER = "u2"
@@ -157,13 +157,14 @@ async def test_export_run_tidak_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_export_run_milik_user_lain_403():
+async def test_export_run_milik_user_lain_diizinkan():
+    # CR v3.5 §3.4 Opsi A — semua role boleh export run siapa pun.
     forecast_repo = MagicMock()
     forecast_repo.get_run = _async(SimpleNamespace(id="r1", user_id=OTHER))
     svc = ExportService(forecast_repo, MagicMock(), None)
 
-    with pytest.raises(ForbiddenRoleError):
-        await svc.export_forecast(USER, "r1")
+    run = await svc._require_run(USER, "r1")
+    assert run.id == "r1"
 
 
 @pytest.mark.asyncio

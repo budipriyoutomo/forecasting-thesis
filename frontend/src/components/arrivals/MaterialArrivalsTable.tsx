@@ -1,8 +1,10 @@
 "use client";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { LeadTimeWarning } from "@/components/common/LeadTimeWarning";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/format";
+import { exceedsOnePeriod, LEAD_TIME_PERIOD_DAYS } from "@/lib/leadTime";
 import type { Material } from "@/types/material";
 import type { StockProjectionRow } from "@/types/planning";
 import type { ReorderRecommendation } from "@/types/reorder";
@@ -27,6 +29,7 @@ export function MaterialArrivalsTable({
 }) {
   const label = new Map(materials.map((m) => [m.id, `${m.code} — ${m.name}`]));
   const code = new Map(materials.map((m) => [m.id, m.code]));
+  const leadTime = new Map(materials.map((m) => [m.id, m.lead_time_days]));
   const rec = new Map(recommendations.map((r) => [r.material_id, r]));
   const arrivals = rows
     .filter((r) => r.scenario === "proposed" && r.order_qty > 0)
@@ -45,13 +48,21 @@ export function MaterialArrivalsTable({
     );
   }
 
-  const nMaterials = new Set(arrivals.map((r) => r.material_id)).size;
+  const arrivingMaterials = new Set(arrivals.map((r) => r.material_id));
+  const nMaterials = arrivingMaterials.size;
+  const nLongLead = [...arrivingMaterials].filter((id) => exceedsOnePeriod(leadTime.get(id))).length;
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-muted-foreground">
         {arrivals.length} kedatangan dari {nMaterials} material
       </p>
+      {nLongLead > 0 && (
+        <p className="text-sm text-amber-700 dark:text-amber-400">
+          {nLongLead} material dengan lead time ≥ {LEAD_TIME_PERIOD_DAYS} hari — asumsi kedatangan di periode yang
+          sama tidak berlaku untuk material tersebut (batasan model), periksa jadwal pesannya secara manual.
+        </p>
+      )}
       <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
@@ -70,7 +81,14 @@ export function MaterialArrivalsTable({
               return (
                 <TableRow key={`${r.material_id}-${r.period}`}>
                   <TableCell>{formatDate(r.period)}</TableCell>
-                  <TableCell>{label.get(r.material_id) ?? r.material_id}</TableCell>
+                  <TableCell>
+                    <span className="flex flex-wrap items-center gap-2">
+                      {label.get(r.material_id) ?? r.material_id}
+                      {exceedsOnePeriod(leadTime.get(r.material_id)) && (
+                        <LeadTimeWarning leadTimeDays={leadTime.get(r.material_id) as number} />
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell className="tabular-nums">{formatNumber(r.opening_qty - r.usage_qty)}</TableCell>
                   <TableCell className="tabular-nums">{formatNumber(rec.get(r.material_id)?.reorder_point ?? null)}</TableCell>
                   <TableCell className="font-medium tabular-nums">{formatNumber(r.order_qty)}</TableCell>

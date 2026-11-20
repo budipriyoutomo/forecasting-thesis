@@ -76,7 +76,7 @@ export default function DashboardPage() {
                     {run.status}
                   </Badge>
                   <span>
-                    {run.n_completed} berhasil · {run.n_failed} gagal dari {run.n_materials} material
+                    {run.n_completed} berhasil · {run.n_failed} gagal dari {run.n_products} produk
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">

@@ -56,6 +56,7 @@ from app.services.dev_auth import build_authenticator
 from app.services.upload_service import UploadService
 from app.services.warehouse_service import WarehouseService
 from app.utils.auth import decode_access_token
+from app.utils.permissions import PERMISSIONS
 from app.utils.exceptions import (
     AuthTokenExpiredError,
     AuthTokenMissingOrInvalidError,
@@ -97,6 +98,15 @@ def require_role(*roles: str):
         return user
 
     return checker
+
+
+def require_permission(action: str):
+    """RBAC per aksi (CR v3.5 §3.6) — role dibaca dari `app/utils/permissions.py`.
+
+    Contoh: `dependencies=[Depends(require_permission("forecast.run"))]`. Action yang
+    tidak terdaftar → KeyError saat import router (gagal cepat, bukan diam-diam terbuka).
+    """
+    return require_role(*PERMISSIONS[action])
 
 
 def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:

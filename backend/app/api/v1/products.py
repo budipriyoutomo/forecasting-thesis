@@ -7,7 +7,7 @@ hanya `admin`. Semua logika lewat ProductService, tidak inline.
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.api.deps import get_current_user, get_product_service, require_role
+from app.api.deps import get_current_user, get_product_service, require_permission
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from app.services.product_service import ProductService
 
@@ -39,13 +39,13 @@ async def get_product(product_id: str, service: ProductService = Depends(get_pro
     return {"success": True, "data": _to_response(product)}
 
 
-@router.post("", dependencies=[Depends(require_role("admin"))])
+@router.post("", dependencies=[Depends(require_permission("master.write"))])
 async def create_product(payload: ProductCreate, service: ProductService = Depends(get_product_service)):
     product = await service.create(payload)
     return JSONResponse(status_code=201, content={"success": True, "data": _to_response(product)})
 
 
-@router.put("/{product_id}", dependencies=[Depends(require_role("admin"))])
+@router.put("/{product_id}", dependencies=[Depends(require_permission("master.write"))])
 async def update_product(
     product_id: str, payload: ProductUpdate, service: ProductService = Depends(get_product_service)
 ):
@@ -53,13 +53,13 @@ async def update_product(
     return {"success": True, "data": _to_response(product)}
 
 
-@router.delete("/{product_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{product_id}", dependencies=[Depends(require_permission("master.write"))])
 async def delete_product(product_id: str, service: ProductService = Depends(get_product_service)):
     await service.delete(product_id)
     return {"success": True, "data": {"id": product_id, "deleted": True}}
 
 
-@router.post("/import", dependencies=[Depends(require_role("admin"))])
+@router.post("/import", dependencies=[Depends(require_permission("master.write"))])
 async def import_products(file: UploadFile, service: ProductService = Depends(get_product_service)):
     content = await file.read()
     result = await service.import_csv(content)

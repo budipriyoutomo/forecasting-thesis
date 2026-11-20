@@ -45,6 +45,7 @@ async def test_summary_200(client, auth_headers):
     assert body["success"] is True
     assert body["data"]["n_materials"] == 2
     assert body["data"]["latest_run"]["n_completed"] == 1
+    assert "n_products" in body["data"]["latest_run"]
     assert body["data"]["reorder_status_counts"]["urgent"] == 1
 
 

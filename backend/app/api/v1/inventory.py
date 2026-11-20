@@ -15,12 +15,12 @@ from fastapi import APIRouter, Depends, UploadFile
 from app.api.deps import (
     get_current_user,
     get_stock_snapshot_service,
-    require_role,
+    require_permission,
 )
 from app.services.inventory_data_service import StockSnapshotService
 
 router = APIRouter(tags=["inventory"])
-_WRITE = require_role("admin", "ppic")
+_WRITE = require_permission("data.import_stock")
 
 
 def _snapshot(r) -> dict:

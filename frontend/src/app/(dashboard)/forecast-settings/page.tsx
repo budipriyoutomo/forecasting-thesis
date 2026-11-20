@@ -6,11 +6,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useForecastSettings, useUpdateForecastSettings } from "@/hooks/useForecastSettings";
+import { useCan } from "@/hooks/usePermission";
 import { formatDate } from "@/lib/format";
 
 export default function ForecastSettingsPage() {
   const { data, isPending, isError } = useForecastSettings();
   const update = useUpdateForecastSettings();
+  const canWrite = useCan("settings.write");
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,6 +34,7 @@ export default function ForecastSettingsPage() {
             Metode aktif berlaku untuk forecast run berikutnya; metrik tampil langsung berlaku di
             hasil forecast.
             {data?.updated_at && <> Terakhir diubah {formatDate(data.updated_at)}.</>}
+            {!canWrite && <> Hanya Admin yang dapat mengubah pengaturan ini.</>}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -45,6 +48,7 @@ export default function ForecastSettingsPage() {
               onSubmit={(input) => update.mutate(input)}
               pending={update.isPending}
               error={update.error?.message ?? null}
+              readOnly={!canWrite}
             />
           ) : null}
         </CardContent>

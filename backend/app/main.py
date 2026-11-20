@@ -1,9 +1,13 @@
 """
 FastAPI entry point — ForecastIQ backend.
 """
+import logging
+
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1 import (
     auth,
@@ -28,11 +32,12 @@ from app.api.v1 import (
     warehouse,
 )
 from app.config import get_settings
-from app.utils.exceptions import AppError
+from app.utils.exceptions import INTERNAL_ERROR, VALIDATION_ERROR, AppError
 
 API_VERSION = "0.1.0"
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ForecastIQ API", version=API_VERSION)
 
@@ -81,6 +86,40 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         status_code=exc.status_code,
         content={"success": False, "error": {"code": exc.code, "message": exc.message}},
     )
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"success": False, "error": {"code": code, "message": message}})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Validasi Pydantic gagal → 422 envelope standar (CR v3.5 §1), bukan `{"detail": [...]}`.
+
+    Pesan error pertama yang dipakai, diprefix nama field-nya (tanpa segmen lokasi
+    `body`/`query`/`path`) supaya pesan berbahasa Indonesia dari validator sampai ke user.
+    """
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    field = ".".join(str(p) for p in first.get("loc", ())[1:])
+    msg = str(first.get("msg", "Input tidak valid")).removeprefix("Value error, ")
+    return _error(422, VALIDATION_ERROR, f"{field}: {msg}" if field else msg)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """404 route tidak ada, 405 method salah, dsb → envelope dengan code `HTTP_<status>`."""
+    response = _error(exc.status_code, f"HTTP_{exc.status_code}", str(exc.detail))
+    if exc.headers:
+        response.headers.update(exc.headers)
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Exception tak tertangani → 500 envelope generik; detail hanya ke log server (AGENTS.md §4)."""
+    logger.exception("Unhandled error pada %s %s", request.method, request.url.path)
+    return _error(500, INTERNAL_ERROR, "Terjadi kesalahan di server.")
 
 
 @app.get("/health")

@@ -17,7 +17,6 @@ from app.services.export_service import (
     build_stock_projection_pdf,
     build_stock_projection_xlsx,
 )
-from app.utils.exceptions import ForbiddenRoleError
 from tests.unit.test_export_service import _async
 
 USER = "u1"
@@ -145,9 +144,9 @@ async def test_export_metrics_filter_target_type():
 
 
 @pytest.mark.asyncio
-async def test_export_planning_run_milik_user_lain_403():
-    with pytest.raises(ForbiddenRoleError):
-        await _svc(run_user="u2").export_stock_projection(USER, "r1", "xlsx")
+async def test_export_planning_run_milik_user_lain_diizinkan():
+    # CR v3.5 §3.4 Opsi A — export terbuka untuk semua role & semua run.
+    assert await _svc(run_user="u2").export_stock_projection(USER, "r1", "xlsx")
 
 
 # ── API ──

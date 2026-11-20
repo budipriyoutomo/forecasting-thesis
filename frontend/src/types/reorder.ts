@@ -31,4 +31,10 @@ export interface ReorderRecommendation {
   buffer_stock_system?: string | null;
   service_level_effective?: string | null; // α efektif (%) = Φ(SS ÷ σ·√L)
   adjustment_source?: "suggested" | "custom" | null;
+  // CR v3.5 §5.4 — rincian biaya persediaan per material (Decimal → string; null = belum dihitung)
+  ordering_cost?: string | null; // biaya pesan setahun (A/Q)·S
+  holding_cost?: string | null; // biaya simpan setahun
+  total_inventory_cost?: string | null; // TIC = pesan + simpan
+  unit_price_used?: string | null; // C, harga material saat hitung
+  holding_rate_used?: string | null; // i (%) tahunan; hanya EOQ klasik
 }

@@ -1,5 +1,7 @@
 // Unduh file biner dari endpoint export (bukan envelope JSON) lalu trigger
 // download di browser. Mengembalikan blob supaya mudah dites.
+import { handleSessionExpired } from "@/lib/session";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export async function downloadExport(path: string, token: string, fallbackName: string): Promise<Blob> {
@@ -7,6 +9,7 @@ export async function downloadExport(path: string, token: string, fallbackName: 
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
+  if (res.status === 401) handleSessionExpired(); // CR v3.5 §5.3
   if (!res.ok) {
     throw new Error(`Export gagal (status ${res.status})`);
   }

@@ -24,6 +24,7 @@ import {
   useWarehouseConfigs,
 } from "@/hooks/useWarehouse";
 import { useMaterials } from "@/hooks/useMaterials";
+import { useCan } from "@/hooks/usePermission";
 import { useProducts } from "@/hooks/useProducts";
 import type { WarehouseConfig, WarehouseConfigInput, WarehouseTarget } from "@/types/warehouse";
 
@@ -38,6 +39,7 @@ export default function WarehousePage() {
   const create = useCreateWarehouseConfig();
   const update = useUpdateWarehouseConfig();
   const remove = useDeleteWarehouseConfig();
+  const canWrite = useCan("master.write");
 
   const [editing, setEditing] = useState<WarehouseConfig | null>(null);
   const [open, setOpen] = useState(false);
@@ -59,15 +61,17 @@ export default function WarehousePage() {
         title="Kapasitas Gudang"
         description="Kapasitas gudang per grup material (pallet → CTN → pcs; seluruh material satu grup berbagi kapasitas, dipakai proyeksi stok & utilisasi) dan gudang produk jadi (pallet/dus, validasi forecast produk)."
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus />
-            Tambah kapasitas
-          </Button>
+          canWrite && (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus />
+              Tambah kapasitas
+            </Button>
+          )
         }
       />
 
@@ -90,11 +94,15 @@ export default function WarehousePage() {
           products={products ?? []}
           materials={materials ?? []}
           targetType={target}
-          onEdit={(c) => {
-            setEditing(c);
-            setOpen(true);
-          }}
-          onDelete={(c) => remove.mutate(c.id)}
+          onEdit={
+            canWrite
+              ? (c) => {
+                  setEditing(c);
+                  setOpen(true);
+                }
+              : undefined
+          }
+          onDelete={canWrite ? (c) => remove.mutate(c.id) : undefined}
         />
       )}
 

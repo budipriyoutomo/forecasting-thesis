@@ -25,7 +25,6 @@ from app.models.forecast_run import ForecastRun
 from app.services.forecasting import forecast_service, registry
 from app.services.forecasting.types import EngineOptions
 from app.utils.exceptions import (
-    ForbiddenRoleError,
     ForecastRunNotFoundError,
     ProductNotFoundError,
     UnsupportedForecastMethodError,
@@ -152,17 +151,18 @@ class ForecastRunService:
         results = await self._repo.list_results(run_id)
         return run, results
 
-    async def list_runs(self, user_id: str, limit: int = 50):
-        """Run milik user saja, terbaru dulu — ringkas, tanpa hasil per produk."""
-        return await self._repo.list_runs_for_user(user_id, limit)
+    async def list_runs(self, limit: int = 50):
+        """Semua run (CR v3.5 §3.4 Opsi A), terbaru dulu — `(run, label pembuat)`,
+        ringkas tanpa hasil per produk."""
+        return await self._repo.list_runs(limit)
 
     async def get_results_for_product(self, product_id: str):
         return await self._repo.list_results_for_product(product_id)
 
     async def _require_run(self, user_id: str, run_id: str):
+        # CR v3.5 §3.4 Opsi A: run terlihat semua role (single-tenant) — tidak ada cek
+        # pemilik; pembatasan tulis lewat RBAC endpoint (app/utils/permissions.py).
         run = await self._repo.get_run(run_id)
         if run is None:
             raise ForecastRunNotFoundError("Forecast run tidak ditemukan.")
-        if str(run.user_id) != str(user_id):
-            raise ForbiddenRoleError("Anda tidak berhak mengakses run ini.")
         return run

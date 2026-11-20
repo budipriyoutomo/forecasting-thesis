@@ -13,10 +13,11 @@ import { useForecastRuns } from "@/hooks/useForecast";
 import { useMaterials } from "@/hooks/useMaterials";
 import { useReorderList, useStockProjection } from "@/hooks/usePlanning";
 
-function runLabel(createdAt: string | null, runId: string) {
-  if (!createdAt) return runId.slice(0, 8);
+function runLabel(createdAt: string | null, runId: string, createdBy?: string | null) {
+  const by = createdBy ? ` · oleh ${createdBy}` : "";
+  if (!createdAt) return `${runId.slice(0, 8)}${by}`;
   const d = new Date(createdAt);
-  return `${d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} · ${runId.slice(0, 8)}`;
+  return `${d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} · ${runId.slice(0, 8)}${by}`;
 }
 
 // Kedatangan material hasil hitungan sistem (20 Nov 2026): pesanan ROP di proyeksi stok
@@ -63,7 +64,7 @@ export default function MaterialArrivalsPage() {
             >
               {runs.data.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {runLabel(r.created_at, r.run_id)}
+                  {runLabel(r.created_at, r.run_id, r.created_by)}
                 </option>
               ))}
             </select>

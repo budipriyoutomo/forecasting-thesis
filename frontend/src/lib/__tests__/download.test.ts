@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { downloadExport } from "@/lib/download";
+import { handleSessionExpired } from "@/lib/session";
+
+vi.mock("@/lib/session", () => ({ handleSessionExpired: vi.fn() }));
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -39,5 +42,12 @@ describe("downloadExport", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad", { status: 404 })));
 
     await expect(downloadExport("/x", "tok", "f.xlsx")).rejects.toThrow(/gagal/i);
+  });
+
+  it("401 → sesi berakhir (logout + ke login), tetap melempar error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+
+    await expect(downloadExport("/api/v1/x/export", "tok", "f.xlsx")).rejects.toThrow();
+    expect(handleSessionExpired).toHaveBeenCalledOnce();
   });
 });

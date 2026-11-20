@@ -16,7 +16,7 @@ RBAC: baca semua role terautentikasi, tulis admin.
 from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from app.api.deps import get_current_user, get_external_variable_service, require_role
+from app.api.deps import get_current_user, get_external_variable_service, require_permission
 from app.schemas.external_variable import (
     ExternalVariableCoverageOut,
     ExternalVariableCreate,
@@ -51,7 +51,7 @@ async def list_external_variables(service: ExternalVariableService = Depends(get
     return {"success": True, "data": [_to_response(v, counts.get(str(v.id), 0)) for v in await service.list()]}
 
 
-@router.post("", dependencies=[Depends(require_role("admin"))])
+@router.post("", dependencies=[Depends(require_permission("extvar.define"))])
 async def create_external_variable(
     payload: ExternalVariableCreate, service: ExternalVariableService = Depends(get_external_variable_service)
 ):
@@ -83,7 +83,7 @@ async def external_variable_template(
 
 
 # Didaftarkan sebelum /{variable_id} supaya "values" tidak tertangkap sebagai id.
-@router.post("/values/import", dependencies=[Depends(require_role("admin"))])
+@router.post("/values/import", dependencies=[Depends(require_permission("extvar.import"))])
 async def import_external_variable_values(
     file: UploadFile,
     dry_run: bool = Query(False, description="Validasi saja: kembalikan semua error tanpa menyimpan"),
@@ -107,7 +107,7 @@ async def import_external_variable_values(
     return {"success": True, "data": result, "message": message}
 
 
-@router.put("/{variable_id}", dependencies=[Depends(require_role("admin"))])
+@router.put("/{variable_id}", dependencies=[Depends(require_permission("extvar.define"))])
 async def update_external_variable(
     variable_id: str,
     payload: ExternalVariableUpdate,
@@ -116,7 +116,7 @@ async def update_external_variable(
     return {"success": True, "data": _to_response(await service.update(variable_id, payload))}
 
 
-@router.delete("/{variable_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{variable_id}", dependencies=[Depends(require_permission("extvar.define"))])
 async def delete_external_variable(
     variable_id: str, service: ExternalVariableService = Depends(get_external_variable_service)
 ):
@@ -140,7 +140,7 @@ async def list_external_variable_values(
     return {"success": True, "data": data}
 
 
-@router.delete("/{variable_id}/values", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{variable_id}/values", dependencies=[Depends(require_permission("extvar.define"))])
 async def clear_external_variable_values(
     variable_id: str, service: ExternalVariableService = Depends(get_external_variable_service)
 ):

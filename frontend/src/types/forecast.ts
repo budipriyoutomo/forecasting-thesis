@@ -65,6 +65,7 @@ export interface ForecastRunListItem {
   horizon: number;
   horizon_unit: string;
   created_at: string | null;
+  created_by?: string | null; // nama/email pembuat run (CR v3.5 §3.4 — semua run terlihat semua role)
 }
 
 export interface MethodSelectionInput {
