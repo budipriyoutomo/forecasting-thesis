@@ -33,6 +33,16 @@ class SqlForecastRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_runs_for_user(self, user_id: str, limit: int = 50) -> list[ForecastRun]:
+        """Run milik user, terbaru dulu (pemilih run halaman Kedatangan Material, 20 Nov 2026)."""
+        result = await self._session.execute(
+            select(ForecastRun)
+            .where(ForecastRun.user_id == user_id)
+            .order_by(desc(ForecastRun.created_at))
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def save_run(self, run: ForecastRun) -> ForecastRun:
         await self._session.flush()
         return run

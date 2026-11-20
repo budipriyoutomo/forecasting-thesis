@@ -58,6 +58,15 @@ export interface ForecastRunSummary {
   n_pending_selection?: number;
 }
 
+// GET /forecast/runs — ringkasan run milik user, terbaru dulu (pemilih run, 20 Nov 2026)
+export interface ForecastRunListItem {
+  run_id: string;
+  status: ForecastRunSummary["status"];
+  horizon: number;
+  horizon_unit: string;
+  created_at: string | null;
+}
+
 export interface MethodSelectionInput {
   method: string;
   reason: string;

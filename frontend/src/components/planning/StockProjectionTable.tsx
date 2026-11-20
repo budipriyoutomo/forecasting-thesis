@@ -29,7 +29,8 @@ function Utilization({ pct }: { pct: number | null }) {
   );
 }
 
-// Tahap 3 thesis (Fase 11.6): stok awal + kedatangan + pesanan − pemakaian = stok akhir,
+// Tahap 3 thesis (Fase 11.6): stok awal + kedatangan − pemakaian = stok akhir. Kedatangan =
+// pesanan hasil ROP, tiba di periode yang sama (input kedatangan manual dihapus 20 Nov 2026);
 // utilisasi gudang material per periode. Satu tabel per material; tab memilih skenario.
 export function StockProjectionTable({ rows, materials = [] }: { rows: StockProjectionRow[]; materials?: Material[] }) {
   const [scenario, setScenario] = useState<ProjectionScenario>("proposed");
@@ -84,9 +85,8 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
                 <TableRow>
                   <TableHead>Periode</TableHead>
                   <TableHead>Stok awal</TableHead>
-                  <TableHead>Kedatangan</TableHead>
-                  <TableHead>Pesanan (EOQ)</TableHead>
                   <TableHead>Pemakaian</TableHead>
+                  <TableHead>Kedatangan (ROP)</TableHead>
                   <TableHead>Stok akhir</TableHead>
                   <TableHead>Kekurangan</TableHead>
                   <TableHead>Utilisasi awal</TableHead>
@@ -98,9 +98,8 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
                   <TableRow key={r.period}>
                     <TableCell>{formatDate(r.period)}</TableCell>
                     <TableCell className="tabular-nums">{formatNumber(r.opening_qty)}</TableCell>
-                    <TableCell className="tabular-nums">{formatNumber(r.receipt_qty)}</TableCell>
-                    <TableCell className="tabular-nums">{formatNumber(r.order_qty)}</TableCell>
                     <TableCell className="tabular-nums">{formatNumber(r.usage_qty)}</TableCell>
+                    <TableCell className="tabular-nums">{formatNumber(r.order_qty)}</TableCell>
                     <TableCell className="tabular-nums">{formatNumber(r.ending_qty)}</TableCell>
                     <TableCell className="tabular-nums">
                       {r.shortage_qty > 0 ? (

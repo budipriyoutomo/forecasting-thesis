@@ -6,7 +6,8 @@ export interface StockProjectionRow {
   scenario: ProjectionScenario;
   period: string;
   opening_qty: number;
-  receipt_qty: number;
+  /** Deprecated 20 Nov 2026 — selalu null; kedatangan = `order_qty` (hasil ROP). */
+  receipt_qty: number | null;
   usage_qty: number;
   order_qty: number;
   ending_qty: number;
@@ -35,7 +36,7 @@ export interface PlanningSummary {
 
 // Fase 11.17 — loop kapasitas gudang → adjust SS & Buffer (backend/app/services/capacity_adjustment_service.py)
 export type CapacitySuggestionStatus = "within_capacity" | "adjusted" | "infeasible";
-export type OverflowCause = "opening_stock" | "receipts" | "moq" | "cycle_stock";
+export type OverflowCause = "opening_stock" | "moq" | "cycle_stock";
 
 export interface CapacitySuggestionGroup {
   group: string;

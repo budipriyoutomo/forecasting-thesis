@@ -180,8 +180,10 @@ def _pdf_table(title: str, run, headers: list[str], widths: list[int], rows: lis
     return bytes(pdf.output())
 
 
+# order_qty = kedatangan (pesanan hasil ROP, tiba di periode yang sama); receipt_qty deprecated
+# (input kedatangan manual dihapus 20 Nov 2026) sehingga tidak diekspor.
 _PROJECTION_COLS = [
-    "opening_qty", "receipt_qty", "usage_qty", "order_qty", "ending_qty", "shortage_qty",
+    "opening_qty", "usage_qty", "order_qty", "ending_qty", "shortage_qty",
     "capacity_qty", "utilization_opening_pct", "utilization_ending_pct",
 ]
 
@@ -198,13 +200,13 @@ def build_stock_projection_xlsx(rows, labels: dict) -> bytes:
 
 
 def build_stock_projection_pdf(run, rows, labels: dict) -> bytes:
-    headers = ["Material", "Skenario", "Periode", "Awal", "Terima", "Pakai", "Order", "Akhir",
+    headers = ["Material", "Skenario", "Periode", "Awal", "Pakai", "Tiba (ROP)", "Akhir",
                "Kurang", "Kapasitas", "Util. akhir %", "Muat"]
-    widths = [42, 20, 22, 22, 20, 20, 20, 22, 20, 24, 24, 14]
+    widths = [46, 20, 22, 24, 22, 26, 24, 20, 24, 24, 14]
     data = [
         [
             _label(labels, r.material_id)[:24], r.scenario, str(r.period),
-            _fmt(r.opening_qty), _fmt(r.receipt_qty), _fmt(r.usage_qty), _fmt(r.order_qty),
+            _fmt(r.opening_qty), _fmt(r.usage_qty), _fmt(r.order_qty),
             _fmt(r.ending_qty), _fmt(r.shortage_qty), _fmt(r.capacity_qty),
             _fmt(r.utilization_ending_pct, 1),
             "-" if r.is_within_capacity is None else ("Ya" if r.is_within_capacity else "Tidak"),

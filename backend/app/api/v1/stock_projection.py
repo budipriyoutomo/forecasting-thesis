@@ -24,7 +24,7 @@ def _out(r) -> dict:
         "scenario": r.scenario,
         "period": str(r.period),
         "opening_qty": r.opening_qty,
-        "receipt_qty": r.receipt_qty,
+        "receipt_qty": r.receipt_qty,  # deprecated 20 Nov 2026 — NULL; kedatangan = order_qty (ROP)
         "usage_qty": r.usage_qty,
         "order_qty": r.order_qty,
         "ending_qty": r.ending_qty,

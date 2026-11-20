@@ -56,6 +56,10 @@ class FakeForecastRepo:
     async def get_run(self, run_id):
         return self.runs.get(str(run_id))
 
+    async def list_runs_for_user(self, user_id, limit=50):
+        mine = [r for r in self.runs.values() if str(r.user_id) == str(user_id)]
+        return list(reversed(mine))[:limit]  # terbaru dulu (urutan insert)
+
     async def save_run(self, run):
         return run
 
@@ -305,3 +309,13 @@ async def test_run_meneruskan_variabel_eksternal_aktif_ke_engine_ml():
 
     assert external.asked == ["p1"]
     assert results[0].candidates_evaluated[0]["hyperparameters"]["exog_used"] == ["suhu"]
+
+
+@pytest.mark.asyncio
+async def test_list_runs_hanya_milik_user_terbaru_dulu():
+    # 20 Nov 2026 — dipakai pemilih run halaman Kedatangan Material
+    service = _service([], {})
+    repo = service._repo
+    for rid, uid in (("r1", "u1"), ("r2", "u2"), ("r3", "u1")):
+        repo.runs[rid] = SimpleNamespace(id=rid, user_id=uid)
+    assert [r.id for r in await service.list_runs("u1")] == ["r3", "r1"]

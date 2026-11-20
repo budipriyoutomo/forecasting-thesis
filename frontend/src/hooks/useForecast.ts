@@ -7,6 +7,7 @@ import { getToken } from "@/lib/auth";
 import type {
   ForecastResult,
   ForecastRunInput,
+  ForecastRunListItem,
   ForecastRunResponse,
   MethodSelectionInput,
   RunSelectionResult,
@@ -22,6 +23,20 @@ export function useEnabledMethods() {
       const res = await api.forecast.methods(token as string);
       if (!res.success) throw new Error(res.error.message);
       return res.data.methods;
+    },
+  });
+}
+
+// Daftar run milik user, terbaru dulu (pemilih run halaman Kedatangan Material).
+export function useForecastRuns() {
+  const token = getToken();
+  return useQuery<ForecastRunListItem[]>({
+    queryKey: ["forecast-runs"],
+    enabled: Boolean(token),
+    queryFn: async () => {
+      const res = await api.forecast.listRuns(token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
     },
   });
 }

@@ -8,6 +8,7 @@ import {
   Network,
   Package,
   SlidersHorizontal,
+  Truck,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/inventory", label: "Persediaan Material", icon: Archive },
       { href: "/forecast/new", label: "Forecast", icon: LineChart },
+      { href: "/material-arrivals", label: "Kedatangan Material", icon: Truck },
     ],
   },
 ];

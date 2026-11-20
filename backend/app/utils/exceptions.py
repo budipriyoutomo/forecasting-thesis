@@ -204,10 +204,3 @@ class StockSnapshotNotFoundError(AppError):
 
     status_code = 404
     code = "STOCK_SNAPSHOT_NOT_FOUND"
-
-
-class MaterialReceiptNotFoundError(AppError):
-    """Fase 11.5 — rencana kedatangan material tidak ada."""
-
-    status_code = 404
-    code = "MATERIAL_RECEIPT_NOT_FOUND"

@@ -26,7 +26,7 @@ LABELS = {"m1": "PRF-01", "p1": "Yoghurt ST"}
 
 def _proj(mid="m1", scenario="proposed", period="2025-01-01", ending=80.0, shortage=0.0, within=True):
     return SimpleNamespace(
-        material_id=mid, scenario=scenario, period=period, opening_qty=100.0, receipt_qty=0.0,
+        material_id=mid, scenario=scenario, period=period, opening_qty=100.0, receipt_qty=None,
         usage_qty=20.0, order_qty=0.0, ending_qty=ending, shortage_qty=shortage,
         capacity_qty=200.0, utilization_opening_pct=50.0, utilization_ending_pct=40.0,
         is_within_capacity=within,
@@ -54,6 +54,13 @@ def test_build_stock_projection_xlsx_pakai_kode_material():
         assert col in headers
     assert ws.cell(row=2, column=1).value == "PRF-01"
     assert ws.max_row == 3
+
+
+def test_export_proyeksi_tanpa_kolom_kedatangan_manual():
+    # 20 Nov 2026: kedatangan = order_qty (hasil ROP); receipt_qty deprecated (NULL) tidak diekspor
+    ws = load_workbook(io.BytesIO(build_stock_projection_xlsx([_proj()], LABELS))).active
+    headers = _headers(ws)
+    assert "receipt_qty" not in headers and "order_qty" in headers
 
 
 def test_build_stock_projection_xlsx_id_tak_dikenal_fallback_id():

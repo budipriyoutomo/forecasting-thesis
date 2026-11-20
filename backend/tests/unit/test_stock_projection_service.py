@@ -68,12 +68,7 @@ class Configs:
 
 class Stock:
     async def latest_stock(self, as_of=None):
-        return {"m1": (date(2026, 10, 1), 1000.0)}
-
-
-class Receipts:
-    async def list(self, material_id=None, date_from=None, date_to=None):
-        return [SimpleNamespace(material_id="m1", expected_date=date(2026, 11, 10), qty=200)]
+        return {"m1": (date(2026, 10, 1), 1200.0)}
 
 
 class Materials:
@@ -91,22 +86,22 @@ def _svc(run=None, planning=None, recs=None, reorder_service=None, boms=None, ma
     repo = Repo()
     svc = StockProjectionService(
         repo, Forecast(run, [result]), Reorder(recs or []), boms or Boms(), Demand(planning or []), Products(), Configs(),
-        stock or Stock(), Receipts(), reorder_service=reorder_service, factory=lambda **kw: SimpleNamespace(**kw),
+        stock or Stock(), reorder_service=reorder_service, factory=lambda **kw: SimpleNamespace(**kw),
         materials=Materials(materials),
     )
     return svc, repo
 
 
 @pytest.mark.asyncio
-async def test_proyeksi_usulan_dengan_stok_awal_kedatangan_kapasitas():
+async def test_proyeksi_usulan_dengan_stok_awal_dan_kapasitas():
     rec = SimpleNamespace(material_id="m1", safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
     svc, repo = _svc(recs=[rec])
     rows = await svc.generate_for_run(USER, "r1")
 
     proposed = [r for r in rows if r.scenario == "proposed"]
-    assert [(r.opening_qty, r.receipt_qty, r.usage_qty, r.ending_qty) for r in proposed] == [
-        (1000, 200, 500, 700), (700, 0, 400, 300),
-    ]
+    assert [(r.opening_qty, r.usage_qty, r.ending_qty) for r in proposed] == [(1200, 500, 700), (700, 400, 300)]
+    # 20 Nov 2026: input kedatangan manual dihapus — kedatangan = order_qty (hasil ROP)
+    assert all(r.receipt_qty is None for r in rows)
     assert proposed[0].capacity_qty == 2000 and proposed[0].utilization_ending_pct == pytest.approx(35)
     assert not [r for r in rows if r.scenario == "baseline"]  # planning horizon tidak tersedia
     assert repo.by_run["r1"] == rows
@@ -121,7 +116,7 @@ async def test_skenario_baseline_bila_planning_horizon_ada():
 
     baseline = [r for r in rows if r.scenario == "baseline"]
     assert [r.usage_qty for r in baseline] == [600, 600]
-    assert baseline[1].ending_qty == 0 and baseline[1].shortage_qty == 0  # 1000+200−600=600 → 600−600=0
+    assert baseline[1].ending_qty == 0 and baseline[1].shortage_qty == 0  # 1200−600=600 → 600−600=0
 
 
 @pytest.mark.asyncio
@@ -200,7 +195,7 @@ async def test_override_planner_dipakai_skenario_usulan_saja():
 
 @pytest.mark.asyncio
 async def test_utilisasi_dihitung_dari_total_stok_grup_material():
-    # m1 & m2 satu grup "cap" (kapasitas 2000). m1: 1000+200−500 = 700; m2: 600−500 = 100.
+    # m1 & m2 satu grup "cap" (kapasitas 2000). m1: 1200−500 = 700; m2: 600−500 = 100.
     # Utilisasi grup periode 1 = (700 + 100) / 2000 = 40% — sama untuk kedua material.
     class TwoBoms:
         async def list(self, product_id=None):
@@ -211,7 +206,7 @@ async def test_utilisasi_dihitung_dari_total_stok_grup_material():
 
     class TwoStock:
         async def latest_stock(self, as_of=None):
-            return {"m1": (date(2026, 10, 1), 1000.0), "m2": (date(2026, 10, 1), 600.0)}
+            return {"m1": (date(2026, 10, 1), 1200.0), "m2": (date(2026, 10, 1), 600.0)}
 
     recs = [
         SimpleNamespace(material_id=m, safety_stock=0, buffer_stock=0, reorder_point=0, eoq_qty=0)
@@ -226,7 +221,7 @@ async def test_utilisasi_dihitung_dari_total_stok_grup_material():
     assert by_mat["m1"].ending_qty == 700 and by_mat["m2"].ending_qty == 100
     for r in rows:
         assert r.capacity_qty == 2000
-        assert r.utilization_opening_pct == pytest.approx(80)  # (1000 + 600) / 2000
+        assert r.utilization_opening_pct == pytest.approx(90)  # (1200 + 600) / 2000
         assert r.utilization_ending_pct == pytest.approx(40)
         assert r.is_within_capacity is True
 
@@ -271,7 +266,7 @@ async def test_baseline_memakai_kebijakan_sistem_sebelum_adjust_kapasitas():
     svc, _ = _svc(planning=planning, recs=[rec])
     rows = await svc.generate_for_run(USER, "r1")
     first = {r.scenario: r for r in rows if r.period == date(2026, 11, 1)}
-    # pre = 1000 + 200 − 500 = 700
+    # pre = 1200 − 500 = 700
     assert first["proposed"].order_qty == 0  # 700 > ROP usulan 600
     assert first["baseline"].order_qty == 400  # 700 ≤ ROP sistem 800 → S 1100 − 700
 

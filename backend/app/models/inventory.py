@@ -3,7 +3,10 @@ ORM model stok & kedatangan material (Fase 11.5, 30 Oktober 2026) — REVISI_V2 
 
 `stock_snapshots`   : stok aktual per material per tanggal (upload dari ERP). Satu baris
                       per (material, tanggal); stok awal proyeksi = snapshot terakhir.
-`material_receipts` : estimasi kedatangan material (input manual / upload Excel).
+`material_receipts` : DEPRECATED (20 Nov 2026) — dulu estimasi kedatangan manual / upload Excel.
+                      Tabel & model dibiarkan (data lama tidak hilang; autogenerate Alembic tidak
+                      mengusulkan drop), tapi tidak dibaca/ditulis aplikasi: kedatangan = pesanan
+                      hasil ROP di proyeksi stok (RECONCILIATION §"Kedatangan Material = Hasil Hitungan ROP").
 """
 import uuid
 from datetime import date, datetime

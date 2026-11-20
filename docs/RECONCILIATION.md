@@ -987,3 +987,35 @@ mencocokkan periode persis, semua variabel di-drop diam-diam; alasan drop tidak 
     terukur (7 SKU): importance `permintaan` 38–42%, MAD RF 88.904 → 66.658, XGB 111.473 → 83.230.
     Peringatan disimpan di deskripsi variabel. Seed tidak mengubah status aktif variabel yang sudah
     ada di DB — di DB lama aktifkan lewat UI.
+
+---
+
+## Kedatangan Material = Hasil Hitungan ROP (20 Nov 2026)
+
+**Konteks:** sejak Fase 11.5 (REVISI_V2 §3.3) estimasi kedatangan material diinput manual / upload
+Excel (`material_receipts`) di tab Kedatangan halaman /inventory, lalu ikut masuk proyeksi stok
+sebagai `receipt_qty` — terpisah dari `order_qty` (pesanan hasil ROP, diasumsikan tiba di periode
+yang sama). User ingin kedatangan dihitung sistem, bukan diupload.
+
+**Keputusan user (20 Nov 2026):**
+1. **Input kedatangan manual / upload dihapus total** — service, repository, schema, endpoint
+   `/material-receipts*`, tab & komponen frontend. *Menyimpang dari REVISI_V2 §3.3* ("estimasi
+   kedatangan = input manual / upload Excel"); PO yang sudah terbit di ERP tidak lagi dimodelkan.
+2. **Kedatangan = pesanan hasil ROP, tiba di periode yang sama** (asumsi thesis lead time < 1 periode,
+   tidak digeser sesuai lead time). Rumus proyeksi: `pre = opening − usage`;
+   `kedatangan = OrderPolicy.order_qty(pre)` (sumber tunggal `reorder_service`, Fase 11.9);
+   `ending = max(0, pre + kedatangan)`. Kolom yang menyimpan kedatangan tetap `order_qty`.
+3. **Tabel `material_receipts` tidak di-drop** — dibiarkan (data lama tidak hilang). Model ORM tetap
+   ada agar autogenerate Alembic tidak mengusulkan drop; tidak dibaca/ditulis aplikasi.
+4. **`stock_projections.receipt_qty` dibiarkan NULL** — migration menjadikannya nullable (tanpa
+   server default); proyeksi baru menulis NULL. Baris lama tetap 0 sampai proyeksi run dihitung ulang.
+   Field tetap ada di response API (`null`) agar kontrak tidak putus — deprecated.
+5. **Tampilan kedatangan = halaman baru read-only** `/material-arrivals` (pilih run): baris proyeksi
+   skenario `proposed` dengan `order_qty > 0`, beserta ROP dari rekomendasi reorder run yang sama.
+   Tidak ada endpoint backend baru (dibaca dari `GET .../stock-projection` & `GET .../reorder`).
+
+**Konsekuensi (disadari):**
+- Penyebab infeasible `receipts` (loop kapasitas Fase 11.17) dihapus — tinggal `opening_stock` |
+  `moq` | `cycle_stock`.
+- Error code `MATERIAL_RECEIPT_NOT_FOUND` tidak lagi dipakai (dibiarkan terdaftar, deprecated).
+- Hasil golden thesis tidak berubah (seed thesis tidak punya data kedatangan manual).

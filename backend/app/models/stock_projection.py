@@ -29,7 +29,8 @@ class StockProjection(Base):
     scenario: Mapped[str] = mapped_column(String(10), nullable=False, default="proposed")
     period: Mapped[date] = mapped_column(Date, nullable=False)
     opening_qty: Mapped[float] = mapped_column(Float, nullable=False)
-    receipt_qty: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    # Deprecated 20 Nov 2026: kedatangan = order_qty (hasil ROP); proyeksi baru menulis NULL.
+    receipt_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
     usage_qty: Mapped[float] = mapped_column(Float, nullable=False)
     order_qty: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     ending_qty: Mapped[float] = mapped_column(Float, nullable=False)

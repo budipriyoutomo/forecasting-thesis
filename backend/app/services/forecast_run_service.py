@@ -152,6 +152,10 @@ class ForecastRunService:
         results = await self._repo.list_results(run_id)
         return run, results
 
+    async def list_runs(self, user_id: str, limit: int = 50):
+        """Run milik user saja, terbaru dulu — ringkas, tanpa hasil per produk."""
+        return await self._repo.list_runs_for_user(user_id, limit)
+
     async def get_results_for_product(self, product_id: str):
         return await self._repo.list_results_for_product(product_id)
 

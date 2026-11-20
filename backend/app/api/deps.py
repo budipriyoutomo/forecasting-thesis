@@ -14,7 +14,7 @@ from app.repositories.external_variable_repository import SqlExternalVariableRep
 from app.repositories.forecast_repository import SqlForecastRepository
 from app.repositories.forecast_settings_repository import SqlForecastSettingsRepository
 from app.repositories.inventory_metrics_repository import SqlInventoryMetricsRepository
-from app.repositories.inventory_repository import SqlMaterialReceiptRepository, SqlStockSnapshotRepository
+from app.repositories.inventory_repository import SqlStockSnapshotRepository
 from app.repositories.material_component_repository import SqlMaterialComponentRepository
 from app.repositories.material_repository import SqlMaterialRepository
 from app.repositories.material_usage_repository import SqlMaterialUsageRepository
@@ -36,7 +36,7 @@ from app.services.capacity_adjustment_service import CapacityAdjustmentReader, C
 from app.services.cost_service import CostService
 from app.services.cost_template_service import CostTemplateService
 from app.services.dashboard_service import DashboardService
-from app.services.inventory_data_service import MaterialReceiptService, StockSnapshotService
+from app.services.inventory_data_service import StockSnapshotService
 from app.services.inventory_metrics_service import InventoryMetricsService
 from app.services.export_service import ExportService
 from app.services.external_variable_service import ExternalVariableService
@@ -234,10 +234,6 @@ def get_stock_snapshot_service(session: AsyncSession = Depends(get_db)) -> Stock
     return _stock(session)
 
 
-def get_material_receipt_service(session: AsyncSession = Depends(get_db)) -> MaterialReceiptService:
-    return MaterialReceiptService(SqlMaterialReceiptRepository(session), SqlMaterialRepository(session))
-
-
 def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
     return CostService(
         forecast_repo=_selected_forecast(session),
@@ -307,7 +303,6 @@ def get_stock_projection_service(session: AsyncSession = Depends(get_db)) -> Sto
         products=SqlProductRepository(session),
         warehouse_configs=SqlWarehouseConfigRepository(session),
         stock=_stock(session),
-        receipts=SqlMaterialReceiptRepository(session),
         reorder_service=get_reorder_service(session),
         overrides=get_override_service(session),
         materials=SqlMaterialRepository(session),

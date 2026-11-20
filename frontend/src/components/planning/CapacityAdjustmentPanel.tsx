@@ -18,7 +18,6 @@ import type { CapacitySuggestion, OverflowCause } from "@/types/planning";
 
 const CAUSE_LABEL: Record<OverflowCause, string> = {
   opening_stock: "Stok awal (snapshot ERP) sudah melebihi kapasitas",
-  receipts: "Kedatangan terjadwal membuat gudang penuh",
   moq: "Qty pesan minimum (MOQ) lebih besar dari ruang tersisa",
   cycle_stock: "Pemakaian selama lead time (cycle stock) — perlu kurangi EOQ / tambah kapasitas",
 };

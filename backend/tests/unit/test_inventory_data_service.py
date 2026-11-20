@@ -1,9 +1,8 @@
 """
-Fase 11.5 — stok awal ERP (snapshot) & estimasi kedatangan material (REVISI_V2 §3.3).
+Fase 11.5 — stok awal ERP (snapshot) (REVISI_V2 §3.3).
 
 Snapshot import (CSV/XLSX): material_code, snapshot_date, qty [, uom] — kunci (material,
-tanggal) ditimpa. Kedatangan: input manual (CRUD) atau import material_code,
-expected_date, qty [, note].
+tanggal) ditimpa. Kedatangan manual dihapus 20 Nov 2026 (kedatangan = hasil ROP).
 """
 from datetime import date
 from decimal import Decimal
@@ -11,9 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.schemas.inventory import MaterialReceiptCreate, MaterialReceiptUpdate
-from app.services.inventory_data_service import MaterialReceiptService, StockSnapshotService
-from app.utils.exceptions import MaterialNotFoundError, MaterialReceiptNotFoundError, UploadInvalidFormatError
+from app.services.inventory_data_service import StockSnapshotService
+from app.utils.exceptions import UploadInvalidFormatError
 
 
 class FakeSnapshotRepo:
@@ -31,38 +29,6 @@ class FakeSnapshotRepo:
             if (material_id is None or str(r.material_id) == str(material_id))
             and (snapshot_date is None or r.snapshot_date == snapshot_date)
         ]
-
-
-class FakeReceiptRepo:
-    def __init__(self, rows=None):
-        self.rows = list(rows or [])
-
-    async def list(self, material_id=None, date_from=None, date_to=None):
-        return [
-            r for r in self.rows
-            if (material_id is None or str(r.material_id) == str(material_id))
-            and (date_from is None or r.expected_date >= date_from)
-            and (date_to is None or r.expected_date <= date_to)
-        ]
-
-    async def get_by_id(self, rid):
-        return next((r for r in self.rows if str(r.id) == str(rid)), None)
-
-    async def add(self, row):
-        row.id = row.id or f"r{len(self.rows) + 1}"
-        self.rows.append(row)
-        return row
-
-    async def add_all(self, rows):
-        for r in rows:
-            await self.add(r)
-        return len(rows)
-
-    async def save(self, row):
-        return row
-
-    async def delete(self, row):
-        self.rows.remove(row)
 
 
 class Materials:
@@ -148,65 +114,3 @@ async def test_rata_rata_nilai_persediaan():
     # nilai per tanggal: 9/1 = 100×100 = 10.000 ; 10/1 = 300×100 = 30.000 → rata-rata 20.000
     assert await svc.average_inventory_value() == pytest.approx(20_000)
     assert await StockSnapshotService(FakeSnapshotRepo(), Materials([]), factory=_ns).average_inventory_value() is None
-
-
-# ── Kedatangan ──
-
-
-def _receipts(rows=None):
-    repo = FakeReceiptRepo(rows)
-    return MaterialReceiptService(repo, Materials([CAP, BTL]), factory=_ns), repo
-
-
-@pytest.mark.asyncio
-async def test_crud_kedatangan_manual():
-    svc, repo = _receipts()
-    r = await svc.create(MaterialReceiptCreate(material_id="m1", expected_date=date(2026, 11, 5), qty=500), user_id="u1")
-    assert r.source == "manual" and r.created_by == "u1"
-
-    r = await svc.update(r.id, MaterialReceiptUpdate(qty=600, note="revisi supplier"))
-    assert float(r.qty) == 600 and r.note == "revisi supplier"
-
-    await svc.delete(r.id)
-    assert repo.rows == []
-    with pytest.raises(MaterialReceiptNotFoundError):
-        await svc.delete("nope")
-
-
-@pytest.mark.asyncio
-async def test_create_material_tidak_ada_404():
-    svc, _ = _receipts()
-    with pytest.raises(MaterialNotFoundError):
-        await svc.create(MaterialReceiptCreate(material_id="zz", expected_date=date(2026, 11, 5), qty=1), user_id="u1")
-
-
-def test_qty_kedatangan_harus_positif():
-    with pytest.raises(ValueError):
-        MaterialReceiptCreate(material_id="m1", expected_date=date(2026, 11, 5), qty=0)
-
-
-@pytest.mark.asyncio
-async def test_import_kedatangan():
-    svc, repo = _receipts()
-    body = b"material_code,expected_date,qty,note\nCAP-WHITE,2026-11-05,500,PO-1\nBTL-WHITE,2026-11-20,300,\n"
-    assert await svc.import_receipts("k.csv", body, user_id="u1") == {"imported": 2}
-    assert {r.source for r in repo.rows} == {"upload"}
-    assert repo.rows[0].note == "PO-1" and repo.rows[1].note is None
-
-
-@pytest.mark.asyncio
-async def test_import_kedatangan_invalid():
-    svc, repo = _receipts()
-    with pytest.raises(UploadInvalidFormatError, match="lebih dari 0"):
-        await svc.import_receipts("k.csv", b"material_code,expected_date,qty\nCAP-WHITE,2026-11-05,0\n", user_id="u1")
-    assert repo.rows == []
-
-
-@pytest.mark.asyncio
-async def test_list_rentang_tanggal():
-    svc, _ = _receipts([
-        SimpleNamespace(id="r1", material_id="m1", expected_date=date(2026, 11, 5), qty=1),
-        SimpleNamespace(id="r2", material_id="m1", expected_date=date(2026, 12, 5), qty=1),
-    ])
-    rows = await svc.list(date_from=date(2026, 11, 1), date_to=date(2026, 11, 30))
-    assert [r.id for r in rows] == ["r1"]

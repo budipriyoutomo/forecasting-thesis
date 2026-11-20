@@ -85,11 +85,6 @@ class Opening:
         return {"M1": (date(2025, 12, 31), self._q)} if self._q else {}
 
 
-class NoReceipts:
-    async def list(self, material_id=None, date_from=None, date_to=None):
-        return []
-
-
 class GroupMaterials(FakeMaterialRepo):
     async def list(self):
         return list(self._by_id.values())
@@ -116,7 +111,7 @@ def _build(capacity, target=99.0, opening=0.0, manual_ss=None, run=None):
     )
     projection = StockProjectionService(
         Repo(), FakeForecastRepo(run, results), reorder_repo, FakeBomRepo({"p1": [_bom("p1", "M1", 1)]}),
-        Demand([]), Products(), GroupConfigs(capacity), Opening(opening), NoReceipts(),
+        Demand([]), Products(), GroupConfigs(capacity), Opening(opening),
         reorder_service=reorder, factory=lambda **kw: SimpleNamespace(**kw), materials=materials,
     )
     svc = CapacityAdjustmentService(

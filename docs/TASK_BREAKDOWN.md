@@ -237,6 +237,21 @@ Keputusan & flowchart: `RECONCILIATION.md` §"Loop Validasi Kapasitas Gudang →
 
 ---
 
+## 15. Kedatangan Material = Hasil Hitungan ROP — ✅ SELESAI (20 Nov 2026), belum di-commit
+
+Keputusan: `RECONCILIATION.md` §"Kedatangan Material = Hasil Hitungan ROP".
+
+- [x] Proyeksi stok: `pre = opening − usage`; kedatangan = `order_qty` (kebijakan ROP, tiba di periode yang sama); `bucket_by_period` & dependency receipts dihapus
+- [x] Penyebab infeasible `receipts` dihapus dari loop kapasitas
+- [x] Modul kedatangan manual dihapus (service, repository, schema, endpoint `/material-receipts*`, exception); model & tabel `material_receipts` dibiarkan
+- [x] Migration `c2d3e4f5a6b7`: `stock_projections.receipt_qty` nullable (proyeksi baru = NULL)
+- [x] Export proyeksi tanpa kolom `receipt_qty`; PDF kolom "Tiba (ROP)"
+- [x] `GET /forecast/runs` — daftar run milik user (pemilih run)
+- [x] Frontend: tab Kedatangan di /inventory dihapus; `StockProjectionTable` satu kolom "Kedatangan (ROP)"; halaman baru `/material-arrivals` (read-only, pilih run) + menu navigasi
+- [x] Docs: PRD FR-12.7/12.8, ARCHITECTURE §3/§4/§5/§6.10/§6.11, AGENTS (error code deprecated), RECONCILIATION
+
+---
+
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)
 
 1. Fase Migrasi 0 (setup & audit — wajib, jangan dilewati meski buru-buru, ini yang mencegah migrasi jadi rewrite liar)

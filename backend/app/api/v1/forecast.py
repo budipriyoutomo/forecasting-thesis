@@ -2,6 +2,7 @@
 Endpoint forecast — /api/v1/forecast (Fase 4), docs/ARCHITECTURE.md §5/§6.8.
 
 POST /forecast/runs   → trigger run banyak produk jadi (mode otomatis / manual).
+GET  /forecast/runs   → daftar run milik user, terbaru dulu (?limit=, maks 200) — ringkas.
 GET  /forecast/runs/{id} → polling status + hasil.
 GET  /forecast/results?product_id=... → riwayat hasil per produk.
 POST /forecast/results/{id}/selection → planner memilih metode untuk satu produk (Fase 11.15).
@@ -119,6 +120,26 @@ async def create_forecast_run(
         "data": {"run": _summary(run, results), "results": [_result_out(r) for r in results]},
         "message": "Forecast run selesai",
     }
+
+
+@router.get("/runs")
+async def list_forecast_runs(
+    limit: int = Query(50, ge=1, le=200),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ForecastRunService = Depends(get_forecast_run_service),
+):
+    runs = await service.list_runs(current_user.user_id, limit)
+    data = [
+        {
+            "run_id": str(r.id),
+            "status": r.status,
+            "horizon": r.horizon,
+            "horizon_unit": r.horizon_unit,
+            "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+        }
+        for r in runs
+    ]
+    return {"success": True, "data": data}
 
 
 @router.get("/runs/{run_id}")

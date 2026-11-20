@@ -4,6 +4,7 @@ import type { DashboardSummary } from "@/types/dashboard";
 import type {
   ForecastResult,
   ForecastRunInput,
+  ForecastRunListItem,
   ForecastRunResponse,
   MethodSelectionInput,
   RunSelectionResult,
@@ -24,7 +25,7 @@ import type {
   ImportDryRunResult,
   ImportResult,
 } from "@/types/externalVariable";
-import type { LatestStock, MaterialReceipt, MaterialReceiptInput, WasteFactor } from "@/types/inventory";
+import type { LatestStock, WasteFactor } from "@/types/inventory";
 import type {
   CapacityAdjustment,
   CapacityAdjustmentInputItem,
@@ -152,21 +153,11 @@ export const api = {
       }),
   },
 
-  // Fase 11.1/11.5 — stok ERP, kedatangan, pemakaian aktual
+  // Fase 11.1/11.5 — stok ERP & pemakaian aktual (kedatangan manual dihapus 20 Nov 2026)
   inventory: {
     latest: (token: string) => request<LatestStock[]>("/api/v1/stock-snapshots/latest", authed(token)),
     importSnapshots: (file: File, token: string) =>
       uploadFile<ImportResult>("/api/v1/stock-snapshots/import", file, token),
-    receipts: (token: string) => request<MaterialReceipt[]>("/api/v1/material-receipts", authed(token)),
-    createReceipt: (input: MaterialReceiptInput, token: string) =>
-      request<MaterialReceipt>(
-        "/api/v1/material-receipts",
-        authed(token, { method: "POST", body: JSON.stringify(input) }),
-      ),
-    removeReceipt: (id: string, token: string) =>
-      request<{ id: string; deleted: boolean }>(`/api/v1/material-receipts/${id}`, authed(token, { method: "DELETE" })),
-    importReceipts: (file: File, token: string) =>
-      uploadFile<ImportResult>("/api/v1/material-receipts/import", file, token),
     wasteFactors: (token: string) => request<WasteFactor[]>("/api/v1/material-usage/waste-factors", authed(token)),
     importUsage: (file: File, token: string) => uploadFile<ImportResult>("/api/v1/material-usage/import", file, token),
   },
@@ -407,6 +398,12 @@ export const api = {
         method: "POST",
         headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
         body: JSON.stringify(input),
+      }),
+
+    listRuns: (token: string): Promise<ApiResponse<ForecastRunListItem[]>> =>
+      request<ForecastRunListItem[]>("/api/v1/forecast/runs", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       }),
 
     getRun: (runId: string, token: string): Promise<ApiResponse<ForecastRunResponse>> =>

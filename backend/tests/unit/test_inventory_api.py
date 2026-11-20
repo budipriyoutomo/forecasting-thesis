@@ -1,17 +1,16 @@
-"""Fase 11.5 — endpoint stok ERP & kedatangan material."""
+"""Fase 11.5 — endpoint stok ERP. Kedatangan manual dihapus 20 Nov 2026 (kedatangan = hasil ROP)."""
 from datetime import date, datetime, timedelta, timezone
 
 import jwt
 import pytest
 
-from app.api.deps import get_material_receipt_service, get_stock_snapshot_service
+from app.api.deps import get_stock_snapshot_service
 from app.config import get_settings
 from app.main import app
-from app.services.inventory_data_service import MaterialReceiptService, StockSnapshotService
+from app.services.inventory_data_service import StockSnapshotService
 from tests.unit.test_inventory_data_service import (
     BTL,
     CAP,
-    FakeReceiptRepo,
     FakeSnapshotRepo,
     Materials,
     _ns,
@@ -30,14 +29,9 @@ def _headers(role):
 @pytest.fixture(autouse=True)
 def _overrides():
     snaps = FakeSnapshotRepo([_snap("m1", date(2026, 9, 1), 100)])
-    receipts = FakeReceiptRepo()
     app.dependency_overrides[get_stock_snapshot_service] = lambda: StockSnapshotService(snaps, Materials([CAP, BTL]), factory=_ns)
-    app.dependency_overrides[get_material_receipt_service] = lambda: MaterialReceiptService(
-        receipts, Materials([CAP, BTL]), factory=_ns
-    )
-    yield snaps, receipts
+    yield snaps
     app.dependency_overrides.pop(get_stock_snapshot_service, None)
-    app.dependency_overrides.pop(get_material_receipt_service, None)
 
 
 @pytest.mark.asyncio
@@ -61,35 +55,17 @@ async def test_snapshot_import_viewer_403_invalid_400(client):
 
 
 @pytest.mark.asyncio
-async def test_receipt_crud_dan_import(client, _overrides):
-    _, receipts = _overrides
-    body = {"material_id": "m1", "expected_date": "2026-11-05", "qty": 500, "note": "PO-1"}
-    res = await client.post("/api/v1/material-receipts", json=body, headers=_headers("ppic"))
-    assert res.status_code == 201
-    rid = res.json()["data"]["id"]
-    assert res.json()["data"]["source"] == "manual"
-
-    res = await client.put(f"/api/v1/material-receipts/{rid}", json={"qty": 600}, headers=_headers("ppic"))
-    assert res.json()["data"]["qty"] == 600
-
-    files = {"file": ("k.csv", b"material_code,expected_date,qty\nBTL-WHITE,2026-11-20,300\n", "text/csv")}
-    res = await client.post("/api/v1/material-receipts/import", files=files, headers=_headers("admin"))
-    assert res.json()["data"] == {"imported": 1}
-
-    res = await client.get("/api/v1/material-receipts?date_from=2026-11-10", headers=_headers("viewer"))
-    assert [r["material_id"] for r in res.json()["data"]] == ["m2"]
-
-    res = await client.delete(f"/api/v1/material-receipts/{rid}", headers=_headers("admin"))
-    assert res.status_code == 200 and len(receipts.rows) == 1
-
-
-@pytest.mark.asyncio
-async def test_receipt_404_422_401(client):
-    res = await client.delete("/api/v1/material-receipts/nope", headers=_headers("admin"))
-    assert res.status_code == 404 and res.json()["error"]["code"] == "MATERIAL_RECEIPT_NOT_FOUND"
-    res = await client.post(
-        "/api/v1/material-receipts", json={"material_id": "m1", "expected_date": "2026-11-05", "qty": 0},
-        headers=_headers("admin"),
-    )
-    assert res.status_code == 422
-    assert (await client.get("/api/v1/material-receipts")).status_code == 401
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        ("get", "/api/v1/material-receipts"),
+        ("post", "/api/v1/material-receipts"),
+        ("post", "/api/v1/material-receipts/import"),
+        ("put", "/api/v1/material-receipts/r1"),
+        ("delete", "/api/v1/material-receipts/r1"),
+    ],
+)
+async def test_endpoint_kedatangan_manual_dihapus(client, method, path):
+    # 20 Nov 2026: kedatangan = pesanan hasil ROP (proyeksi stok), bukan input manual/upload
+    res = await getattr(client, method)(path, headers=_headers("admin"))
+    assert res.status_code == 404

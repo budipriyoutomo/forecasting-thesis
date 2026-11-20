@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.capacity_adjustment_service import (
+    OVERFLOW_CAUSES,
     SERVICE_LEVEL_FLOOR,
     active_adjustments,
     classify_overflow_cause,
@@ -32,10 +33,10 @@ def test_batas_bawah_service_level_90():
     assert SERVICE_LEVEL_FLOOR == 90.0
 
 
-def _row(mid, period, ending, capacity, order=0.0, receipt=0.0, scenario="proposed"):
+def _row(mid, period, ending, capacity, order=0.0, scenario="proposed"):
     return SimpleNamespace(
         material_id=mid, period=period, ending_qty=ending, capacity_qty=capacity,
-        order_qty=order, receipt_qty=receipt, scenario=scenario,
+        order_qty=order, receipt_qty=None, scenario=scenario,
     )
 
 
@@ -80,9 +81,9 @@ def test_penyebab_overload_stok_awal_bila_belum_pernah_pesan():
     assert classify_overflow_cause(rows, {"m1": "cap"}, "cap", 1000.0, moq={}) == "opening_stock"
 
 
-def test_penyebab_overload_kedatangan_terjadwal():
-    rows = [_row("m1", P1, 500, 1000), _row("m1", P2, 1500, 1000, receipt=1200)]
-    assert classify_overflow_cause(rows, {"m1": "cap"}, "cap", 1000.0, moq={}) == "receipts"
+def test_penyebab_kedatangan_terjadwal_dihapus():
+    # 20 Nov 2026: kedatangan = pesanan hasil ROP, tidak ada lagi kedatangan manual
+    assert OVERFLOW_CAUSES == ("opening_stock", "moq", "cycle_stock")
 
 
 def test_penyebab_overload_moq():

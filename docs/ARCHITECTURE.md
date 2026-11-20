@@ -82,6 +82,8 @@ forecastiq/
 │   │   │   │   ├── cost-templates/     ← master template biaya (S, H, overhead, depresiasi aset)
 │   │   │   │   ├── forecast/new/       ← upload + konfigurasi
 │   │   │   │   ├── forecast/[id]/      ← hasil forecast per run (produk-only; reorder & validasi gudang menyusul)
+│   │   │   │   ├── inventory/          ← stok ERP & pemakaian aktual (input)
+│   │   │   │   ├── material-arrivals/  ← kedatangan material hasil ROP per run (read-only, 20 Nov 2026)
 │   │   │   │   └── settings/
 │   │   │   └── layout.tsx
 │   │   ├── components/
@@ -99,6 +101,7 @@ forecastiq/
 │   │   │   ├── boms/                   ← visual breakdown produk → material
 │   │   │   ├── warehouse/              ← indikator validasi kapasitas
 │   │   │   ├── cost-templates/         ← form & ringkasan template biaya
+│   │   │   ├── arrivals/               ← MaterialArrivalsTable (kedatangan hasil ROP)
 │   │   │   ├── override/
 │   │   │   └── dashboard/
 │   │   ├── lib/{api.ts, auth.ts, download.ts, format.ts, navigation.ts, utils.ts}
@@ -474,6 +477,7 @@ GET    /api/v1/uploads/{session_id}
 GET    /api/v1/uploads
 
 POST   /api/v1/forecast/runs              # trigger forecast run (horizon, method opsional)
+GET    /api/v1/forecast/runs                  # daftar run milik user, terbaru dulu (?limit=, maks 200) — 20 Nov 2026
 GET    /api/v1/forecast/runs/{run_id}
 GET    /api/v1/forecast/results?product_id=...
 POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; run milik user lain → 403
@@ -917,12 +921,13 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 | `material_usage_history` + `reorder_recommendations.waste_factor` | pemakaian aktual vs standar → buffer | `a8b9c0d1e2f3` |
 | `material_components` | BOM level 2+ (informasi), CHECK bukan self-loop | `b9c0d1e2f3a4` |
 | `cost_templates.holding_cost_rate_pct`, `cost_template_items.period_basis` + tipe `MAINTENANCE`; `reorder_recommendations.eoq_method/item_status/annual_demand/unit_price_used/holding_rate_used` | EOQ klasik | `c0d1e2f3a4b5` |
-| `stock_snapshots`, `material_receipts` + `reorder_recommendations.current_stock_used/stock_source` | stok ERP & kedatangan | `d1e2f3a4b5c6` |
+| `stock_snapshots`, `material_receipts` + `reorder_recommendations.current_stock_used/stock_source` | stok ERP & kedatangan (`material_receipts` deprecated 20 Nov 2026 — tabel dibiarkan, tidak dipakai aplikasi) | `d1e2f3a4b5c6` |
 | `warehouse_config.item_type/material_id` (product_id nullable, partial unique per target, CHECK tepat satu) + `stock_projections` | kapasitas material & proyeksi | `e2f3a4b5c6d7` |
 | `warehouse_config.material_group` (target per grup material menggantikan per material; utilisasi proyeksi = Σ stok anggota grup ÷ kapasitas grup) | kapasitas per grup material (19 Nov 2026) | `f9a0b1c2d3e4` |
 | `inventory_metrics.inventory_days/shortage_cost` | evaluasi material | `f3a4b5c6d7e8` |
 | `forecast_settings.rop_formula/order_qty_policy` + `reorder_recommendations.rop_formula_used/order_qty_policy_used/order_up_to_level/moq_used` | v3.3 kebijakan pesan satu sumber (§6.8) | `b5c6d7e8f9a0` |
 | `capacity_adjustments` + `reorder_recommendations.safety_stock_system/buffer_stock_system/service_level_effective/adjustment_source` | loop kapasitas gudang → adjust SS & Buffer (Fase 11.17, §6.11) | `b1c2d3e4f5a6` |
+| `stock_projections.receipt_qty` nullable tanpa server default (proyeksi baru menulis NULL; kedatangan = `order_qty`) | kedatangan = hasil ROP (20 Nov 2026) | `c2d3e4f5a6b7` |
 
 ### Endpoint baru
 ```
@@ -935,8 +940,9 @@ GET  /external-variables/template?horizon=12          # .xlsx format lebar (vari
 POST /material-usage/import · GET /material-usage · GET /material-usage/waste-factors
 GET/POST /materials/{id}/components · DELETE /material-components/{id} · GET /boms/tree?product_id=
 POST /stock-snapshots/import · GET /stock-snapshots · GET /stock-snapshots/latest
-GET/POST /material-receipts · POST /material-receipts/import · PUT/DELETE /material-receipts/{id}
-POST/GET /forecast/runs/{id}/stock-projection
+~~GET/POST /material-receipts · POST /material-receipts/import · PUT/DELETE /material-receipts/{id}~~   # dihapus 20 Nov 2026 (kedatangan = hasil ROP)
+GET  /forecast/runs?limit=50                       # run milik user terbaru dulu [{run_id, status, horizon, horizon_unit, created_at}] — pemilih run halaman Kedatangan Material (20 Nov 2026)
+POST/GET /forecast/runs/{id}/stock-projection       # `receipt_qty` deprecated (selalu null sejak 20 Nov 2026); kedatangan = `order_qty`
 GET  /forecast/runs/{id}/stock-projection/export?format=xlsx|pdf&scenario=proposed|baseline
 GET  /forecast/runs/{id}/inventory-metrics/export?format=xlsx|pdf&target_type=product|material
 POST /forecast/runs/{id}/plan                      # tahap 2→4 berurutan; + `capacity` {n_adjusted_materials, suggestion} (Fase 11.17)
@@ -953,7 +959,7 @@ GET  /material-components                          # seluruh komponen (kolom Lev
 - SS = Z·σ_d·√L, ROP = μ_d·L + SS (+ buffer bila `rop_formula = with_buffer`, default); μ_d = μ_p/d, σ_d = σ_p/√d, d = median selisih tanggal forecast; Z = Φ⁻¹(service level).
 - Buffer = max(0, Σaktual/Σstandar − 1) × μ_p.
 - EOQ klasik = √(2AS/iC), TC = (A/Q)S + (Q/2)iC, A = rata-rata kebutuhan periode × periode/tahun (bulanan 12). Baseline TIC memakai aturan `choose_eoq` yang sama per material.
-- Proyeksi: pre = opening + receipt − usage; order = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
+- Proyeksi: pre = opening − usage; order (= **kedatangan**, tiba di periode yang sama) = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); input kedatangan manual (`receipt`) dihapus 20 Nov 2026; ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
 - Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga produk (`selling_price`) (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
 - Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
 - Variabel eksternal (CR v3.4, 20 Nov 2026):
@@ -973,7 +979,7 @@ Keputusan: `RECONCILIATION.md` §"Loop Validasi Kapasitas Gudang → Adjust SS &
 ```
 
 - **Titik cek**: stok AKHIR periode skenario `proposed` (rumus thesis); kelebihan grup = max_t(Σ stok akhir anggota − kapasitas grup).
-- **Usulan** (`capacity_adjustment_service.suggest`, simulasi di memori lewat `ReorderService.compute_for_run(adjustments=…)` + `StockProjectionService.compute_for_run(recs=…, scenarios=("proposed",))`, tidak disimpan): per grup overload turunkan service level satu anak tangga `99 → 98 → 97 → 95 → 92,5 → 90` (batas bawah 90%, material SS manual dilewati) → setelah batas bawah, potong Buffer anggota grup proporsional sebesar kelebihan → ulang tahap 2→3, maks `MAX_ITERATIONS = 10`. Status `within_capacity` | `adjusted` | `infeasible`; grup infeasible diberi penyebab `opening_stock` | `receipts` | `moq` | `cycle_stock`.
+- **Usulan** (`capacity_adjustment_service.suggest`, simulasi di memori lewat `ReorderService.compute_for_run(adjustments=…)` + `StockProjectionService.compute_for_run(recs=…, scenarios=("proposed",))`, tidak disimpan): per grup overload turunkan service level satu anak tangga `99 → 98 → 97 → 95 → 92,5 → 90` (batas bawah 90%, material SS manual dilewati) → setelah batas bawah, potong Buffer anggota grup proporsional sebesar kelebihan → ulang tahap 2→3, maks `MAX_ITERATIONS = 10`. Status `within_capacity` | `adjusted` | `infeasible`; grup infeasible diberi penyebab `opening_stock` | `moq` | `cycle_stock` (`receipts` dihapus 20 Nov 2026).
 - **Penerapan**: `ReorderService` membaca adjust berlaku (`CapacityAdjustmentReader`): `safety_stock` absolut menimpa SS (termasuk SS manual), `service_level_pct` saja → SS = Z(p)·σ_d·√L (tidak untuk SS manual), `buffer_stock` menimpa Buffer. ROP & S dihitung ulang otomatis lewat `compute_rop`.
 - **Baseline tidak di-adjust**: proyeksi `baseline` memakai `system_policy_from_rec` (ROP & S digeser kembali sebesar selisih SS/Buffer sistem − adjust).
 - **ROP** tidak di-adjust langsung (μ·L = fakta lead time). **EOQ berkendala kapasitas** (Hadley–Whitin, Lagrange) belum diimplementasi.

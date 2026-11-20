@@ -34,11 +34,6 @@ USAGE = [900, 1000, 1100]
 CURRENT = 150.0
 
 
-class NoReceipts:
-    async def list(self, material_id=None, date_from=None, date_to=None):
-        return []
-
-
 class OpeningStock:
     """Stok awal proyeksi dibuat = CURRENT + pemakaian periode 1 → pre[1] == CURRENT."""
 
@@ -83,7 +78,7 @@ async def test_titik_dan_qty_pesan_identik(formula, policy, moq):
     # 2) Proyeksi stok periode 1 (pre == CURRENT) memesan qty yang sama.
     proj = StockProjectionService(
         Repo(), FakeForecastRepo(run, _results()), reorder_repo, ProjBoms(), Demand([]), Products(), Configs(),
-        OpeningStock(), NoReceipts(), factory=lambda **kw: SimpleNamespace(**kw),
+        OpeningStock(), factory=lambda **kw: SimpleNamespace(**kw),
     )
     rows = [r for r in await proj.generate_for_run(USER, "r1") if r.scenario == "proposed"]
     first = rows[0]

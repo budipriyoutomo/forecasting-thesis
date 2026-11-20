@@ -355,3 +355,25 @@ async def test_pilih_metode_semua_produk_validasi_422(client, auth_headers, smoo
     )
 
     assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_runs_milik_user(client, auth_headers, smooth_df):
+    # 20 Nov 2026 — pemilih run halaman Kedatangan Material
+    _override([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+    payload = {"product_ids": ["p1"], "horizon": 7, "method": "moving_average"}
+    run_id = (await client.post("/api/v1/forecast/runs", headers=auth_headers, json=payload)).json()["data"]["run"]["run_id"]
+
+    res = await client.get("/api/v1/forecast/runs", headers=auth_headers)
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["success"] is True
+    assert [r["run_id"] for r in body["data"]] == [run_id]
+    assert set(body["data"][0]) == {"run_id", "status", "horizon", "horizon_unit", "created_at"}
+
+
+@pytest.mark.asyncio
+async def test_list_runs_tanpa_token_401(client):
+    res = await client.get("/api/v1/forecast/runs")
+    assert res.status_code == 401

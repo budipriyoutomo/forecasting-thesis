@@ -12,7 +12,7 @@ Usulan (simulasi di memori, TIDAK disimpan):
   2. Sudah di batas bawah (atau SS tak bisa diturunkan, mis. SS manual) → Buffer anggota grup
      dipotong proporsional sebesar kelebihan, ulang tahap 2→3.
   3. Berhenti bila semua grup muat, tak ada lagi yang bisa diturunkan, atau MAX_ITERATIONS.
-     Masih overload → `infeasible` + penyebab (stok awal / kedatangan / MOQ / cycle stock).
+     Masih overload → `infeasible` + penyebab (stok awal / MOQ / cycle stock).
 
 Planner menerima usulan atau mengisi angka custom (alasan wajib); keduanya disimpan
 append-only per (run, material) di `capacity_adjustments` dan dipakai ReorderService pada
@@ -29,7 +29,7 @@ SERVICE_LEVEL_LADDER = (99.0, 98.0, 97.0, 95.0, 92.5, 90.0)
 SERVICE_LEVEL_FLOOR = 90.0
 MAX_ITERATIONS = 10
 ADJUSTMENT_SOURCES = ("suggested", "custom", "reset")
-OVERFLOW_CAUSES = ("opening_stock", "receipts", "moq", "cycle_stock")
+OVERFLOW_CAUSES = ("opening_stock", "moq", "cycle_stock")  # "receipts" dihapus 20 Nov 2026
 _EPS = 1e-6
 
 
@@ -42,7 +42,8 @@ def next_service_level(current: float) -> float | None:
 
 
 def _group_totals(rows, group_of: dict, capacity_by_group: dict) -> dict:
-    """{grup: {periode: (Σ stok akhir, Σ pesanan, Σ kedatangan)}} skenario proposed."""
+    """{grup: {periode: (Σ stok akhir, Σ pesanan)}} skenario proposed. Pesanan = kedatangan
+    (hasil ROP, tiba di periode yang sama) — input kedatangan manual dihapus 20 Nov 2026."""
     totals: dict = {}
     for r in rows:
         if getattr(r, "scenario", "proposed") != "proposed":
@@ -50,12 +51,8 @@ def _group_totals(rows, group_of: dict, capacity_by_group: dict) -> dict:
         key = group_of.get(str(r.material_id))
         if not key or not capacity_by_group.get(key):
             continue
-        ending, order, receipt = totals.setdefault(key, {}).get(r.period, (0.0, 0.0, 0.0))
-        totals[key][r.period] = (
-            ending + float(r.ending_qty),
-            order + float(getattr(r, "order_qty", 0) or 0),
-            receipt + float(getattr(r, "receipt_qty", 0) or 0),
-        )
+        ending, order = totals.setdefault(key, {}).get(r.period, (0.0, 0.0))
+        totals[key][r.period] = (ending + float(r.ending_qty), order + float(getattr(r, "order_qty", 0) or 0))
     return totals
 
 
@@ -63,7 +60,7 @@ def group_overflow(rows, group_of: dict, capacity_by_group: dict) -> dict:
     """{grup: kelebihan terbesar (> 0)} — hanya grup yang melebihi kapasitas."""
     result = {}
     for key, periods in _group_totals(rows, group_of, capacity_by_group).items():
-        excess = max(ending for ending, _, _ in periods.values()) - float(capacity_by_group[key])
+        excess = max(ending for ending, _ in periods.values()) - float(capacity_by_group[key])
         if excess > _EPS:
             result[key] = excess
     return result
@@ -90,7 +87,7 @@ def classify_overflow_cause(rows, group_of: dict, group: str, capacity: float, m
     periods = _group_totals(rows, group_of, {group: capacity}).get(group, {})
     ordered = sorted(periods)
     worst = max(ordered, key=lambda p: periods[p][0])
-    _, order, receipt = periods[worst]
+    _, order = periods[worst]
     if order > _EPS:
         members = [
             r for r in rows
@@ -102,8 +99,6 @@ def classify_overflow_cause(rows, group_of: dict, group: str, capacity: float, m
             if m > 0 and 0 < float(r.order_qty) <= m + _EPS:
                 return "moq"
         return "cycle_stock"
-    if receipt > _EPS:
-        return "receipts"
     if all(periods[p][1] <= _EPS for p in ordered if p <= worst):
         return "opening_stock"
     return "cycle_stock"

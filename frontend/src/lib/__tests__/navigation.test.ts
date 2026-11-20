@@ -20,6 +20,7 @@ describe("NAV_GROUPS", () => {
       "/external-variables",
       "/inventory",
       "/forecast/new",
+      "/material-arrivals",
     ]);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });

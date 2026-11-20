@@ -194,8 +194,8 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 - FR-12.4 **Buffer stock** = max(0, Σaktual ÷ Σstandar − 1) × kebutuhan periode, dari upload pemakaian aktual (standar = output produksi × BOM).
 - FR-12.5 **BOM multi-level**: komponen material (mis. Preform ← Bottle) sebagai informasi level 2; siklus ditolak.
 - FR-12.6 **EOQ klasik** √(2AS/iC) per material bila harga & i (%) tersedia (i diturunkan otomatis dari biaya simpan tahunan ÷ rata-rata nilai persediaan, bisa di-override di template biaya); selain itu EOQ dinamis dengan status per item.
-- FR-12.7 **Stok ERP & kedatangan**: upload snapshot stok, input/upload estimasi kedatangan. Stok untuk reorder = snapshot terakhir (`current_stock` request jadi fallback).
-- FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan + pesanan − pemakaian (pesanan = kebijakan qty pesan FR-4.3 bila stok ≤ ROP, diasumsikan tiba di periode yang sama); utilisasi stok awal & akhir; dua skenario (forecast vs planning).
+- FR-12.7 **[CHANGED 20 Nov 2026] Stok ERP & kedatangan**: upload snapshot stok. Stok untuk reorder = snapshot terakhir (`current_stock` request jadi fallback). Kedatangan **tidak lagi diinput/diupload** — dihitung sistem dari ROP (FR-12.8) dan ditampilkan read-only di halaman **Kedatangan Material** (`/material-arrivals`, pilih forecast run): periode tiba, material, stok sebelum pesan, ROP, qty tiba, kebijakan qty.
+- FR-12.8 **Kapasitas gudang material** (pallet → CTN → pcs) + **proyeksi stok** per periode: stok akhir = stok awal + kedatangan − pemakaian (**[CHANGED 20 Nov 2026]** kedatangan = pesanan hasil ROP: kebijakan qty pesan FR-4.3 bila stok sebelum pesan ≤ ROP, diasumsikan tiba di periode yang sama — tidak digeser lead time); utilisasi stok awal & akhir; dua skenario (forecast vs planning).
 - FR-12.9 **Evaluasi material**: fulfilment rate (β)/service level (α), stockout rate, turnover, **inventory days**, **shortage cost** (qty produk tak terpenuhi × harga produk).
 - FR-12.10 Tombol **Jalankan perencanaan** menjalankan tahap 2→4 berurutan (`POST /forecast/runs/{id}/plan`).
 
