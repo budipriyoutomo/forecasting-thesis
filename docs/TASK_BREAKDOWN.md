@@ -250,7 +250,7 @@ Keputusan: `RECONCILIATION.md` §"Kedatangan Material = Hasil Hitungan ROP".
 - [x] Frontend: tab Kedatangan di /inventory dihapus; `StockProjectionTable` satu kolom "Kedatangan (ROP)"; halaman baru `/material-arrivals` (read-only, pilih run) + menu navigasi
 - [x] Docs: PRD FR-12.7/12.8, ARCHITECTURE §3/§4/§5/§6.10/§6.11, AGENTS (error code deprecated), RECONCILIATION
 
-## 16. CR v3.5 — Keselarasan FE↔BE & Matriks Role — ✅ §1–§4 SELESAI (20 Nov 2026), belum di-commit
+## 16. CR v3.5 — Keselarasan FE↔BE & Matriks Role — ✅ SELESAI (§1–§5, 20 Nov 2026)
 
 Keputusan: `docs/Change Request v3.5.md`, `RECONCILIATION.md` §"Keselarasan FE↔BE & Matriks Role".
 
@@ -265,7 +265,8 @@ Keputusan: `docs/Change Request v3.5.md`, `RECONCILIATION.md` §"Keselarasan FE�
 - [x] §5.2 Riwayat stok ERP & pemakaian per material (halaman Persediaan), dialog "Lihat nilai" variabel eksternal; `GET /uploads/{id}` didokumentasikan API-only
 - [x] §5.4 `ReorderRecommendation` FE memuat field biaya; kolom "Biaya persediaan" (TIC + pesan/simpan + C, i) di tabel reorder
 - [x] §5.6 Badge "Lead time ≥ 1 periode" (lead time ≥ 30 hari) di Kedatangan Material & proyeksi stok
-- [ ] §5.1 (UI import master data vs endpoint internal) & §5.5 (`Material.dimension`) — menunggu keputusan user
+- [x] §5.5 `Material.dimension` deprecated (schema `Field(deprecated=…)` → tampil di OpenAPI, docs); kolom DB, API & import CSV tetap — tanpa migration
+- [x] §5.1 Import master data (`POST /products|materials|boms/import`) ditandai **internal** di OpenAPI (tag `internal`, `x-internal`), tanpa UI; RBAC tetap `master.write`
 
 ---
 

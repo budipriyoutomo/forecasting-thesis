@@ -209,7 +209,7 @@ forecastiq/
 | unit | VARCHAR | satuan |
 | lead_time_days | INTEGER | |
 | moq | NUMERIC | minimum order quantity |
-| dimension | JSONB | `{length, width, height}` — dimensi fisik material |
+| dimension | JSONB | `{length, width, height}` — dimensi fisik material. **Deprecated (CR v3.5 §5.5, 20 Nov 2026):** tidak dipakai perhitungan apa pun sejak kapasitas gudang per produk/grup material; tetap diterima API & import CSV (`length`/`width`/`height`) dan dikembalikan `GET /materials` demi kompatibilitas, tidak tampil di FE, kolom tidak di-drop |
 | manual_safety_stock | NUMERIC, nullable | override manual |
 | unit_price | NUMERIC(18,4), nullable | harga beli per `unit`, IDR (2 Okt 2026) — dasar biaya pembelian (informasi) & biaya material per produk via BOM |
 | created_at / updated_at | TIMESTAMPTZ | |
@@ -457,20 +457,20 @@ GET    /api/v1/products
 POST   /api/v1/products
 PUT    /api/v1/products/{id}
 DELETE /api/v1/products/{id}
-POST   /api/v1/products/import
+POST   /api/v1/products/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 GET    /api/v1/materials
 POST   /api/v1/materials
 PUT    /api/v1/materials/{id}
 DELETE /api/v1/materials/{id}
-POST   /api/v1/materials/import
+POST   /api/v1/materials/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 GET    /api/v1/boms?product_id=...
 POST   /api/v1/boms
 POST   /api/v1/boms/bulk          # {product_id, items:[{material_id, qty_per_unit}]} — 19 Nov 2026
 PUT    /api/v1/boms/{id}
 DELETE /api/v1/boms/{id}
-POST   /api/v1/boms/import
+POST   /api/v1/boms/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 POST   /api/v1/uploads                    # upload Forecast/Planning/Actual historis
 GET    /api/v1/uploads/{session_id}       # API-only (CR v3.5 §5.2): FE memakai daftar GET /uploads yang sudah memuat ringkasan sesi
@@ -603,6 +603,8 @@ Pemakaian endpoint baca di FE (CR v3.5 §5.2/§5.4/§5.6):
   pemakaian" di halaman Persediaan Material (dimuat setelah material dipilih).
 - `GET /external-variables/{id}/values` → dialog "Lihat nilai" per variabel (semua role).
 - `GET /uploads/{session_id}` → API-only.
+- `POST /products|materials|boms/import` → **internal** (seed/migrasi data awal oleh Admin lewat API, tanpa UI):
+  tag OpenAPI `internal` + `x-internal: true` (`app/api/openapi.py`), RBAC tetap `master.write`. Input harian lewat form CRUD.
 - Tabel reorder menampilkan kolom "Biaya persediaan" per material dari `total_inventory_cost`, `ordering_cost`,
   `holding_cost`, `unit_price_used` (C), `holding_rate_used` (i %, hanya EOQ klasik).
 - Batasan thesis "pesanan ROP tiba di periode yang sama" hanya valid bila lead time < 1 periode: material dengan

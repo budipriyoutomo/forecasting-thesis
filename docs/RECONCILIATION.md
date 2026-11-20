@@ -1060,4 +1060,14 @@ Dokumen lengkap: `docs/Change Request v3.5.md`.
   reorder/plan/proyeksi, atau adjust kapasitas (sebelumnya terbuka) — sesuai FR-8.2.
 - PPIC tidak bisa membuat/menghapus definisi variabel eksternal, hanya mengimpor nilainya.
 - Siapa pun bisa membaca/export run siapa pun — wajar untuk single-tenant; Opsi B bila butuh "rencana resmi".
+- **Tambahan — `materials.dimension` deprecated (§5.5, keputusan user 20 Nov 2026):** audit menunjukkan field
+  ini tidak dibaca perhitungan mana pun (forecast, reorder/EOQ, biaya, kapasitas, proyeksi) dan tidak ada di FE.
+  Dipilih *deprecate tanpa drop* (bukan tampilkan di form, bukan drop kolom): schema `MaterialCreate/Update`
+  memakai `Field(deprecated=…)` sehingga OpenAPI menandainya, tetapi API & import CSV tetap menerimanya dan
+  `GET /materials` tetap mengembalikannya. Menyempurnakan catatan §"Kapasitas Gudang per Produk" yang dulu
+  sengaja membiarkan kolom ini. Drop kolom (migration + seed + test) baru dilakukan bila ada keputusan baru.
+- **Tambahan — import master data = endpoint internal (§5.1, keputusan user 20 Nov 2026):** `POST /products/import`,
+  `/materials/import`, `/boms/import` tidak diberi UI; ditandai internal (seed/migrasi data awal lewat API) dengan tag
+  OpenAPI `internal` + `x-internal: true`. Endpoint tidak disembunyikan dari schema supaya test kelengkapan RBAC
+  (`test_rbac.py`) tetap mencakupnya; RBAC tetap `master.write`. Input harian master data lewat form CRUD.
 

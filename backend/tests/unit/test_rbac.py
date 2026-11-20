@@ -197,3 +197,26 @@ def test_peta_izin_backend_sama_dengan_frontend():
         for key, roles in re.findall(r'"([a-z_.]+)":\s*\[([^\]]*)\]', block)
     }
     assert frontend == {k: tuple(v) for k, v in PERMISSIONS.items()}
+
+
+# CR v3.5 §5.1 — import master data tanpa UI: ditandai internal (seed/migrasi), tetap master.write.
+INTERNAL_IMPORTS = ("/api/v1/products/import", "/api/v1/materials/import", "/api/v1/boms/import")
+
+
+@pytest.mark.parametrize("path", INTERNAL_IMPORTS)
+def test_import_master_data_ditandai_internal(path):
+    op = app.openapi()["paths"][path]["post"]
+    assert "internal" in op["tags"]
+    assert op.get("x-internal") is True
+    assert "seed" in op["description"].lower()
+    assert WRITE_ENDPOINTS[("POST", path)] == "master.write"
+
+
+def test_hanya_import_master_data_yang_internal():
+    internal = {
+        path
+        for path, item in app.openapi()["paths"].items()
+        for op in item.values()
+        if op.get("x-internal")
+    }
+    assert internal == set(INTERNAL_IMPORTS)

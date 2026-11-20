@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_bom_service, get_current_user, require_permission
+from app.api.openapi import INTERNAL_IMPORT
 from app.schemas.bom import BomBulkCreate, BomCreate, BomResponse, BomUpdate
 from app.services.bom_service import BomService, compute_line_cost
 
@@ -66,7 +67,7 @@ async def delete_bom(bom_id: str, service: BomService = Depends(get_bom_service)
     return {"success": True, "data": {"id": bom_id, "deleted": True}}
 
 
-@router.post("/import", dependencies=[Depends(require_permission("master.write"))])
+@router.post("/import", dependencies=[Depends(require_permission("master.write"))], **INTERNAL_IMPORT)
 async def import_boms(file: UploadFile, service: BomService = Depends(get_bom_service)):
     content = await file.read()
     result = await service.import_csv(content)

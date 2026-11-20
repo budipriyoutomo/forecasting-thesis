@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_current_user, get_material_service, require_permission
+from app.api.openapi import INTERNAL_IMPORT
 from app.schemas.material import MaterialCreate, MaterialResponse, MaterialUpdate
 from app.services.material_service import MaterialService
 
@@ -65,7 +66,7 @@ async def delete_material(material_id: str, service: MaterialService = Depends(g
     return {"success": True, "data": {"id": material_id, "deleted": True}}
 
 
-@router.post("/import", dependencies=[Depends(require_permission("master.write"))])
+@router.post("/import", dependencies=[Depends(require_permission("master.write"))], **INTERNAL_IMPORT)
 async def import_materials(
     file: UploadFile, service: MaterialService = Depends(get_material_service)
 ):
