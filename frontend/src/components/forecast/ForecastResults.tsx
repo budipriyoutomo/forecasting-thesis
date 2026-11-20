@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ExplanationBox } from "@/components/dashboard/ExplanationBox";
 import { CandidatesTable } from "@/components/forecast/CandidatesTable";
+import { ExogUsage } from "@/components/forecast/ExogUsage";
 import { FeatureImportance } from "@/components/forecast/FeatureImportance";
 import { ForecastChart } from "@/components/forecast/ForecastChart";
 import { ForecastQtyTable } from "@/components/forecast/ForecastQtyTable";
@@ -157,6 +158,7 @@ export function ForecastResults({
                   />
                   {!pending && (
                     <>
+                      <ExogUsage hyperparameters={r.hyperparameters} />
                       <FeatureImportance importance={r.feature_importance ?? null} />
                       <ForecastChart forecast={r.forecast} />
                       <ForecastQtyTable forecast={r.forecast} />

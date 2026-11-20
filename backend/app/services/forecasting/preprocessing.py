@@ -4,7 +4,20 @@ Dipakai oleh classification.py dan semua fungsi engine (bukan "metode
 forecasting" itu sendiri — jadi tidak melanggar aturan 1-fungsi-1-metode di
 AGENTS.md §5, ini murni utilitas pra-pemrosesan yang dipakai bersama).
 """
+from datetime import date
+
 import pandas as pd
+
+
+def normalize_period(value) -> date:
+    """Periode bulanan → tanggal 1 bulan itu (CR v3.4 §4.1). Sumber tunggal untuk demand
+    & variabel eksternal: Excel thesis memakai tanggal 24 (`2024-01-24`), sedangkan
+    `usable_exog` mencocokkan periode persis — tanpa normalisasi semua variabel di-drop.
+    Nilai kosong / bukan tanggal → ValueError."""
+    ts = pd.to_datetime(value)
+    if ts is None or pd.isna(ts):
+        raise ValueError("Periode kosong.")
+    return ts.date().replace(day=1)
 
 
 def to_daily_series(df: pd.DataFrame) -> pd.Series:

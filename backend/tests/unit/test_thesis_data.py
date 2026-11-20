@@ -6,21 +6,26 @@ Sumber: `Simulasi Thesis.xlsx` versi 7 Nov 2026 — sheet "Bab I Plan vs Forecas
 lead time, elemen biaya penyimpanan). Angka di sini dicek ulang terhadap total/kolom
 hitung yang ADA di Excel, bukan dihitung ulang dari kode.
 """
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 
 from app.scripts.thesis_data import (
     CAP_GROUP_CAPACITY,
+    THESIS_ACTIVE_EXOG,
     THESIS_BOM,
     THESIS_COMPONENTS,
     THESIS_COST_ITEMS,
     THESIS_DEMAND_2024,
     THESIS_DEMAND_2025,
+    THESIS_EXTERNAL_VARIABLES,
     THESIS_MATERIAL_CAPACITY,
     THESIS_MATERIALS,
     THESIS_PRODUCT_CODES,
+    thesis_exog_series,
 )
 from app.services.cost_template_service import item_monthly_cost
 from app.services.warehouse_service import CapacityInput, compute_effective_capacity
@@ -120,3 +125,154 @@ def test_biaya_penyimpanan_bulanan_sama_dengan_excel(name, monthly):
     item = next(i for i in THESIS_COST_ITEMS if i.name == name)
     row = SimpleNamespace(**{"salvage_value": 0, "period_basis": "monthly", **item.__dict__})
     assert item_monthly_cost(row) == monthly
+
+
+# ── CR v3.4 §4.7 — variabel eksternal thesis (sheet "Pengumpulan Data" kolom S–AV) ──
+
+_BY_CODE = {v.code: v for v in THESIS_EXTERNAL_VARIABLES}
+
+
+def test_variabel_aktif_sesuai_keputusan_penulis_20_nov():
+    """8 variabel CR v3.4 §5 + seluruh kategori Perilaku Konsumen & Ekonomi, termasuk turunan
+    permintaan (keputusan penulis 20 Nov 2026, leakage sudah diperingatkan)."""
+    assert set(THESIS_ACTIVE_EXOG) == {
+        "harga_efektif", "harga_kompetitor", "diskon_kompetitor", "suhu",
+        "idul_fitri", "hari_libur_sekolah", "gt_yogurt", "inflasi",
+        "tbi", "gt_makanan_sehat", "gt_probiotik", "perubahan_harga", "pendapatan",
+        "permintaan", "perubahan_permintaan", "ep",
+    }
+    assert {v.code for v in THESIS_EXTERNAL_VARIABLES if v.is_active} == set(THESIS_ACTIVE_EXOG)
+
+
+def test_variabel_turunan_permintaan_aktif_dengan_peringatan_leakage():
+    """Permintaan (AM) = Σ planning bulan yang sama (korelasi 1,00 dengan Σ actual) → leakage.
+    Diaktifkan atas keputusan penulis; peringatan wajib tetap tertulis di deskripsi."""
+    for code in ("permintaan", "perubahan_permintaan", "ep"):
+        assert _BY_CODE[code].is_active is True
+        assert "LEAKAGE" in _BY_CODE[code].description
+        assert _BY_CODE[code].horizon_rule == "zero_fill"
+    assert "harga_promo" not in _BY_CODE
+
+
+def test_semua_variabel_global_dan_flag_bernilai_0_1():
+    for v in THESIS_EXTERNAL_VARIABLES:
+        assert v.scope == "global"
+        if v.value_type == "flag":
+            assert set(thesis_exog_series(v.code, "realisasi").values()) <= {Decimal(0), Decimal(1)}, v.code
+
+
+@pytest.mark.parametrize(
+    "code,period,expected",
+    [
+        ("suhu", date(2024, 1, 1), Decimal("27.2")),
+        ("gt_yogurt", date(2024, 4, 1), Decimal("40.33")),  # sel teks "40,33\t"
+        ("harga_efektif", date(2024, 6, 1), Decimal("8200")),  # harga promo berlaku
+        ("harga_efektif", date(2024, 5, 1), Decimal("9900")),  # harga normal
+        ("harga_kompetitor", date(2024, 6, 1), Decimal("6900")),
+        ("inflasi", date(2024, 6, 1), Decimal("-0.0008")),
+        ("diskon_produk", date(2024, 6, 1), Decimal("0.1717")),  # Numeric(18,4)
+        ("musim_hujan", date(2024, 1, 1), Decimal(1)),
+        ("musim_kemarau", date(2024, 6, 1), Decimal(1)),
+        ("musim_hujan", date(2024, 4, 1), Decimal(0)),  # Peralihan → keduanya 0
+        ("musim_kemarau", date(2024, 4, 1), Decimal(0)),
+        ("curah_hujan", date(2024, 4, 1), Decimal(3)),
+    ],
+)
+def test_nilai_exog_sampel_sel_excel(code, period, expected):
+    assert thesis_exog_series(code, "realisasi")[period] == expected
+
+
+def test_sel_na_dan_harga_kosong_tidak_jadi_angka():
+    real = thesis_exog_series("hari_promo", "realisasi")
+    assert date(2024, 6, 1) not in real  # "NA" di Excel
+    # AN Nov–Des 2026 = 0 karena harga normal kosong (artefak rumus) → bukan harga 0
+    assert date(2026, 11, 1) not in thesis_exog_series("harga_efektif", "realisasi")
+
+
+def test_idul_fitri_bergeser_tiap_tahun():
+    s = thesis_exog_series("idul_fitri", "realisasi")
+    assert sorted(p for p, v in s.items() if v == 1) == [
+        date(2024, 4, 1), date(2025, 3, 1), date(2025, 4, 1), date(2026, 3, 1),
+    ]
+
+
+def test_skenario_realisasi_2026_sampai_oktober():
+    s = thesis_exog_series("suhu", "realisasi")
+    assert max(s) == date(2026, 10, 1)
+    assert len(s) == 34
+
+
+def test_skenario_asumsi_aturan_per_variabel():
+    """CR v3.4 §5 no. 6–7: hanya variabel known-in-advance yang memakai realisasi 2026."""
+    real = {c: thesis_exog_series(c, "realisasi") for c in ("suhu", "inflasi", "harga_kompetitor", "harga_efektif")}
+    suhu = thesis_exog_series("suhu", "asumsi")
+    assert suhu[date(2026, 1, 1)] == (real["suhu"][date(2024, 1, 1)] + real["suhu"][date(2025, 1, 1)]) / 2
+    inflasi = thesis_exog_series("inflasi", "asumsi")
+    assert {inflasi[date(2026, m, 1)] for m in range(1, 13)} == {real["inflasi"][date(2025, 12, 1)]}
+    kompetitor = thesis_exog_series("harga_kompetitor", "asumsi")
+    assert kompetitor[date(2026, 6, 1)] == real["harga_kompetitor"][date(2025, 12, 1)]
+    harga = thesis_exog_series("harga_efektif", "asumsi")
+    assert harga[date(2026, 6, 1)] == real["harga_efektif"][date(2026, 6, 1)]  # rencana harga diketahui
+    assert harga[date(2026, 11, 1)] == real["harga_efektif"][date(2025, 11, 1)]  # kosong di Excel → bulan sama 2025
+    assert _BY_CODE["harga_kompetitor"].horizon_rule == "last_value"
+
+
+def test_histori_2024_2025_sama_di_kedua_skenario():
+    for code in THESIS_ACTIVE_EXOG:
+        real, asumsi = thesis_exog_series(code, "realisasi"), thesis_exog_series(code, "asumsi")
+        assert {p: v for p, v in real.items() if p.year < 2026} == {p: v for p, v in asumsi.items() if p.year < 2026}
+
+
+def test_variabel_aktif_lolos_usable_exog_horizon_12_skenario_asumsi():
+    """Demand thesis 24 bulan + horizon 12 → tidak ada variabel aktif yang di-drop engine."""
+    from app.services.forecasting.engines._ml import usable_exog
+
+    idx = pd.date_range("2024-01-01", periods=36, freq="MS")
+    exog = pd.DataFrame(
+        {c: pd.Series({pd.Timestamp(p): float(v) for p, v in thesis_exog_series(c, "asumsi").items()}) for c in THESIS_ACTIVE_EXOG}
+    )
+    used, dropped = usable_exog(exog, idx[:24], idx[24:])
+    assert dropped == {}
+    assert set(used.columns) == set(THESIS_ACTIVE_EXOG)
+
+
+def test_skenario_tidak_dikenal_ditolak():
+    with pytest.raises(ValueError):
+        thesis_exog_series("suhu", "oracle")
+
+
+
+# ── Keputusan penulis 20 Nov 2026: error / kosong → 0 untuk TBI, Pendapatan, Ep ──
+
+
+@pytest.mark.parametrize("scenario", ["asumsi", "realisasi"])
+def test_isi_nol_36_bulan_kedua_skenario(scenario):
+    for code in ("tbi", "pendapatan", "ep", "permintaan", "perubahan_permintaan"):
+        s = thesis_exog_series(code, scenario)
+        assert len(s) == 36, code
+    assert thesis_exog_series("permintaan", scenario)[date(2024, 1, 1)] == Decimal("1665720")
+    assert thesis_exog_series("permintaan", scenario)[date(2026, 11, 1)] == 0  # kosong di Excel
+    assert thesis_exog_series("perubahan_permintaan", scenario)[date(2024, 1, 1)] == 0  # "-"
+    assert thesis_exog_series("pendapatan", scenario)[date(2024, 1, 1)] == 0  # "-" di Excel
+    assert thesis_exog_series("pendapatan", scenario)[date(2024, 2, 1)] == Decimal("3040000")
+    assert thesis_exog_series("tbi", scenario)[date(2024, 2, 1)] == 0
+    assert thesis_exog_series("ep", scenario)[date(2024, 2, 1)] == 0  # #DIV/0! di Excel
+    assert thesis_exog_series("ep", scenario)[date(2024, 6, 1)] == Decimal("-4.9388")
+
+
+def test_perubahan_harga_rumus_titik_tengah_dari_harga_efektif():
+    """AO = (Hₜ − Hₜ₋₁) / ((Hₜ + Hₜ₋₁)/2); bulan pertama 0. Dihitung dari harga_efektif skenario
+    yang sama supaya horizon konsisten (AO Excel Nov–Des 2026 rusak karena AN = 0)."""
+    s = thesis_exog_series("perubahan_harga", "realisasi")
+    assert s[date(2024, 1, 1)] == 0
+    assert s[date(2024, 5, 1)] == 0
+    assert s[date(2024, 6, 1)] == Decimal("-0.1878")  # Excel AO10 = -0.18784…
+    asumsi = thesis_exog_series("perubahan_harga", "asumsi")
+    assert len(asumsi) == 36
+
+
+def test_tbi_dan_pendapatan_tidak_konstan_di_histori():
+    """Diisi 0 tapi tetap bervariasi di 2024–2025 → tidak di-drop `constant`."""
+    for code in ("tbi", "pendapatan"):
+        hist = {v for p, v in thesis_exog_series(code, "asumsi").items() if p.year < 2026}
+        assert len(hist) > 1, code

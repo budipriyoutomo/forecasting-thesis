@@ -33,18 +33,38 @@ def future_index(series: pd.Series, horizon: int) -> list[pd.Timestamp]:
     return future_timestamps(series.index.max(), horizon, infer_period_delta(series.index))
 
 
-def usable_exog(exog: pd.DataFrame | None, periods) -> tuple[pd.DataFrame | None, list[str]]:
-    """Kolom variabel eksternal yang nilainya lengkap untuk SELURUH `periods`
-    (histori + horizon). Return (exog terpakai | None, kode yang di-drop)."""
+def usable_exog(
+    exog: pd.DataFrame | None, history, horizon
+) -> tuple[pd.DataFrame | None, dict[str, str]]:
+    """Kolom variabel eksternal yang bisa dipakai sebagai fitur: nilainya lengkap untuk
+    SELURUH periode histori + horizon dan bervariasi di histori.
+
+    Return (exog terpakai | None, {kode: alasan drop}). Alasan (CR v3.4 §4.2):
+      - `missing_history`: ada periode histori tanpa nilai
+      - `missing_horizon`: histori lengkap, tapi ada periode horizon tanpa nilai
+      - `constant`: nilai histori tidak bervariasi → tidak bisa dipakai split model tree
+        (dinilai dari histori saja; variasi di horizon tidak membantu model belajar)
+    """
     if exog is None or exog.empty:
-        return None, []
-    idx = pd.DatetimeIndex(pd.to_datetime(list(periods)))
-    aligned = exog.copy()
-    aligned.index = pd.DatetimeIndex(pd.to_datetime(aligned.index))
-    aligned = aligned.reindex(idx)
-    keep = [c for c in aligned.columns if aligned[c].notna().all()]
-    dropped = [str(c) for c in aligned.columns if c not in keep]
-    return (aligned[keep] if keep else None), dropped
+        return None, {}
+    hist_idx = pd.DatetimeIndex(pd.to_datetime(list(history)))
+    hor_idx = pd.DatetimeIndex(pd.to_datetime(list(horizon)))
+    source = exog.copy()
+    source.index = pd.DatetimeIndex(pd.to_datetime(source.index))
+    hist, hor = source.reindex(hist_idx), source.reindex(hor_idx)
+
+    dropped: dict[str, str] = {}
+    for col in source.columns:
+        if hist[col].isna().any():
+            dropped[str(col)] = "missing_history"
+        elif hor[col].isna().any():
+            dropped[str(col)] = "missing_horizon"
+        elif hist[col].nunique() <= 1:
+            dropped[str(col)] = "constant"
+    keep = [c for c in source.columns if str(c) not in dropped]
+    if not keep:
+        return None, dropped
+    return pd.concat([hist[keep], hor[keep]]), dropped
 
 
 def _row(values, i_or_step, lags, month, exog_row) -> list[float]:
@@ -135,7 +155,7 @@ def run_supervised(
     _, test = train_test_split_series(series, horizon)
     train = series.iloc[: len(series) - len(test)]
 
-    exog, dropped = usable_exog(options.exog, list(series.index) + future_index(series, horizon))
+    exog, dropped = usable_exog(options.exog, series.index, future_index(series, horizon))
 
     n_capped = 0
     train_fit, full_fit = train, series

@@ -363,3 +363,87 @@ def test_cli_profile_default_demo_dan_thesis():
     assert _parse_profile(["--profile", "thesis"]) == "thesis"
     with pytest.raises(SystemExit):
         _parse_profile(["--profile", "prod"])
+
+
+# ── CR v3.4 §4.7 — variabel eksternal thesis ──
+
+
+def make_thesis_repos_with_exog():
+    from tests.unit.test_external_variable_service import FakeVarRepo
+
+    repos = make_thesis_repos()
+    repos["external_variables"] = FakeVarRepo()
+    return repos
+
+
+def _values_by_code(repo):
+    code = {str(v.id): v.code for v in repo.vars.values()}
+    out = {}
+    for r in repo.values:
+        out.setdefault(code[str(r.variable_id)], {})[r.period] = r.value
+    return out
+
+
+@pytest.mark.asyncio
+async def test_seed_thesis_variabel_eksternal_skenario_asumsi_default():
+    from app.scripts.thesis_data import (
+        THESIS_ACTIVE_EXOG,
+        THESIS_EXTERNAL_VARIABLES,
+        thesis_exog_series,
+    )
+
+    repos = make_thesis_repos_with_exog()
+    summary = await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+
+    repo = repos["external_variables"]
+    assert summary.exog_variables_created == len(THESIS_EXTERNAL_VARIABLES)
+    assert {v.code for v in repo.vars.values() if v.is_active} == set(THESIS_ACTIVE_EXOG)
+    assert all(v.scope == "global" for v in repo.vars.values())
+    assert all(r.product_id is None for r in repo.values)
+    values = _values_by_code(repo)
+    assert values["suhu"] == thesis_exog_series("suhu", "asumsi")
+    assert summary.exog_values == sum(len(thesis_exog_series(v.code, "asumsi")) for v in THESIS_EXTERNAL_VARIABLES)
+
+
+@pytest.mark.asyncio
+async def test_seed_thesis_ganti_skenario_mengganti_seluruh_nilai():
+    """Jalankan ulang dengan skenario lain → nilai variabel thesis diganti penuh (tidak campur:
+    suhu Nov–Des 2026 hasil asumsi harus hilang karena realisasi hanya sampai Okt)."""
+    from app.scripts.thesis_data import thesis_exog_series
+
+    repos = make_thesis_repos_with_exog()
+    await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+    again = await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, exog_scenario="realisasi", **repos)
+
+    assert again.exog_variables_created == 0
+    assert _values_by_code(repos["external_variables"])["suhu"] == thesis_exog_series("suhu", "realisasi")
+    assert date(2026, 11, 1) not in _values_by_code(repos["external_variables"])["suhu"]
+
+
+@pytest.mark.asyncio
+async def test_seed_thesis_tidak_mengubah_status_aktif_variabel_yang_sudah_ada():
+    repos = make_thesis_repos_with_exog()
+    await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+    suhu = await repos["external_variables"].get_by_code("suhu")
+    suhu.is_active = False  # planner menonaktifkan lewat UI
+    await seed_demo_data(user_id="user-1", profile=THESIS_PROFILE, **repos)
+    assert (await repos["external_variables"].get_by_code("suhu")).is_active is False
+
+
+@pytest.mark.asyncio
+async def test_seed_demo_tidak_membuat_variabel_eksternal():
+    from tests.unit.test_external_variable_service import FakeVarRepo
+
+    repos = make_repos()
+    repos["external_variables"] = FakeVarRepo()
+    summary = await seed_demo_data(user_id="user-1", **repos)
+    assert summary.exog_variables_created == 0 and repos["external_variables"].vars == {}
+
+
+def test_cli_exog_scenario_default_asumsi():
+    from app.scripts.seed_demo_data import _parse_args
+
+    assert _parse_args(["--profile", "thesis"]).exog_scenario == "asumsi"
+    assert _parse_args(["--profile", "thesis", "--exog-scenario", "realisasi"]).exog_scenario == "realisasi"
+    with pytest.raises(SystemExit):
+        _parse_args(["--exog-scenario", "oracle"])

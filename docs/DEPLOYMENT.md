@@ -413,6 +413,15 @@ make prod-deploy        # build ulang + restart; migrasi jalan otomatis
 Ada jeda beberapa detik saat container backend/frontend diganti — normal untuk skala ini.
 `make prod-deploy` selalu build ulang, jadi perubahan `NEXT_PUBLIC_*` ikut terbawa.
 
+**Sekali setelah deploy v3.4** (normalisasi periode ke tanggal 1): cek data demand lama yang
+bertanggal selain tanggal 1. Default hanya laporan; `--apply` menggeser baris yang aman,
+baris bentrok dilewati (upload ulang file yang benar).
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T backend \
+  python -m app.scripts.normalize_demand_periods            # tambah --apply bila "aman digeser" > 0
+```
+
 ### 7.4 Rollback
 
 ```bash

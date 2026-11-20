@@ -3,6 +3,7 @@ Seed data demo (produk, material, BOM, histori demand, konfigurasi gudang).
 
     python -m app.scripts.seed_demo_data                   # profil demo (UI/dev)
     python -m app.scripts.seed_demo_data --profile thesis  # profil thesis (bab hasil)
+    python -m app.scripts.seed_demo_data --profile thesis --exog-scenario realisasi
 
 Dipakai untuk mencoba aplikasi end-to-end tanpa upload CSV manual: setelah seed,
 planner bisa langsung menjalankan forecast run, breakdown material, reorder/EOQ,
@@ -21,6 +22,11 @@ Profil `thesis` (Fase 11.11): HANYA data riil 2024–2025 (24 periode = LSTM_MIN
   "Pengumpulan Data". Template biaya di-seed TIDAK aktif (biaya pesan S belum ada).
   Jalankan di database kosong: BOM produk yang sudah ada (mis. dari profil demo) tidak
   ditimpa.
+  Variabel eksternal (CR v3.4 §4.7): 23 variabel global dari tabel *Variabel Peramalan*,
+  8 aktif. `--exog-scenario` menentukan nilai horizon 2026: `asumsi` (default — hanya
+  variabel known-in-advance memakai realisasi) atau `realisasi` (*perfect foresight*).
+  NILAI variabel thesis selalu diganti penuh setiap seed (supaya skenario tidak tercampur);
+  definisi variabel yang sudah ada (termasuk status aktif) tidak diubah.
 
 Idempoten: produk/material/BOM/histori/konfigurasi yang sudah ada dilewati, tidak
 ditimpa — aman dijalankan berulang. Menolak jalan di luar ENVIRONMENT=development
@@ -38,6 +44,7 @@ from app.models.bom import Bom
 from app.models.demand_history import DemandHistory
 from app.models.cost_template import CostTemplate, CostTemplateItem
 from app.models.material import Material
+from app.models.external_variable import ExternalVariable, ExternalVariableValue
 from app.models.material_component import MaterialComponent
 from app.models.product import Product
 from app.models.upload_session import UploadSession
@@ -46,6 +53,7 @@ from app.repositories.bom_repository import SqlBomRepository
 from app.repositories.cost_template_repository import SqlCostTemplateRepository
 from app.repositories.material_component_repository import SqlMaterialComponentRepository
 from app.repositories.demand_history_repository import SqlDemandHistoryRepository
+from app.repositories.external_variable_repository import SqlExternalVariableRepository
 from app.repositories.material_repository import SqlMaterialRepository
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.upload_session_repository import SqlUploadSessionRepository
@@ -60,8 +68,11 @@ from app.scripts.thesis_data import (
     THESIS_COST_TEMPLATE_NAME,
     THESIS_DEMAND_2024,
     THESIS_DEMAND_2025,
+    THESIS_EXOG_SCENARIOS,
+    THESIS_EXTERNAL_VARIABLES,
     THESIS_MATERIAL_CAPACITY,
     THESIS_MATERIALS,
+    thesis_exog_series,
 )
 from app.services.dev_auth import DEV_ENVIRONMENT
 
@@ -294,6 +305,8 @@ class SeedSummary:
     warehouse_created: int = 0
     components_created: int = 0
     cost_templates_created: int = 0
+    exog_variables_created: int = 0
+    exog_values: int = 0
 
 
 def _dec(value) -> Decimal:
@@ -312,6 +325,8 @@ async def seed_demo_data(
     profile: str = DEMO_PROFILE,
     components=None,
     cost_templates=None,
+    external_variables=None,
+    exog_scenario: str = "asumsi",
 ) -> SeedSummary:
     """Buat master data + histori yang belum ada untuk `profile`. Idempoten."""
     if profile not in PROFILES:
@@ -409,6 +424,8 @@ async def seed_demo_data(
 
     if thesis:
         await _seed_thesis_extras(summary, material_by_code, warehouse, components, cost_templates)
+        if external_variables is not None:
+            await _seed_thesis_exog(summary, external_variables, exog_scenario)
         return summary
 
     for spec in DEMO_WAREHOUSE_CAPACITY:
@@ -499,15 +516,45 @@ async def _seed_thesis_extras(summary, material_by_code, warehouse, components, 
         summary.cost_templates_created += 1
 
 
-def _parse_profile(argv: list[str]) -> str:
+async def _seed_thesis_exog(summary, repo, scenario: str) -> None:
+    """Variabel eksternal thesis + nilai per bulan untuk `scenario` (CR v3.4 §4.7)."""
+    if scenario not in THESIS_EXOG_SCENARIOS:
+        raise ValueError(f"Skenario exog tidak dikenal: {scenario!r} (pilih {', '.join(THESIS_EXOG_SCENARIOS)})")
+    for spec in THESIS_EXTERNAL_VARIABLES:
+        var = await repo.get_by_code(spec.code)
+        if var is None:
+            var = await repo.add(
+                ExternalVariable(
+                    code=spec.code, name=spec.name, value_type=spec.value_type, scope=spec.scope,
+                    unit=spec.unit, description=spec.description, is_active=spec.is_active,
+                )
+            )
+            summary.exog_variables_created += 1
+        await repo.delete_values(var.id)
+        rows = [
+            ExternalVariableValue(variable_id=var.id, product_id=None, period=period, value=value)
+            for period, value in sorted(thesis_exog_series(spec.code, scenario).items())
+        ]
+        summary.exog_values += await repo.upsert_values(rows)
+
+
+def _parse_args(argv: list[str]):
     import argparse
 
     parser = argparse.ArgumentParser(prog="python -m app.scripts.seed_demo_data")
     parser.add_argument("--profile", choices=PROFILES, default=DEMO_PROFILE)
-    return parser.parse_args(argv).profile
+    parser.add_argument(
+        "--exog-scenario", choices=THESIS_EXOG_SCENARIOS, default="asumsi",
+        help="Nilai horizon 2026 variabel eksternal (profil thesis)",
+    )
+    return parser.parse_args(argv)
 
 
-async def run(profile: str = DEMO_PROFILE) -> int:
+def _parse_profile(argv: list[str]) -> str:
+    return _parse_args(argv).profile
+
+
+async def run(profile: str = DEMO_PROFILE, exog_scenario: str = "asumsi") -> int:
     settings = get_settings()
     if settings.ENVIRONMENT != DEV_ENVIRONMENT:
         print(
@@ -538,6 +585,8 @@ async def run(profile: str = DEMO_PROFILE) -> int:
             profile=profile,
             components=SqlMaterialComponentRepository(session),
             cost_templates=SqlCostTemplateRepository(session),
+            external_variables=SqlExternalVariableRepository(session),
+            exog_scenario=exog_scenario,
         )
         await session.commit()
 
@@ -549,6 +598,8 @@ async def run(profile: str = DEMO_PROFILE) -> int:
     if profile == THESIS_PROFILE:
         print(f"  komponen BOM  {summary.components_created} baris dibuat")
         print(f"  template biaya {summary.cost_templates_created} dibuat (belum aktif — isi S lalu aktifkan)")
+        print(f"  variabel eksternal {summary.exog_variables_created} dibuat, {summary.exog_values} nilai "
+              f"(skenario {exog_scenario})")
     print(
         "\nLangkah berikut: login sebagai "
         f"{DEMO_USERS[1].email} lalu jalankan forecast run dari halaman Forecast."
@@ -557,4 +608,5 @@ async def run(profile: str = DEMO_PROFILE) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(run(_parse_profile(sys.argv[1:]))))
+    _args = _parse_args(sys.argv[1:])
+    raise SystemExit(asyncio.run(run(_args.profile, _args.exog_scenario)))

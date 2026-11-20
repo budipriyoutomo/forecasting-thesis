@@ -85,3 +85,16 @@ async def test_values_queries():
     await repo.values_for(["v1"], "p1")
     assert "product_id IS NULL OR" in _sql(s.execute.await_args.args[0])
     assert await repo.delete_values("v1") == 1
+
+
+@pytest.mark.asyncio
+async def test_periods_by_variable():
+    """CR v3.4 §4.2 — periode terisi per variabel (distinct, semua produk) untuk coverage."""
+    s = _session()
+    _scalars(s, [("v1", date(2024, 1, 1)), ("v1", date(2024, 2, 1)), ("v2", date(2024, 1, 1))])
+    repo = SqlExternalVariableRepository(s)
+    assert await repo.periods_by_variable() == {
+        "v1": {date(2024, 1, 1), date(2024, 2, 1)},
+        "v2": {date(2024, 1, 1)},
+    }
+    assert "DISTINCT" in _sql(s.execute.await_args.args[0])

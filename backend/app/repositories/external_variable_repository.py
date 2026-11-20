@@ -91,6 +91,16 @@ class SqlExternalVariableRepository:
         )
         return list(result.scalars().all())
 
+    async def periods_by_variable(self) -> dict[str, set]:
+        """Periode yang punya nilai, per variabel (distinct lintas produk) — CR v3.4 §4.2."""
+        result = await self._session.execute(
+            select(ExternalVariableValue.variable_id, ExternalVariableValue.period).distinct()
+        )
+        out: dict[str, set] = {}
+        for vid, period in result.all():
+            out.setdefault(str(vid), set()).add(period)
+        return out
+
     async def count_values(self) -> dict[str, int]:
         result = await self._session.execute(
             select(ExternalVariableValue.variable_id, func.count()).group_by(ExternalVariableValue.variable_id)

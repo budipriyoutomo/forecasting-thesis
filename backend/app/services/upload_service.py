@@ -66,7 +66,7 @@ class UploadService:
         codes = {r["product_code"] for r in rows}
         code_to_id = await self._products.map_codes_to_ids(codes)
 
-        warnings = list(summary.get("warnings") or [])
+        warnings = list(summary.get("warnings") or []) + data_ingestion_service.demand_period_warnings(rows)
         unknown = sorted(codes - code_to_id.keys())
         if unknown:
             warnings.append(

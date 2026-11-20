@@ -9,7 +9,9 @@ function mockFileResponse(bytes: string, disposition?: string) {
   if (disposition) headers.set("Content-Disposition", disposition);
   const spy = vi.fn(
     async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(new Blob([bytes]), { status: 200, headers }),
+      // Body string, bukan new Blob([...]): di Node 22 (CI) Blob jsdom ≠ Blob undici sehingga
+      // Response menstringify-nya jadi "[object Blob]".
+      new Response(bytes, { status: 200, headers }),
   );
   vi.stubGlobal("fetch", spy);
   return spy;
@@ -29,7 +31,8 @@ describe("downloadExport", () => {
     const [, init] = fetchSpy.mock.calls[0];
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
     expect(clickSpy).toHaveBeenCalledOnce();
-    expect(blob).toBeInstanceOf(Blob);
+    // Cek isi, bukan kelas: Response.blob() mengembalikan Blob realm Node, bukan jsdom.
+    expect(blob.size).toBe("PKxx".length);
   });
 
   it("melempar error saat status non-OK", async () => {

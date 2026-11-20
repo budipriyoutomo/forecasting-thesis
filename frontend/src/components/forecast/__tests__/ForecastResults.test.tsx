@@ -142,4 +142,27 @@ describe("ForecastResults", () => {
 
     expect(screen.getByText(/dipilih manual/i)).toBeDefined();
   });
+
+  it("metode ML: tampil variabel eksternal dipakai / di-drop (CR v3.4)", () => {
+    render(
+      <ForecastResults
+        data={runOf([{
+          ...selected,
+          method_used: "xgboost",
+          hyperparameters: { exog_used: ["suhu"], exog_dropped: { promo: "missing_horizon" } },
+        }])}
+      />,
+    );
+    expect(screen.getByText("Variabel eksternal dipakai 1 / 2")).toBeDefined();
+    expect(screen.getByText(/nilai horizon belum lengkap/i)).toBeDefined();
+  });
+
+  it("hasil belum dipilih: info variabel eksternal tidak tampil", () => {
+    render(
+      <ForecastResults
+        data={runOf([{ ...pending, hyperparameters: { exog_used: ["suhu"], exog_dropped: {} } }], 1)}
+      />,
+    );
+    expect(screen.queryByText(/variabel eksternal dipakai/i)).toBeNull();
+  });
 });

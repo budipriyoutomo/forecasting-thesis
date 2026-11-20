@@ -98,6 +98,18 @@ async def test_create_happy_path_persist_dan_move_ke_permanent():
 
 
 @pytest.mark.asyncio
+async def test_create_peringatan_normalisasi_periode_masuk_session():
+    """CR v3.4 §4.1 — periode digeser ke awal bulan dilaporkan, bukan diam-diam."""
+    svc = _service()
+    body = "product_code,period,actual\n" + "".join(f"SKU-1,2024-{m:02d}-24,{100 + m}\n" for m in range(1, 13))
+
+    session = await svc.create_from_upload(USER, "data.csv", body.encode())
+
+    assert any("12 baris: periode digeser ke awal bulan" in w for w in session.warnings)
+    assert {r.period.day for r in svc._demand.rows} == {1}
+
+
+@pytest.mark.asyncio
 async def test_create_resolve_product_id_bila_kode_terdaftar():
     svc = _service(products_map={"SKU-000": "id-000"})
 

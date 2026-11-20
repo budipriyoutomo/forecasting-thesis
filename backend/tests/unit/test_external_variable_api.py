@@ -10,6 +10,7 @@ from app.main import app
 from app.services.external_variable_service import ExternalVariableService
 from tests.unit.test_external_variable_service import (
     P1,
+    FakeDemand,
     FakeProducts,
     FakeVarRepo,
     _val,
@@ -28,10 +29,10 @@ def _headers(role: str) -> dict:
     return {"Authorization": f"Bearer {jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)}"}
 
 
-def _override(variables=None, values=None):
+def _override(variables=None, values=None, demand=None):
     repo = FakeVarRepo(variables, values)
     app.dependency_overrides[get_external_variable_service] = lambda: ExternalVariableService(
-        repo, FakeProducts([P1]), var_factory=_var_factory, value_factory=_val_factory
+        repo, FakeProducts([P1]), demand=demand or FakeDemand(), var_factory=_var_factory, value_factory=_val_factory
     )
     return repo
 
@@ -96,12 +97,26 @@ async def test_delete(client):
 
 
 @pytest.mark.asyncio
+async def test_import_pesan_menyebut_normalisasi_periode(client):
+    _override([_var("v1", "suhu")])
+    body = b"variable_code,period,value\nsuhu,2024-01-24,27.2\nsuhu,2024-01-24,27.5\n"
+    files = {"file": ("nilai.csv", body, "text/csv")}
+    res = await client.post(f"{BASE}/values/import", files=files, headers=_headers("admin"))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert (data["imported"], data["normalized"], data["overwritten"]) == (1, 2, 1)
+    assert res.json()["message"] == "1 nilai diimpor (2 periode digeser ke awal bulan, 1 baris ganda ditimpa)"
+
+
+@pytest.mark.asyncio
 async def test_import_nilai_dan_list_nilai(client):
     _override([_var("v1", "suhu")])
     files = {"file": ("nilai.csv", b"variable_code,period,value\nsuhu,2026-01-01,30\n", "text/csv")}
     res = await client.post(f"{BASE}/values/import", files=files, headers=_headers("admin"))
     assert res.status_code == 200
-    assert res.json()["data"] == {"imported": 1}
+    data = res.json()["data"]
+    assert (data["imported"], data["normalized"], data["overwritten"]) == (1, 0, 0)
+    assert data["format"] == "long" and data["skipped"] == {} and data["warnings"] == []
 
     res = await client.get(f"{BASE}/v1/values", headers=_headers("viewer"))
     assert res.json()["data"] == [{"product_id": None, "period": "2026-01-01", "value": 30.0}]
@@ -122,3 +137,48 @@ async def test_hapus_semua_nilai(client):
     res = await client.delete(f"{BASE}/v1/values", headers=_headers("admin"))
     assert res.json()["data"] == {"id": "v1", "deleted_values": 1}
     assert repo.values == []
+
+
+@pytest.mark.asyncio
+async def test_coverage_endpoint(client):
+    _override(
+        [_var("v1", "suhu")],
+        [_val("v1", date(2024, 1, 1), 27), _val("v1", date(2024, 2, 1), 28)],
+        demand=FakeDemand(date(2024, 1, 1), date(2024, 2, 1)),
+    )
+    res = await client.get(f"{BASE}/coverage?horizon=1", headers=_headers("viewer"))
+    assert res.status_code == 200
+    [c] = res.json()["data"]
+    assert c["code"] == "suhu" and c["n_expected"] == 3 and c["n_filled"] == 2
+    assert c["missing_periods"] == ["2024-03-01"]
+
+
+@pytest.mark.asyncio
+async def test_coverage_horizon_tidak_valid_422(client):
+    _override()
+    res = await client.get(f"{BASE}/coverage?horizon=0", headers=_headers("viewer"))
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_import_dry_run_tidak_menulis_dan_kembalikan_semua_error(client):
+    repo = _override([_var("v1", "suhu")])
+    body = b"variable_code,period,value\nsuhu,2024-01-01,27\nhujan,2024-01-01,1\nsuhu,x,1\n"
+    files = {"file": ("nilai.csv", body, "text/csv")}
+    res = await client.post(f"{BASE}/values/import?dry_run=true", files=files, headers=_headers("admin"))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["dry_run"] is True and data["valid"] is False and data["n_errors"] == 2
+    assert res.json()["message"] == "Validasi: 2 error, 1 nilai siap diimpor"
+    assert repo.values == []
+
+
+@pytest.mark.asyncio
+async def test_template_xlsx(client):
+    _override([_var("v1", "suhu")], demand=FakeDemand(date(2024, 1, 1), date(2024, 1, 1)))
+    res = await client.get(f"{BASE}/template?horizon=2", headers=_headers("viewer"))
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert 'filename="template_variabel_eksternal.xlsx"' in res.headers["content-disposition"]

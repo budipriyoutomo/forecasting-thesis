@@ -19,6 +19,7 @@ Asumsi / data yang BELUM ada di Excel (⛔ docs/TODO-v3.md Fase 11.11/11.12):
     adanya (dianggap memang tidak produksi).
 """
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 THESIS_PRODUCT_CODES: tuple[str, ...] = (
@@ -230,3 +231,381 @@ THESIS_COST_ITEMS: tuple[ThesisCostItem, ...] = (
     ThesisCostItem("STORAGE_ASSET", "Handpallet", Decimal(2), purchase_price=Decimal("2500000"), useful_life_months=60),
     ThesisCostItem("STORAGE_ASSET", "Pallet Plastik", Decimal(517), purchase_price=Decimal("500000"), useful_life_months=60),
 )
+
+
+# ── CR v3.4 §4.7 — variabel eksternal (sheet "Pengumpulan Data", tabel *Variabel Peramalan*
+# kolom S–AV baris 5–40 = Jan 2024 – Des 2026). Diekstrak dari `Simulasi Thesis (2).xlsx`
+# (19 Nov 2026) lewat `parse_decimal_id` lalu dibulatkan 4 desimal (= Numeric(18,4) di DB).
+#
+# Pembersihan:
+#   - `harga_efektif` dihitung ulang = Harga Promo (U) bila > 0, else Harga normal (T) — sama
+#     dengan rumus AN, tetapi Nov–Des 2026 jadi kosong (AN = 0 karena T kosong, bukan harga 0)
+#   - Kode Cuaca/Musim (Y: 1 Hujan, 2 Kemarau, 3 Peralihan) → one-hot `musim_hujan`,
+#     `musim_kemarau` (Peralihan = keduanya 0) supaya tidak ada urutan palsu
+#   - sel `NA` / `-` / `#DIV/0!` → None (tidak di-seed)
+#   - TIDAK di-seed: Harga Promo (U, terwakili `harga_efektif`), Harga Produk (AN = harga_efektif)
+#   - Perubahan harga (AO) dihitung ulang dari harga_efektif (AO Excel Nov–Des 2026 rusak)
+#
+# Variabel aktif: 8 dari CR v3.4 §5 + seluruh kategori *Perilaku Konsumen* & *Ekonomi*
+# (keputusan penulis 20 Nov 2026: tampilkan apa adanya), TERMASUK Permintaan (AM),
+# Perubahan permintaan (AP) & Ep (AQ). ⚠️ LEAKAGE: AM = Σ planning bulan yang sama, korelasi
+# 1,00 dengan Σ actual 7 SKU, dan planning baru ada setelah forecast dibuat — akurasi model
+# dengan variabel ini tidak mencerminkan kondisi operasional. Wajib disebut di thesis.
+# Sisanya nonaktif sebagai cadangan uji sensitivitas. Semua global.
+
+THESIS_EXOG_START = date(2024, 1, 1)
+THESIS_EXOG_SCENARIOS = ("asumsi", "realisasi")
+
+# Aturan nilai horizon 2026 untuk skenario "asumsi" (CR v3.4 §5 no. 6–7):
+#   known         — diketahui di muka (rencana harga/promo, kalender) → realisasi 2026;
+#                   bila kosong di Excel → bulan yang sama 2025
+#   seasonal_mean — rata-rata bulan yang sama 2024 & 2025 (cuaca, Google Trends)
+#   same_month    — nilai bulan yang sama 2025 (flag musim; rata-rata flag bukan 0/1)
+#   last_value    — nilai Des 2025 / naive (inflasi, harga & promo kompetitor — tidak
+#                   diketahui perusahaan di muka)
+#   zero_fill     — nilai Excel bila ada, selain itu 0 — SELURUH 36 bulan & kedua skenario.
+#                   Keputusan penulis 20 Nov 2026: sel kosong/error (`-`, `#DIV/0!`) = 0 karena
+#                   datanya memang tidak tersedia (TBI, pendapatan, Permintaan, Perubahan
+#                   permintaan, Ep)
+#   price_change  — dihitung dari `harga_efektif` skenario yang sama: (Hₜ − Hₜ₋₁)/((Hₜ + Hₜ₋₁)/2),
+#                   rumus kolom AO; bulan pertama / harga kosong → 0
+#   none          — hanya realisasi Excel, tidak diisi ke depan
+
+
+
+@dataclass(frozen=True)
+class ThesisExternalVariable:
+    code: str
+    name: str
+    value_type: str  # numeric | flag
+    unit: str | None
+    is_active: bool
+    horizon_rule: str  # known | seasonal_mean | same_month | last_value | none
+    description: str
+    scope: str = "global"
+
+
+THESIS_EXTERNAL_VARIABLES: tuple[ThesisExternalVariable, ...] = (
+    ThesisExternalVariable("harga_efektif", "Harga produk efektif", "numeric", "Rp", True, "known",
+                           "Harga promo bila ada, else harga normal (kolom T/U). Mewakili promo & diskon."),
+    ThesisExternalVariable("harga_normal", "Harga normal", "numeric", "Rp", False, "known", "Kolom T."),
+    ThesisExternalVariable("harga_kompetitor", "Harga kompetitor (Cimory)", "numeric", "Rp", True, "last_value",
+                           "Kolom V."),
+    ThesisExternalVariable("suhu", "Temperatur", "numeric", "°C", True, "seasonal_mean", "BMKG, kolom W."),
+    ThesisExternalVariable("musim_hujan", "Musim hujan", "flag", None, False, "same_month",
+                           "Kode cuaca/musim (Y) = 1 Hujan."),
+    ThesisExternalVariable("musim_kemarau", "Musim kemarau", "flag", None, False, "same_month",
+                           "Kode cuaca/musim (Y) = 2 Kemarau. Peralihan = kedua flag 0."),
+    ThesisExternalVariable("curah_hujan", "Kode curah hujan", "numeric", None, False, "seasonal_mean",
+                           "Ordinal 1 Rendah – 4 Sangat tinggi, kolom AA (BMKG)."),
+    ThesisExternalVariable("promo", "Promosi produk", "flag", None, False, "known",
+                           "Kolom AB. Redundan dengan harga_efektif (r ≈ 0,99 dengan diskon)."),
+    ThesisExternalVariable("hari_promo", "Hari promosi produk", "numeric", "hari", False, "known",
+                           "Kolom AC. Ada NA (Jun 2024, Okt 2026)."),
+    ThesisExternalVariable("diskon_produk", "Diskon produk", "numeric", "fraksi", False, "known",
+                           "Kolom AD (0–1). Redundan dengan harga_efektif (r = −1,00)."),
+    ThesisExternalVariable("hari_promo_kompetitor", "Hari promosi kompetitor", "numeric", "hari", False,
+                           "last_value", "Kolom AE."),
+    ThesisExternalVariable("diskon_kompetitor", "Diskon kompetitor", "numeric", "fraksi", True, "last_value",
+                           "Kolom AF (0–1)."),
+    ThesisExternalVariable("hari_libur_sekolah", "Hari libur sekolah", "numeric", "hari", True, "known",
+                           "Kalender pendidikan, kolom AG."),
+    ThesisExternalVariable("hari_prj", "Hari PRJ", "numeric", "hari", False, "known", "Kolom AH (Jun–Jul)."),
+    ThesisExternalVariable("idul_fitri", "Idul Fitri", "flag", None, True, "known", "Kalender Kemenag, kolom AI."),
+    ThesisExternalVariable("natal", "Natal", "flag", None, False, "known",
+                           "Kolom AJ. Selalu Desember → sudah terwakili fitur month."),
+    ThesisExternalVariable("tahun_baru", "Tahun Baru", "flag", None, False, "known",
+                           "Kolom AK. Selalu Januari → sudah terwakili fitur month."),
+    ThesisExternalVariable("tbi", "Preferensi merk (TBI)", "numeric", None, True, "zero_fill",
+                           "Perilaku konsumen, kolom AL. Hanya 3 bulan berisi; kosong = 0 (data tidak tersedia)."),
+    ThesisExternalVariable("permintaan", "Permintaan (Σ planning 7 SKU)", "numeric", "pcs", True, "zero_fill",
+                           "Kolom AM. LEAKAGE: Σ planning bulan yang sama ≈ Σ actual (r = 1,00) dan belum ada "
+                           "saat meramal. Diaktifkan atas keputusan penulis 20 Nov 2026; kosong = 0."),
+    ThesisExternalVariable("perubahan_harga", "Perubahan harga", "numeric", "fraksi", True, "price_change",
+                           "Perilaku konsumen, kolom AO: (Hₜ − Hₜ₋₁)/((Hₜ + Hₜ₋₁)/2) dari harga_efektif."),
+    ThesisExternalVariable("perubahan_permintaan", "Perubahan permintaan", "numeric", "fraksi", True, "zero_fill",
+                           "Kolom AP, turunan Permintaan (AM) → LEAKAGE. Diaktifkan atas keputusan penulis "
+                           "20 Nov 2026; kosong = 0."),
+    ThesisExternalVariable("ep", "Sensitivitas harga (Ep)", "numeric", None, True, "zero_fill",
+                           "Kolom AQ = AP/AO, turunan Permintaan → LEAKAGE. #DIV/0! = 0. Diaktifkan atas "
+                           "keputusan penulis 20 Nov 2026."),
+    ThesisExternalVariable("gt_makanan_sehat", "Ketertarikan makanan sehat", "numeric", "indeks", True,
+                           "seasonal_mean", "Google Trends 1–100, kolom AR."),
+    ThesisExternalVariable("gt_yogurt", "Ketertarikan yogurt", "numeric", "indeks", True, "seasonal_mean",
+                           "Google Trends 1–100, kolom AS."),
+    ThesisExternalVariable("gt_probiotik", "Ketertarikan probiotik", "numeric", "indeks", True, "seasonal_mean",
+                           "Google Trends 1–100, kolom AT."),
+    ThesisExternalVariable("inflasi", "Inflasi bulanan", "numeric", "fraksi", True, "last_value", "BPS, kolom AU."),
+    ThesisExternalVariable("pendapatan", "Pendapatan masyarakat", "numeric", "Rp", True, "zero_fill",
+                           "Ekonomi, kolom AV. Hanya Feb & Agu berisi; bulan lain = 0 (data tidak tersedia)."),
+)
+THESIS_ACTIVE_EXOG: tuple[str, ...] = tuple(v.code for v in THESIS_EXTERNAL_VARIABLES if v.is_active)
+
+# Realisasi per bulan, Jan 2024 – Des 2026 (36 nilai, 6 per baris). None = sel kosong / NA.
+_EXOG_RAW: dict[str, tuple[str | None, ...]] = {
+    "harga_efektif": (
+        "9900", "9900", "9900", "9900", "9900", "8200",
+        "9900", "10000", "7900", "10000", "10000", "10000",
+        "10000", "10000", "10000", "10000", "10000", "7500",
+        "7500", "7500", "10000", "10000", "10000", "10000",
+        "10000", "10000", "7211", "8250", "7900", "7900",
+        "10000", "10000", "10000", "6800", None, None,
+    ),
+    "harga_normal": (
+        "9900", "9900", "9900", "9900", "9900", "9900",
+        "9900", "10000", "10000", "10000", "10000", "10000",
+        "10000", "10000", "10000", "10000", "10000", "10000",
+        "10000", "10000", "10000", "10000", "10000", "10000",
+        "10000", "10000", "10000", "10000", "10000", "10000",
+        "10000", "10000", "10000", "10000", None, None,
+    ),
+    "harga_kompetitor": (
+        "7900", "8000", "7500", "8100", "8500", "6900",
+        "6500", "7900", "7000", "8500", "6900", "6900",
+        "6900", "6900", "6900", "6450", "7900", "7290",
+        "7900", "7500", "7500", "8000", "6900", "6900",
+        "6900", "6900", "6900", "5000", "7900", "6900",
+        "6400", "6290", "6627", "7100", None, None,
+    ),
+    "suhu": (
+        "27.2", "27.3", "27.4", "27.7", "27.7", "27",
+        "26.4", "26.8", "27.4", "27.7", "27.5", "27",
+        "26.62", "26.8", "27", "27", "27.3", "26.9",
+        "26.7", "26.5", "26.91", "27.29", "27.15", "26.86",
+        "26.7", "26.7", "27.1", "27.5", "27.5", "27.3",
+        "27", "27.22", "27.58", "28.12", None, None,
+    ),
+    "musim_hujan": (
+        "1", "1", "1", "0", "0", "0",
+        "0", "0", "0", "0", "1", "1",
+        "1", "1", "0", "0", "0", "0",
+        "0", "0", "1", "1", "1", "1",
+        "1", "1", "0", "0", "0", "0",
+        "0", "0", "0", "0", None, None,
+    ),
+    "musim_kemarau": (
+        "0", "0", "0", "0", "0", "1",
+        "1", "1", "0", "0", "0", "0",
+        "0", "0", "0", "0", "1", "1",
+        "1", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "1", "1",
+        "1", "1", "0", "0", None, None,
+    ),
+    "curah_hujan": (
+        "2", "2", "2", "3", "3.5", "2",
+        "2", "2", "2", "2", "3", "3",
+        "3", "2", "3", "2", "2", "2",
+        "2", "2", "2", "2", "2", "3",
+        "2", "2", "2", "2", "2", "1.5",
+        "1.5", "1.5", "1.5", "2.5", None, None,
+    ),
+    "promo": (
+        "0", "0", "0", "0", "0", "1",
+        "0", "0", "1", "0", "0", "0",
+        "0", "0", "0", "0", "0", "1",
+        "1", "1", "0", "0", "0", "0",
+        "0", "0", "1", "1", "1", "1",
+        "0", "0", "0", "1", None, None,
+    ),
+    "hari_promo": (
+        "0", "0", "0", "0", "0", None,
+        "0", "0", "14", "0", "0", "0",
+        "0", "0", "0", "0", "0", "14",
+        "8", "6", "0", "0", "0", "0",
+        "0", "0", "6", "24", "4", "10",
+        "0", "0", "0", None, None, None,
+    ),
+    "diskon_produk": (
+        "0", "0", "0", "0", "0", "0.1717",
+        "0", "0", "0.21", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0.25",
+        "0.25", "0.25", "0", "0", "0", "0",
+        "0", "0", "0.2789", "0.175", "0.21", "0.21",
+        "0", "0", "0", "0.32", None, None,
+    ),
+    "hari_promo_kompetitor": (
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "14", "0", "0", "0",
+        "0", "0", "0", "0", "6", "2",
+        "2", "0", "5", "2", "0", "3",
+        "6", "2", "0", "14", "0", "0",
+        "0", "4", "0", "0", "0", "0",
+    ),
+    "diskon_kompetitor": (
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "0.2391", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0.15",
+        "0.15", "0", "0", "0", "0", "0",
+        "0.5037", "0.4952", "0", "0.4118", "0", "0.1967",
+        "0.2258", "0.1967", "0.2474", "0.1852", "0", "0",
+    ),
+    "hari_libur_sekolah": (
+        "7", "0", "3", "13", "0", "0",
+        "13", "0", "0", "0", "0", "9",
+        "4", "1", "10", "7", "0", "1",
+        "12", "0", "0", "0", "0", "3",
+        "10", "4", "15", "0", "0", "2",
+        "10", "0", "0", "0", None, None,
+    ),
+    "hari_prj": (
+        "0", "0", "0", "0", "0", "19",
+        "14", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "12",
+        "13", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "20",
+        "12", "0", "0", "0", "0", "0",
+    ),
+    "idul_fitri": (
+        "0", "0", "0", "1", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "1", "1", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "1", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+    ),
+    "natal": (
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "1",
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "1",
+        "0", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "1",
+    ),
+    "tahun_baru": (
+        "1", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+        "1", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+        "1", "0", "0", "0", "0", "0",
+        "0", "0", "0", "0", "0", "0",
+    ),
+    "tbi": (
+        "0", None, None, None, None, None,
+        None, None, None, None, None, None,
+        "0.016", None, None, None, None, None,
+        None, None, None, None, None, None,
+        "0.0385", None, None, None, None, None,
+        None, None, None, None, None, None,
+    ),
+    "permintaan": (
+        "1665720", "1336800", "1549176", "1240152", "1195632", "3264576",
+        "1968528", "2099376", "2590176", "1407936", "2553072", "1804152",
+        "1220052", "598296", "1414296", "1096008", "1357776", "235536",
+        "2483880", "2471472", "1665120", "643320", "741408", "828984",
+        "1413120", "380160", "532680", "260544", "1282824", "588480",
+        "2091408", "1382856", "674376", "589536", None, None,
+    ),
+    "perubahan_permintaan": (
+        None, "-0.2191", "0.1472", "-0.2216", "-0.0366", "0.9277",
+        "-0.4953", "0.0643", "0.2093", "-0.5914", "0.5782", "-0.3438",
+        "-0.3863", "-0.6839", "0.8109", "-0.2536", "0.2134", "-1.4087",
+        "1.6535", "-0.005", "-0.3899", "-0.8853", "0.1417", "0.1115",
+        "0.5211", "-1.152", "0.3342", "-0.6862", "1.3247", "-0.7421",
+        "1.1216", "-0.4079", "-0.6888", "-0.1342", None, None,
+    ),
+    "ep": (
+        None, None, None, None, None, "-4.9388",
+        "-2.6369", "6.401", "-0.8921", "-2.5205", None, None,
+        None, None, None, None, None, "4.9304",
+        None, None, "-1.3645", None, None, None,
+        None, None, "-1.0311", "-5.1052", "-30.5636", None,
+        "4.7803", None, None, "0.3524", None, None,
+    ),
+    "gt_makanan_sehat": (
+        "35.39", "31.34", "28.03", "22.23", "33.81", "25.57",
+        "26.61", "35.35", "38.7", "42.19", "46.03", "29.97",
+        "35.26", "38.71", "24.1", "28.97", "37.58", "28.5",
+        "26.77", "31", "37.37", "40.48", "40.43", "25.94",
+        "27.87", "27.25", "20.58", "29.63", "30.97", "25.1",
+        "23.52", "27.13", "35.03", "30.87", None, None,
+    ),
+    "gt_yogurt": (
+        "56.58", "59.38", "48.84", "40.33", "46.32", "43.57",
+        "44.29", "49.61", "48.1", "49.9", "48.27", "45.87",
+        "51.39", "58.68", "48.58", "53.7", "56.06", "51.7",
+        "52.87", "53.74", "52.7", "56.52", "56.97", "50.42",
+        "61.13", "88", "63.81", "72.37", "70.19", "63.07",
+        "67.42", "77.61", "84.4", "69.13", None, None,
+    ),
+    "gt_probiotik": (
+        "13.97", "14.03", "14.48", "12.77", "15.35", "14.1",
+        "14.77", "13.45", "13.83", "14.84", "16.33", "18.68",
+        "18.48", "20.64", "21.84", "22.23", "27.06", "28.63",
+        "24.68", "22.58", "21.9", "25.87", "26.93", "24.81",
+        "25.81", "23.75", "20.65", "22.93", "22.13", "18.9",
+        "19.1", "18.19", "19.03", "19.1", None, None,
+    ),
+    "inflasi": (
+        "0.0004", "0.0037", "0.0052", "0.0025", "-0.0003", "-0.0008",
+        "-0.0018", "-0.0003", "-0.0012", "0.0008", "0.003", "0.0044",
+        "-0.0076", "-0.0048", "0.0165", "0.0117", "-0.0037", "0.0019",
+        "0.003", "-0.0008", "0.0021", "0.0028", "0.0017", "0.0064",
+        "-0.0015", "0.0068", "0.0041", "0.0013", "0.0028", "0.0044",
+        "-0.0014", "0.0021", "0.003", "0.0022", None, None,
+    ),
+    "pendapatan": (
+        None, "3040000", None, None, None, None,
+        None, "3270000", None, None, None, None,
+        None, "3094818", None, None, None, None,
+        None, "3330000", None, None, None, None,
+        None, "3287675", None, None, None, None,
+        None, "3420000", None, None, None, None,
+    ),
+}
+
+
+def _month(i: int) -> date:
+    return date(THESIS_EXOG_START.year + i // 12, i % 12 + 1, 1)
+
+
+def _realisasi(code: str) -> dict[date, Decimal]:
+    return {_month(i): Decimal(v) for i, v in enumerate(_EXOG_RAW[code]) if v is not None}
+
+
+def _price_change(harga: dict[date, Decimal]) -> dict[date, Decimal]:
+    """Rumus kolom AO (perubahan titik tengah); bulan pertama / harga kosong → 0."""
+    out = {}
+    for i in range(36):
+        cur, prev = harga.get(_month(i)), harga.get(_month(i - 1)) if i else None
+        if cur is None:
+            continue
+        change = (cur - prev) / ((cur + prev) / 2) if prev is not None else Decimal(0)
+        out[_month(i)] = change.quantize(Decimal("0.0001")) if change else Decimal(0)
+    return out
+
+
+def thesis_exog_series(code: str, scenario: str = "asumsi") -> dict[date, Decimal]:
+    """Nilai variabel per bulan. Histori 2024–2025 selalu realisasi Excel.
+
+    - `realisasi`: 2026 = nilai Excel apa adanya (*perfect foresight*, skenario pembanding)
+    - `asumsi` (default): 2026 Jan–Des diisi sesuai `horizon_rule` variabel — hanya variabel
+      *known in advance* yang memakai realisasi 2026 (CR v3.4 §5 no. 6–7)
+    """
+    if scenario not in THESIS_EXOG_SCENARIOS:
+        raise ValueError(f"Skenario exog tidak dikenal: {scenario!r} (pilih {', '.join(THESIS_EXOG_SCENARIOS)})")
+    rule = next(v.horizon_rule for v in THESIS_EXTERNAL_VARIABLES if v.code == code)
+    if rule == "zero_fill":
+        return {_month(i): Decimal(v) if v is not None else Decimal(0) for i, v in enumerate(_EXOG_RAW[code])}
+    if rule == "price_change":
+        return _price_change(thesis_exog_series("harga_efektif", scenario))
+    real = _realisasi(code)
+    if scenario == "realisasi":
+        return real
+    out = {p: v for p, v in real.items() if p.year < 2026}
+    last = out.get(date(2025, 12, 1))
+    for month in range(1, 13):
+        target, prev, prev2 = date(2026, month, 1), date(2025, month, 1), date(2024, month, 1)
+        if rule == "known":
+            value = real.get(target, out.get(prev))
+        elif rule == "seasonal_mean":
+            pair = [out[p] for p in (prev2, prev) if p in out]
+            value = sum(pair) / len(pair) if pair else None
+        elif rule == "same_month":
+            value = out.get(prev)
+        elif rule == "last_value":
+            value = last
+        else:
+            value = None
+        if value is not None:
+            out[target] = value
+    return out
