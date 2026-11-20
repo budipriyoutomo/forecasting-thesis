@@ -8,7 +8,7 @@ import { DataTable } from "@/components/common/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ExternalVariable } from "@/types/externalVariable";
+import type { ExternalVariable, ExternalVariableCoverage } from "@/types/externalVariable";
 
 // Toggle aktif langsung di tabel: hanya variabel aktif yang ikut jadi fitur model ML.
 function ActiveSwitch({ variable, onToggle }: { variable: ExternalVariable; onToggle: (v: ExternalVariable, next: boolean) => void }) {
@@ -34,14 +34,32 @@ function ActiveSwitch({ variable, onToggle }: { variable: ExternalVariable; onTo
   );
 }
 
+// CR v3.4 §4.2 — periode terisi / periode demand + horizon. < 100% → variabel akan di-drop engine.
+function CoverageCell({ coverage }: { coverage?: ExternalVariableCoverage }) {
+  if (!coverage || coverage.n_expected === 0) return <span className="text-muted-foreground">—</span>;
+  const pct = Math.round((coverage.n_filled / coverage.n_expected) * 100);
+  const missing = coverage.missing_periods;
+  const title = missing.length
+    ? `Belum terisi: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ` +${missing.length - 6} lagi` : ""}`
+    : "Lengkap untuk histori + horizon";
+  return (
+    <span title={title} className={cn("whitespace-nowrap tabular-nums", pct < 100 && "font-medium text-destructive")}>
+      {`${coverage.n_filled}/${coverage.n_expected} (${pct}%)`}
+    </span>
+  );
+}
+
 export function ExternalVariablesTable({
   variables,
+  coverage,
   onToggle,
   onEdit,
   onClearValues,
   onDelete,
 }: {
   variables: ExternalVariable[];
+  /** Kelengkapan per variable_id (opsional). */
+  coverage?: Record<string, ExternalVariableCoverage>;
   onToggle: (v: ExternalVariable, next: boolean) => void;
   onEdit?: (v: ExternalVariable) => void;
   onClearValues?: (v: ExternalVariable) => void;
@@ -77,6 +95,12 @@ export function ExternalVariablesTable({
         accessorKey: "n_values",
         header: "Jumlah nilai",
         cell: ({ row }) => <span className="tabular-nums">{row.original.n_values}</span>,
+      },
+      {
+        id: "coverage",
+        header: "Kelengkapan",
+        enableSorting: false,
+        cell: ({ row }) => <CoverageCell coverage={coverage?.[row.original.id]} />,
       },
       {
         id: "actions",
@@ -116,7 +140,7 @@ export function ExternalVariablesTable({
         ),
       },
     ],
-    [onToggle, onEdit, onClearValues, onDelete],
+    [coverage, onToggle, onEdit, onClearValues, onDelete],
   );
 
   return (

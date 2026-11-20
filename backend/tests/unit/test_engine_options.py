@@ -166,8 +166,64 @@ def test_exog_tanpa_nilai_horizon_di_drop():
     res = forecast_random_forest(_monthly_df(SERIES), 3, options=EngineOptions(exog=exog))
 
     assert res.hyperparameters["exog_used"] == []
-    assert res.hyperparameters["exog_dropped"] == ["suhu"]
+    assert res.hyperparameters["exog_dropped"] == {"suhu": "missing_horizon"}
     assert "suhu" not in res.feature_importance
+
+
+# ── CR v3.4 §4.2 — alasan drop per variabel ──
+
+
+def _periods(n_hist, horizon):
+    idx = pd.date_range("2024-01-01", periods=n_hist + horizon, freq="MS")
+    return idx[:n_hist], idx[n_hist:]
+
+
+def test_usable_exog_alasan_drop_horizon_vs_histori():
+    from app.services.forecasting.engines._ml import usable_exog
+
+    history, horizon = _periods(6, 2)
+    exog = pd.DataFrame(
+        {
+            "lengkap": [1, 2, 3, 1, 2, 3, 1, 2],
+            "bolong_histori": [1, None, 3, 1, 2, 3, 1, 2],
+            "bolong_horizon": [1, 2, 3, 1, 2, 3, 1, None],
+        },
+        index=history.append(horizon),
+    )
+    used, dropped = usable_exog(exog, history, horizon)
+
+    assert list(used.columns) == ["lengkap"]
+    assert dropped == {"bolong_histori": "missing_history", "bolong_horizon": "missing_horizon"}
+
+
+def test_usable_exog_drop_variabel_konstan():
+    from app.services.forecasting.engines._ml import usable_exog
+
+    history, horizon = _periods(4, 1)
+    exog = pd.DataFrame({"tetap": [5.0] * 5, "berubah": [1, 2, 1, 2, 1]}, index=history.append(horizon))
+    used, dropped = usable_exog(exog, history, horizon)
+
+    assert list(used.columns) == ["berubah"]
+    assert dropped == {"tetap": "constant"}
+
+
+def test_usable_exog_konstan_dinilai_dari_histori_saja():
+    """Konstan di histori tapi berubah di horizon → tetap tidak berguna untuk model tree."""
+    from app.services.forecasting.engines._ml import usable_exog
+
+    history, horizon = _periods(4, 2)
+    exog = pd.DataFrame({"promo": [0, 0, 0, 0, 1, 1]}, index=history.append(horizon))
+    used, dropped = usable_exog(exog, history, horizon)
+
+    assert used is None
+    assert dropped == {"promo": "constant"}
+
+
+def test_usable_exog_tanpa_exog():
+    from app.services.forecasting.engines._ml import usable_exog
+
+    history, horizon = _periods(4, 1)
+    assert usable_exog(None, history, horizon) == (None, {})
 
 
 def test_future_dates_bulanan_tetap_awal_bulan():

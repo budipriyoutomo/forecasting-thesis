@@ -936,3 +936,54 @@ dilaporkan sebagai infeasible beserta penyebabnya.
   flag tetap tampil (keputusan #17: kapasitas = flag, bukan error).
 - **Titik cek kapasitas = stok akhir periode** (rumus thesis) — **dikonfirmasi user 19 Nov 2026**.
   Puncak fisik dalam periode (stok awal + kedatangan + pesanan sebelum dipakai) tidak dicek.
+
+---
+
+## Rekonsiliasi v3.4 — Modul Variabel Eksternal (20 Nov 2026)
+
+Acuan: `docs/Change Request v3.4.md` (19 Nov 2026), `Simulasi Thesis (2).xlsx` sheet
+"Pengumpulan Data" tabel *Variabel Peramalan* (kolom S–AV).
+
+**Masalah.** Data Excel bertanggal 24 (`2024-01-24`) sedangkan demand tanggal 1 → `usable_exog`
+mencocokkan periode persis, semua variabel di-drop diam-diam; alasan drop tidak terlihat di UI.
+
+**Keputusan (assistant, dicatat agar bisa dikoreksi):**
+1. **Normalisasi periode ke tanggal 1** untuk demand & exog (`normalize_period`, sumber tunggal).
+   Hanya bulanan — demand tidak punya `period_basis`. Tidak diam-diam: upload demand menambah
+   peringatan (baris digeser, produk-bulan bertanggal ganda). Data lama: script
+   `app.scripts.normalize_demand_periods` (laporan / `--apply`, baris bentrok tidak disentuh) —
+   bukan migrasi Alembic, karena histori append-only dan bentrok butuh keputusan manusia.
+   DB lokal 20 Nov: 0 baris demand bukan tgl 1; VPS belum dicek.
+2. **Duplikat setelah normalisasi** (exog): tanggal sama → baris terakhir menang; tanggal berbeda
+   di bulan sama → **error**. *Dikoreksi dari CR awal ("baris terakhir menang")* setelah
+   `variable peramalan.xlsx` menunjukkan sel `d-mmm` berisi "Jan-24" tersimpan 24-Jan-2026,
+   sehingga 3 tahun melebur jadi satu. Demand tidak di-dedupe (perilaku lama).
+3. **Alasan drop** (`missing_history` | `missing_horizon` | `constant`). Variabel konstan di
+   histori kini di-drop — *perubahan perilaku*: dulu ikut jadi fitur (tidak pernah di-split tree).
+   `exog_dropped` lama (`list`) tidak dimigrasi; frontend menerima dua format.
+4. **Default horizon form forecast 30 → 12** & label "Horizon (hari)" → "Horizon (bulan)" (sisa
+   v2.0; engine melangkah per periode bulanan). `forecast_runs.horizon_unit` tetap `days` (legacy).
+5. **Parser angka toleran** (`parse_decimal_id`): `Rp` → ribuan; ≥ 2 grup berkoma → ribuan;
+   satu grup tanpa `Rp` (`9,900`) tetap koma desimal (aturan Indonesia, ambigu — didokumentasikan).
+6. **Import all-or-nothing tetap**, tetapi semua error dikumpulkan; dry-run untuk daftar lengkap.
+7. **Template import** dibangkitkan backend (`.xlsx`, terisi nilai global yang ada), bukan statis di
+   frontend — periode bergantung demand & horizon. Import langsung dari sheet asli di luar scope
+   (header label, tabel di S–AV); alias header tidak dibuat.
+8. **Seed thesis** memakai **usulan jawaban CR §5 (menunggu konfirmasi penulis)**: 23 variabel global,
+   8 aktif (satu wakil per grup; promo/diskon/hari promo redundan dengan `harga_efektif`,
+   |r| ≥ 0,94); seleksi berbasis aturan, bukan korelasi dengan demand (hindari leakage seleksi
+   fitur). Horizon 2026 dua skenario (`--exog-scenario asumsi|realisasi`); variabel kompetitor
+   diperlakukan **tidak** known-in-advance. Kolom AM "Permintaan" = Σ planning 7 SKU (cocok 12/12
+   bulan 2024), tidak di-seed.
+9. Forward-fill variabel jarang (CR §4.6) **dibatalkan** — tidak menyelesaikan drop (horizon tetap
+   kosong). `is_derived_from_demand` (CR §4.5) tidak dibuat; cukup tidak di-seed.
+10. Peringatan "kode kategori?" (CR §4.4) hanya untuk bilangan bulat tepat 1..k, 3 ≤ k ≤ 5,
+    non-blocking — `curah_hujan` ordinal bulat 1–4 ikut diperingatkan dan boleh diabaikan.
+11. **Variabel thesis aktif 8 → 16 (keputusan penulis 20 Nov 2026)**: seluruh kategori *Perilaku
+    Konsumen* & *Ekonomi* ikut aktif, termasuk Permintaan (AM), Perubahan permintaan (AP), Ep (AQ);
+    sel error/kosong = 0 (`zero_fill`) karena data memang tidak tersedia; hasil ditampilkan apa
+    adanya. ⚠️ Assistant sudah memperingatkan leakage sebelum diaktifkan: AM = Σ planning bulan yang
+    sama, korelasi 1,00 dengan Σ actual 7 SKU, dan planning baru ada setelah forecast dibuat. Dampak
+    terukur (7 SKU): importance `permintaan` 38–42%, MAD RF 88.904 → 66.658, XGB 111.473 → 83.230.
+    Peringatan disimpan di deskripsi variabel. Seed tidak mengubah status aktif variabel yang sudah
+    ada di DB — di DB lama aktifkan lewat UI.

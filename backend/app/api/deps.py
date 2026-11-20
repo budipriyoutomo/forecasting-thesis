@@ -141,7 +141,11 @@ def get_forecast_run_service(session: AsyncSession = Depends(get_db)) -> Forecas
 
 
 def get_external_variable_service(session: AsyncSession = Depends(get_db)) -> ExternalVariableService:
-    return ExternalVariableService(SqlExternalVariableRepository(session), SqlProductRepository(session))
+    return ExternalVariableService(
+        SqlExternalVariableRepository(session),
+        SqlProductRepository(session),
+        demand=SqlDemandHistoryRepository(session),
+    )
 
 
 def get_forecast_settings_service(session: AsyncSession = Depends(get_db)) -> ForecastSettingsService:

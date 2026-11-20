@@ -2,20 +2,23 @@
 External variable endpoints (Fase 11.2b, 30 Oktober 2026) — docs/ARCHITECTURE.md §5.
 
 GET    /external-variables                 → daftar + jumlah nilai tersimpan
+GET    /external-variables/coverage        → kelengkapan nilai vs periode demand + ?horizon= (CR v3.4)
+GET    /external-variables/template        → template import format lebar (.xlsx), ?horizon= (CR v3.4)
 POST   /external-variables                 → buat (admin)
 PUT    /external-variables/{id}            → ubah / toggle aktif (admin)
 DELETE /external-variables/{id}            → hapus + seluruh nilainya (admin)
-POST   /external-variables/values/import   → upload nilai per periode CSV/XLSX (admin)
+POST   /external-variables/values/import   → upload nilai per periode CSV/XLSX (admin), ?dry_run=true validasi saja
 GET    /external-variables/{id}/values     → nilai (opsional ?product_id=)
 DELETE /external-variables/{id}/values     → hapus seluruh nilai (admin)
 
 RBAC: baca semua role terautentikasi, tulis admin.
 """
-from fastapi import APIRouter, Depends, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi.responses import JSONResponse, Response
 
 from app.api.deps import get_current_user, get_external_variable_service, require_role
 from app.schemas.external_variable import (
+    ExternalVariableCoverageOut,
     ExternalVariableCreate,
     ExternalVariableOut,
     ExternalVariableUpdate,
@@ -56,13 +59,52 @@ async def create_external_variable(
     return JSONResponse(status_code=201, content={"success": True, "data": _to_response(var)})
 
 
+# Didaftarkan sebelum /{variable_id} supaya "coverage" tidak tertangkap sebagai id.
+@router.get("/coverage", dependencies=[Depends(get_current_user)])
+async def external_variable_coverage(
+    horizon: int = Query(12, ge=1, le=120, description="Jumlah bulan horizon setelah periode demand terakhir"),
+    service: ExternalVariableService = Depends(get_external_variable_service),
+):
+    rows = await service.coverage(horizon)
+    return {"success": True, "data": [ExternalVariableCoverageOut(**r).model_dump(mode="json") for r in rows]}
+
+
+@router.get("/template", dependencies=[Depends(get_current_user)])
+async def external_variable_template(
+    horizon: int = Query(12, ge=1, le=120),
+    service: ExternalVariableService = Depends(get_external_variable_service),
+):
+    content, filename = await service.template(horizon)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # Didaftarkan sebelum /{variable_id} supaya "values" tidak tertangkap sebagai id.
 @router.post("/values/import", dependencies=[Depends(require_role("admin"))])
 async def import_external_variable_values(
-    file: UploadFile, service: ExternalVariableService = Depends(get_external_variable_service)
+    file: UploadFile,
+    dry_run: bool = Query(False, description="Validasi saja: kembalikan semua error tanpa menyimpan"),
+    service: ExternalVariableService = Depends(get_external_variable_service),
 ):
-    result = await service.import_values(file.filename or "", await file.read())
-    return {"success": True, "data": result, "message": f"{result['imported']} nilai diimpor"}
+    result = await service.import_values(file.filename or "", await file.read(), dry_run=dry_run)
+    if dry_run:
+        status = f"{result['n_errors']} error" if result["n_errors"] else "valid"
+        return {
+            "success": True, "data": result,
+            "message": f"Validasi: {status}, {result['imported']} nilai siap diimpor",
+        }
+    message = f"{result['imported']} nilai diimpor"
+    notes = []
+    if result.get("normalized"):
+        notes.append(f"{result['normalized']} periode digeser ke awal bulan")
+    if result.get("overwritten"):
+        notes.append(f"{result['overwritten']} baris ganda ditimpa")
+    if notes:
+        message += f" ({', '.join(notes)})"
+    return {"success": True, "data": result, "message": message}
 
 
 @router.put("/{variable_id}", dependencies=[Depends(require_role("admin"))])

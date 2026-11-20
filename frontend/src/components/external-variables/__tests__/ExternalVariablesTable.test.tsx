@@ -28,4 +28,24 @@ describe("ExternalVariablesTable", () => {
     expect(onToggle).toHaveBeenCalledWith(VARS[1], true);
     expect(screen.getByRole("switch", { name: /aktifkan suhu/i }).getAttribute("aria-checked")).toBe("true");
   });
+
+  it("kolom kelengkapan: merah bila < 100%", () => {
+    render(
+      <ExternalVariablesTable
+        variables={VARS}
+        onToggle={vi.fn()}
+        coverage={{
+          v1: { variable_id: "v1", code: "suhu", first_period: "2024-01-01", last_period: "2025-12-01",
+            n_expected: 36, n_filled: 24, missing_periods: ["2026-01-01", "2026-02-01"] },
+          v2: { variable_id: "v2", code: "promo", first_period: "2024-01-01", last_period: "2026-12-01",
+            n_expected: 36, n_filled: 36, missing_periods: [] },
+        }}
+      />,
+    );
+    const partial = screen.getByText("24/36 (67%)");
+    expect(partial.className).toContain("text-destructive");
+    expect(partial.className).toContain("whitespace-nowrap"); // "24/36 (67%)" tidak terpotong 2 baris
+    expect(partial.getAttribute("title")).toContain("2026-01-01");
+    expect(screen.getByText("36/36 (100%)").className).not.toContain("text-destructive");
+  });
 });

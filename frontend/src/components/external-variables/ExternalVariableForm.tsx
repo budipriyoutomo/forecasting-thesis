@@ -143,6 +143,17 @@ export function ExternalVariableForm({
             )}
           />
         ))}
+        {/* CR v3.4 §4.4–4.5 */}
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
+          <li>
+            Variabel kategori (lebih dari 2 nilai, mis. musim Hujan/Kemarau/Peralihan) buat sebagai beberapa flag —
+            kode 1/2/3 dibaca model sebagai urutan.
+          </li>
+          <li>
+            Jangan buat variabel turunan demand (permintaan, perubahan permintaan, elastisitas harga): model akan
+            &ldquo;mencontek&rdquo; target yang sedang diramal.
+          </li>
+        </ul>
         <FormField
           control={form.control}
           name="unit"

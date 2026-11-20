@@ -64,3 +64,15 @@ class ExternalVariableValueOut(BaseModel):
     product_id: str | None = None
     period: date
     value: float
+
+
+class ExternalVariableCoverageOut(BaseModel):
+    """CR v3.4 §4.2 — kelengkapan nilai vs periode demand + horizon."""
+
+    variable_id: str
+    code: str
+    first_period: date | None = None
+    last_period: date | None = None
+    n_expected: int
+    n_filled: int
+    missing_periods: list[date]

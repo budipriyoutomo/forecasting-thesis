@@ -17,7 +17,13 @@ import type {
   CostTemplateSummary,
 } from "@/types/costTemplate";
 import type { BomTreeNode } from "@/components/boms/BomTree";
-import type { ExternalVariable, ExternalVariableInput, ImportResult } from "@/types/externalVariable";
+import type {
+  ExternalVariable,
+  ExternalVariableCoverage,
+  ExternalVariableInput,
+  ImportDryRunResult,
+  ImportResult,
+} from "@/types/externalVariable";
 import type { LatestStock, MaterialReceipt, MaterialReceiptInput, WasteFactor } from "@/types/inventory";
 import type {
   CapacityAdjustment,
@@ -239,6 +245,10 @@ export const api = {
       ),
     importValues: (file: File, token: string) =>
       uploadFile<ImportResult>("/api/v1/external-variables/values/import", file, token),
+    validateValues: (file: File, token: string) =>
+      uploadFile<ImportDryRunResult>("/api/v1/external-variables/values/import?dry_run=true", file, token),
+    coverage: (horizon: number, token: string) =>
+      request<ExternalVariableCoverage[]>(`/api/v1/external-variables/coverage?horizon=${horizon}`, authed(token)),
   },
 
   forecastSettings: {

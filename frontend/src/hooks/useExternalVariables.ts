@@ -4,8 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { downloadExport } from "@/lib/download";
 import type { ApiResponse } from "@/types/api";
-import type { ExternalVariable, ExternalVariableInput, ImportResult } from "@/types/externalVariable";
+import type {
+  ExternalVariable,
+  ExternalVariableCoverage,
+  ExternalVariableInput,
+  ImportDryRunResult,
+  ImportResult,
+} from "@/types/externalVariable";
 
 const KEY = ["external-variables"];
 
@@ -20,6 +27,17 @@ export function useExternalVariables() {
     queryKey: KEY,
     enabled: Boolean(token),
     queryFn: async () => unwrap(await api.externalVariables.list(token as string)),
+  });
+}
+
+/** CR v3.4 §4.2 — kelengkapan nilai vs periode demand + horizon (bulan). Key di bawah KEY
+ * supaya ikut di-refresh setiap invalidate (import, hapus nilai, toggle). */
+export function useExternalVariableCoverage(horizon = 12) {
+  const token = getToken();
+  return useQuery<ExternalVariableCoverage[]>({
+    queryKey: [...KEY, "coverage", horizon],
+    enabled: Boolean(token),
+    queryFn: async () => unwrap(await api.externalVariables.coverage(horizon, token as string)),
   });
 }
 
@@ -54,5 +72,24 @@ export function useImportExternalValues() {
   return useMutation<ImportResult, Error, File>({
     mutationFn: async (file) => unwrap(await api.externalVariables.importValues(file, getToken() as string)),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+/** CR v3.4 §4.3 — validasi file (dry-run): kumpulkan semua error, tidak menyimpan apa pun. */
+export function useValidateExternalValues() {
+  return useMutation<ImportDryRunResult, Error, File>({
+    mutationFn: async (file) => unwrap(await api.externalVariables.validateValues(file, getToken() as string)),
+  });
+}
+
+/** CR v3.4 §4.3 — unduh template import format lebar (.xlsx): variabel aktif × periode demand + horizon. */
+export function useDownloadExternalTemplate(horizon = 12) {
+  return useMutation<Blob, Error, void>({
+    mutationFn: () =>
+      downloadExport(
+        `/api/v1/external-variables/template?horizon=${horizon}`,
+        getToken() as string,
+        "template_variabel_eksternal.xlsx",
+      ),
   });
 }

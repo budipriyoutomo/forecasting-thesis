@@ -32,6 +32,13 @@ def test_period_alias_date_diterima():
     assert rows[0]["period"].isoformat() == "2026-03-01"
 
 
+def test_extract_demand_rows_normalisasi_periode():
+    """CR v3.4 §4.1 — tanggal 24 (format Excel thesis) disimpan sebagai awal bulan."""
+    content = _csv("product_code,period,actual", ["SKU-1,2024-01-24,100", "SKU-1,2024-02-29,110"])
+    rows = ing.extract_demand_rows(content)
+    assert [r["period"].isoformat() for r in rows] == ["2024-01-01", "2024-02-01"]
+
+
 def test_baris_actual_invalid_di_skip():
     content = _csv(
         "product_code,period,actual",
@@ -61,3 +68,31 @@ def test_validate_insufficient_rows():
     content = _csv("product_code,period,actual", ["SKU-1,2026-01-01,10"])
     with pytest.raises(InsufficientDataError):
         ing.parse_and_validate_csv("f.csv", content)
+
+
+# ── CR v3.4 §4.1 — normalisasi periode demand tidak boleh diam-diam ──
+
+
+def test_extract_demand_rows_simpan_tanggal_asli():
+    rows = ing.extract_demand_rows(_csv("product_code,period,actual", ["SKU-1,2024-01-24,100"]))
+    assert rows[0]["period_original"].isoformat() == "2024-01-24"
+
+
+def test_demand_period_warnings_normalisasi_dan_bulan_ganda():
+    content = _csv(
+        "product_code,period,actual",
+        ["SKU-1,2024-01-24,100", "SKU-1,2024-02-01,90", "SKU-1,2024-01-25,80", "SKU-2,2024-01-01,5"],
+    )
+    warnings = ing.demand_period_warnings(ing.extract_demand_rows(content))
+    assert warnings == [
+        "2 baris: periode digeser ke awal bulan (mis. 2024-01-24 → 2024-01-01).",
+        (
+            "1 produk-bulan punya lebih dari satu tanggal (mis. SKU-1 2024-01: 2024-01-24, 2024-01-25) — "
+            "nilainya dijumlahkan saat forecast. Cek format tanggal: 'Jan-24' bisa terbaca 24-Jan tahun berjalan."
+        ),
+    ]
+
+
+def test_demand_period_warnings_data_rapi_kosong():
+    content = _csv("product_code,period,actual", ["SKU-1,2024-01-01,100", "SKU-1,2024-02-01,90"])
+    assert ing.demand_period_warnings(ing.extract_demand_rows(content)) == []

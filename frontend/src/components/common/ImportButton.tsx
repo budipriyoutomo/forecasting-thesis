@@ -11,11 +11,13 @@ export function ImportButton({
   label,
   onFile,
   pending = false,
+  pendingLabel = "Mengimpor…",
   accept = ".csv,.xlsx",
 }: {
   label: string;
   onFile: (file: File) => void;
   pending?: boolean;
+  pendingLabel?: string;
   accept?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -38,7 +40,7 @@ export function ImportButton({
       />
       <Button type="button" variant="outline" disabled={pending} onClick={() => ref.current?.click()}>
         <Upload />
-        {pending ? "Mengimpor…" : label}
+        {pending ? pendingLabel : label}
       </Button>
     </>
   );

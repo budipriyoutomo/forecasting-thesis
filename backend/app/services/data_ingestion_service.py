@@ -12,12 +12,12 @@ realisasi produksi/penjualan — target/label untuk training model ML.
 """
 import io
 import uuid
-from datetime import date as date_type
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
 from app.config import get_settings
+from app.services.forecasting.preprocessing import normalize_period
 from app.utils.exceptions import InsufficientDataError, UploadInvalidFormatError
 
 REQUIRED_COLUMNS = {"product_code", "period", "actual"}
@@ -59,16 +59,18 @@ def extract_demand_rows(content: bytes) -> list[dict]:
         if not code or code.lower() == "nan":
             continue
         try:
-            period = pd.to_datetime(raw.get("period")).date()
+            original = pd.to_datetime(raw.get("period"))
+            period = normalize_period(original)
         except (ValueError, TypeError):
             continue
         actual = _num(raw.get("actual"))
-        if not isinstance(period, date_type) or actual is None:
+        if actual is None:
             continue
         rows.append(
             {
                 "product_code": code,
                 "period": period,
+                "period_original": original.date(),
                 "forecast_existing": _num(raw.get("forecast_existing")),
                 "planning": _num(raw.get("planning")),
                 "actual": actual,
@@ -123,3 +125,29 @@ def parse_and_validate_csv(filename: str, content: bytes) -> dict:
         "warnings": warnings,
         "status": "validated",
     }
+
+
+def demand_period_warnings(rows: list[dict]) -> list[str]:
+    """CR v3.4 §4.1 — laporkan normalisasi periode demand (tidak diam-diam):
+    baris yang digeser ke awal bulan, dan produk-bulan dengan lebih dari satu tanggal asli
+    (dijumlahkan saat forecast — sering tanda 'Jan-24' terbaca 24-Jan tahun berjalan)."""
+    warnings = []
+    shifted = [r for r in rows if r["period_original"] != r["period"]]
+    if shifted:
+        ex = shifted[0]
+        warnings.append(
+            f"{len(shifted)} baris: periode digeser ke awal bulan "
+            f"(mis. {ex['period_original']} → {ex['period']})."
+        )
+    dates: dict[tuple, set] = {}
+    for r in rows:
+        dates.setdefault((r["product_code"], r["period"]), set()).add(r["period_original"])
+    multi = [(key, sorted(d)) for key, d in dates.items() if len(d) > 1]
+    if multi:
+        (code, period), ds = multi[0]
+        warnings.append(
+            f"{len(multi)} produk-bulan punya lebih dari satu tanggal (mis. {code} {period:%Y-%m}: "
+            f"{', '.join(str(d) for d in ds)}) — nilainya dijumlahkan saat forecast. Cek format tanggal: "
+            "'Jan-24' bisa terbaca 24-Jan tahun berjalan."
+        )
+    return warnings

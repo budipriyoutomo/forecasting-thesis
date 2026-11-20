@@ -86,7 +86,8 @@ export default function ForecastConfigPage() {
   const inventoryMetrics = useInventoryMetrics(metricsRunId);
 
   const [selected, setSelected] = useState<string[]>([]);
-  const [horizon, setHorizon] = useState(30);
+  // Data demand bulanan: horizon = jumlah bulan. 12 = default kolom Kelengkapan variabel eksternal (CR v3.4).
+  const [horizon, setHorizon] = useState(12);
   const [method, setMethod] = useState("");
   // Override planner (AGENTS §5): rekomendasi yang sedang di-override + label materialnya.
   const [overriding, setOverriding] = useState<{ rec: ReorderRecommendation; label: string } | null>(null);
@@ -153,7 +154,7 @@ export default function ForecastConfigPage() {
             <MethodSelector value={method} onChange={setMethod} />
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="horizon">Horizon (hari)</Label>
+              <Label htmlFor="horizon">Horizon (bulan)</Label>
               <Input
                 id="horizon"
                 type="number"

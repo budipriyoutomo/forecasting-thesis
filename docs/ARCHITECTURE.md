@@ -929,6 +929,9 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 GET/PUT /forecast-settings
 GET/POST /external-variables · PUT/DELETE /external-variables/{id}
 POST /external-variables/values/import · GET/DELETE /external-variables/{id}/values
+POST /external-variables/values/import?dry_run=true   # validasi saja: {valid, errors[≤100], n_errors, ...} — CR v3.4
+GET  /external-variables/coverage?horizon=12          # [{variable_id, code, first_period, last_period, n_expected, n_filled, missing_periods[]}] — CR v3.4
+GET  /external-variables/template?horizon=12          # .xlsx format lebar (variabel aktif × periode demand + horizon) — CR v3.4
 POST /material-usage/import · GET /material-usage · GET /material-usage/waste-factors
 GET/POST /materials/{id}/components · DELETE /material-components/{id} · GET /boms/tree?product_id=
 POST /stock-snapshots/import · GET /stock-snapshots · GET /stock-snapshots/latest
@@ -953,6 +956,11 @@ GET  /material-components                          # seluruh komponen (kolom Lev
 - Proyeksi: pre = opening + receipt − usage; order = `compute_order_qty(policy, pre, ROP, S, EOQ, MOQ)` dari rekomendasi reorder run yang sama (pesan bila pre ≤ ROP, v3.3); ending = max(0, pre + order); shortage = max(0, −(pre + order)); utilisasi = stok ÷ kapasitas × 100.
 - Inventory days = rata-rata persediaan ÷ rata-rata pemakaian per hari; shortage cost = Σ unit produk tak terpenuhi × harga produk (`selling_price`) (kekurangan material bersama dialokasikan proporsional porsi kebutuhan produk).
 - Engine: `forecast_<m>(df, horizon, options: EngineOptions | None = None)`; ML memakai fitur lag + bulan + variabel eksternal aktif; tanggal horizon bulanan melangkah per bulan kalender.
+- Variabel eksternal (CR v3.4, 20 Nov 2026):
+  - `usable_exog(exog, history, horizon)` → `(df | None, {kode: alasan})`, alasan `missing_history` | `missing_horizon` | `constant` (konstan dinilai dari histori). Disimpan di `hyperparameters.exog_dropped` (hasil sebelum v3.4: `list[str]` tanpa alasan, frontend menerima keduanya) + `exog_used`.
+  - Periode demand & nilai exog dinormalisasi ke tanggal 1 (`preprocessing.normalize_period`). Import exog: baris ganda tanggal sama → baris terakhir menang; tanggal berbeda di bulan sama → error ("Jan-24" terbaca 24-Jan).
+  - Import exog dua format (deteksi otomatis): panjang `variable_code, period, value [, product_code]` atau lebar `period [, product_code]` + kolom per kode. Angka lewat `utils.tabular.parse_decimal_id` (koma desimal, `%`, `Rp`, sel `-`/`NA`/kosong dilewati → `skipped`). Respons: `{format, imported, normalized, overwritten, skipped, warnings}`.
+  - Coverage: target = bulan pertama..terakhir `demand_history` + horizon; variabel per produk dihitung terisi bila ada produk yang punya nilai (indikasi).
 
 ## 6.11 Loop Kapasitas Gudang → Adjust SS & Buffer (Fase 11.17, 19 Nov 2026)
 

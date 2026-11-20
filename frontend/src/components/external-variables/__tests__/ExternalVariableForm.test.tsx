@@ -44,4 +44,10 @@ describe("ExternalVariableForm", () => {
     );
     expect((screen.getByLabelText(/^kode$/i) as HTMLInputElement).disabled).toBe(true);
   });
+
+  it("petunjuk kategori → beberapa flag & larangan variabel turunan demand (CR v3.4 §4.4–4.5)", () => {
+    render(<ExternalVariableForm onSubmit={vi.fn()} />);
+    expect(screen.getByText(/variabel kategori .*buat sebagai beberapa flag/i)).toBeDefined();
+    expect(screen.getByText(/turunan demand/i)).toBeDefined();
+  });
 });
