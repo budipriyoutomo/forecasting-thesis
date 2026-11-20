@@ -11,7 +11,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
-from app.api.deps import CurrentUser, get_current_user, get_export_service, get_stock_projection_service
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_export_service,
+    get_stock_projection_service,
+    require_permission,
+)
 from app.services.export_service import ExportService
 from app.services.stock_projection_service import StockProjectionService
 
@@ -39,7 +45,7 @@ def _out(r) -> dict:
 @router.post("/{run_id}/stock-projection")
 async def generate_stock_projection(
     run_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("planning.run")),
     service: StockProjectionService = Depends(get_stock_projection_service),
 ):
     rows = await service.generate_for_run(current_user.user_id, run_id)

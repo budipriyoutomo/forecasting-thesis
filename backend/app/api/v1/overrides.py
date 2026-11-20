@@ -8,7 +8,7 @@ GET  /overrides/reorder?run_id=&material_id= → riwayat override reorder satu m
 """
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CurrentUser, get_current_user, get_override_service
+from app.api.deps import CurrentUser, get_current_user, get_override_service, require_permission
 from app.schemas.override import OverrideCreateRequest, OverrideOut
 from app.services.override_service import OverrideService
 
@@ -33,7 +33,7 @@ def _out(ov) -> dict:
 @router.post("", status_code=201)
 async def create_override(
     payload: OverrideCreateRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("override.create")),
     service: OverrideService = Depends(get_override_service),
 ):
     ov = await service.create(

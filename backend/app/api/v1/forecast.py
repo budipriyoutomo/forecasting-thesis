@@ -25,6 +25,7 @@ from app.api.deps import (
     get_forecast_run_service,
     get_forecast_selection_service,
     get_forecast_settings_service,
+    require_permission,
 )
 from app.services.export_service import ExportService
 from app.schemas.forecast import (
@@ -105,7 +106,7 @@ def _summary(run, results) -> dict:
 @router.post("/runs", status_code=201)
 async def create_forecast_run(
     payload: ForecastRunRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("forecast.run")),
     service: ForecastRunService = Depends(get_forecast_run_service),
 ):
     run, results = await service.create_run(
@@ -128,7 +129,7 @@ async def list_forecast_runs(
     current_user: CurrentUser = Depends(get_current_user),
     service: ForecastRunService = Depends(get_forecast_run_service),
 ):
-    runs = await service.list_runs(current_user.user_id, limit)
+    runs = await service.list_runs(limit)
     data = [
         {
             "run_id": str(r.id),
@@ -136,8 +137,9 @@ async def list_forecast_runs(
             "horizon": r.horizon,
             "horizon_unit": r.horizon_unit,
             "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+            "created_by": created_by,
         }
-        for r in runs
+        for r, created_by in runs
     ]
     return {"success": True, "data": data}
 
@@ -185,7 +187,7 @@ async def list_results(
 async def select_method(
     result_id: str,
     payload: MethodSelectionRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("forecast.select")),
     selection: ForecastSelectionService = Depends(get_forecast_selection_service),
 ):
     result = await selection.select(current_user.user_id, result_id, payload.method, payload.reason)
@@ -196,7 +198,7 @@ async def select_method(
 async def select_method_for_run(
     run_id: str,
     payload: MethodSelectionRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("forecast.select")),
     selection: ForecastSelectionService = Depends(get_forecast_selection_service),
 ):
     outcome = await selection.select_for_run(current_user.user_id, run_id, payload.method, payload.reason)

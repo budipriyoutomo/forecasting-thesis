@@ -4,6 +4,7 @@ import { Download, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { PermissionGate } from "@/components/common/PermissionGate";
 import { MethodSelector } from "@/components/config/MethodSelector";
 import { CostSummaryCard } from "@/components/dashboard/CostSummaryCard";
 import { InventoryMetricsTable } from "@/components/dashboard/InventoryMetricsTable";
@@ -39,7 +40,23 @@ import { useGenerateReorder } from "@/hooks/useReorder";
 import { useWarehouseValidation } from "@/hooks/useWarehouse";
 import type { ReorderRecommendation } from "@/types/reorder";
 
+// CR v3.5 §3.2: seluruh aksi di halaman ini (run, pilih metode, override, perencanaan,
+// adjust kapasitas) milik Admin/PPIC — role lain diarahkan ke halaman baca. Gate di luar
+// konten supaya hook data & mutasi tidak dipasang untuk role tanpa izin.
 export default function ForecastConfigPage() {
+  return (
+    <PermissionGate
+      action="forecast.run"
+      message="Hanya PPIC/Admin yang dapat menjalankan forecast."
+      readHref="/material-arrivals"
+      readLabel="Kedatangan Material"
+    >
+      <ForecastConfigContent />
+    </PermissionGate>
+  );
+}
+
+function ForecastConfigContent() {
   const { data: products } = useProducts();
   const { data: materials } = useMaterials();
   const run = useCreateForecastRun();

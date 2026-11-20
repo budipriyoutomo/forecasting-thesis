@@ -15,7 +15,7 @@ Semua logika lewat WarehouseService.
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from app.api.deps import CurrentUser, get_current_user, get_warehouse_service, require_role
+from app.api.deps import CurrentUser, get_current_user, get_warehouse_service, require_permission
 from app.schemas.warehouse import (
     WarehouseConfigCreate,
     WarehouseConfigOut,
@@ -71,7 +71,7 @@ async def get_warehouse_config(
     return {"success": True, "data": _config_out(config)}
 
 
-@router.post("/warehouse/config", dependencies=[Depends(require_role("admin"))])
+@router.post("/warehouse/config", dependencies=[Depends(require_permission("master.write"))])
 async def create_warehouse_config(
     payload: WarehouseConfigCreate, service: WarehouseService = Depends(get_warehouse_service)
 ):
@@ -82,7 +82,7 @@ async def create_warehouse_config(
     return JSONResponse(status_code=201, content={"success": True, "data": _config_out(config)})
 
 
-@router.put("/warehouse/config/{config_id}", dependencies=[Depends(require_role("admin"))])
+@router.put("/warehouse/config/{config_id}", dependencies=[Depends(require_permission("master.write"))])
 async def update_warehouse_config(
     config_id: str,
     payload: WarehouseConfigUpdate,
@@ -92,7 +92,7 @@ async def update_warehouse_config(
     return {"success": True, "data": _config_out(config)}
 
 
-@router.delete("/warehouse/config/{config_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/warehouse/config/{config_id}", dependencies=[Depends(require_permission("master.write"))])
 async def delete_warehouse_config(
     config_id: str, service: WarehouseService = Depends(get_warehouse_service)
 ):

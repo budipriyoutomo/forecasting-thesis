@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.cost_service import CostService, aggregate_proposed
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 USER = "u1"
 OTHER = "u2"
@@ -130,11 +130,11 @@ async def test_run_tidak_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_run_milik_user_lain_403():
+async def test_run_milik_user_lain_tetap_bisa_dibaca():
+    # CR v3.5 §3.4 Opsi A.
     run = SimpleNamespace(id="r1", user_id=OTHER)
     svc = _service(run=run)
-    with pytest.raises(ForbiddenRoleError):
-        await svc.get_cost_summary(USER, "r1")
+    assert await svc.get_cost_summary(USER, "r1") is not None
 
 
 # ── Template biaya aktif & biaya pembelian (Fase 10.6) ──

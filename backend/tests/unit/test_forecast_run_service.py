@@ -13,7 +13,6 @@ import pytest
 
 from app.services.forecast_run_service import ForecastRunService
 from app.utils.exceptions import (
-    ForbiddenRoleError,
     ForecastRunNotFoundError,
     ProductNotFoundError,
     UnsupportedForecastMethodError,
@@ -56,9 +55,10 @@ class FakeForecastRepo:
     async def get_run(self, run_id):
         return self.runs.get(str(run_id))
 
-    async def list_runs_for_user(self, user_id, limit=50):
-        mine = [r for r in self.runs.values() if str(r.user_id) == str(user_id)]
-        return list(reversed(mine))[:limit]  # terbaru dulu (urutan insert)
+    async def list_runs(self, limit=50):
+        # (run, label pembuat), terbaru dulu (urutan insert) — semua user (CR v3.5 §3.4).
+        rows = [(r, getattr(r, "created_by", None)) for r in self.runs.values()]
+        return list(reversed(rows))[:limit]
 
     async def save_run(self, run):
         return run
@@ -185,12 +185,13 @@ async def test_get_run_tidak_ada_404(smooth_df):
 
 
 @pytest.mark.asyncio
-async def test_get_run_milik_user_lain_403(smooth_df):
+async def test_get_run_milik_user_lain_bisa_dibaca(smooth_df):
+    # CR v3.5 §3.4 Opsi A: semua run terlihat semua role (single-tenant).
     svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
     run, _ = await svc.create_run(OTHER, ["p1"], horizon=7, horizon_unit="days", method=None)
 
-    with pytest.raises(ForbiddenRoleError):
-        await svc.get_run(USER, str(run.id))
+    got, _ = await svc.get_run(USER, str(run.id))
+    assert str(got.id) == str(run.id)
 
 
 @pytest.mark.asyncio
@@ -312,10 +313,10 @@ async def test_run_meneruskan_variabel_eksternal_aktif_ke_engine_ml():
 
 
 @pytest.mark.asyncio
-async def test_list_runs_hanya_milik_user_terbaru_dulu():
-    # 20 Nov 2026 — dipakai pemilih run halaman Kedatangan Material
+async def test_list_runs_semua_user_terbaru_dulu():
+    # Pemilih run halaman Kedatangan Material; CR v3.5 §3.4 Opsi A — semua run terlihat.
     service = _service([], {})
     repo = service._repo
     for rid, uid in (("r1", "u1"), ("r2", "u2"), ("r3", "u1")):
         repo.runs[rid] = SimpleNamespace(id=rid, user_id=uid)
-    assert [r.id for r in await service.list_runs("u1")] == ["r3", "r1"]
+    assert [r.id for r, _ in await service.list_runs()] == ["r3", "r2", "r1"]

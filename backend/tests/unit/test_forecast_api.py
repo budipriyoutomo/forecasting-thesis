@@ -370,7 +370,26 @@ async def test_list_runs_milik_user(client, auth_headers, smooth_df):
     body = res.json()
     assert body["success"] is True
     assert [r["run_id"] for r in body["data"]] == [run_id]
-    assert set(body["data"][0]) == {"run_id", "status", "horizon", "horizon_unit", "created_at"}
+    assert set(body["data"][0]) == {"run_id", "status", "horizon", "horizon_unit", "created_at", "created_by"}
+
+
+@pytest.mark.asyncio
+async def test_list_runs_menampilkan_run_user_lain_dengan_pembuat(client, auth_headers):
+    # CR v3.5 §3.4 Opsi A: Purchasing/Viewer perlu melihat run buatan PPIC.
+    from types import SimpleNamespace
+
+    repo = _override([], {})._repo
+    repo.runs["rx"] = SimpleNamespace(
+        id="rx", user_id="someone-else", status="done", horizon=3, horizon_unit="months",
+        created_at=None, created_by="PPIC Planner",
+    )
+
+    res = await client.get("/api/v1/forecast/runs", headers=auth_headers)
+
+    assert res.json()["data"] == [
+        {"run_id": "rx", "status": "done", "horizon": 3, "horizon_unit": "months",
+         "created_at": None, "created_by": "PPIC Planner"}
+    ]
 
 
 @pytest.mark.asyncio

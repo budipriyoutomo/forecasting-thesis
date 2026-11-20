@@ -10,7 +10,7 @@ Setelah simpan/reset, klien menjalankan POST /forecast/runs/{run_id}/plan lagi.
 """
 from fastapi import APIRouter, Body, Depends
 
-from app.api.deps import CurrentUser, get_capacity_adjustment_service, get_current_user
+from app.api.deps import CurrentUser, get_capacity_adjustment_service, get_current_user, require_permission
 from app.schemas.capacity_adjustment import (
     CapacityAdjustmentCreateRequest,
     CapacityAdjustmentOut,
@@ -38,7 +38,7 @@ def _out(row) -> dict:
 @router.post("/{run_id}/capacity-adjustments/suggest")
 async def suggest_capacity_adjustment(
     run_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("capacity.adjust")),
     service: CapacityAdjustmentService = Depends(get_capacity_adjustment_service),
 ):
     data = await service.suggest(current_user.user_id, run_id)
@@ -60,7 +60,7 @@ async def list_capacity_adjustments(
 async def save_capacity_adjustments(
     run_id: str,
     payload: CapacityAdjustmentCreateRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("capacity.adjust")),
     service: CapacityAdjustmentService = Depends(get_capacity_adjustment_service),
 ):
     rows = await service.save(
@@ -73,7 +73,7 @@ async def save_capacity_adjustments(
 async def reset_capacity_adjustments(
     run_id: str,
     payload: CapacityAdjustmentResetRequest | None = Body(default=None),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("capacity.adjust")),
     service: CapacityAdjustmentService = Depends(get_capacity_adjustment_service),
 ):
     n = await service.reset(current_user.user_id, run_id, payload.reason if payload else None)

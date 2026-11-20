@@ -21,11 +21,12 @@ import type { BomTreeNode } from "@/components/boms/BomTree";
 import type {
   ExternalVariable,
   ExternalVariableCoverage,
+  ExternalVariableValue,
   ExternalVariableInput,
   ImportDryRunResult,
   ImportResult,
 } from "@/types/externalVariable";
-import type { LatestStock, WasteFactor } from "@/types/inventory";
+import type { LatestStock, MaterialUsageRow, StockSnapshot, WasteFactor } from "@/types/inventory";
 import type {
   CapacityAdjustment,
   CapacityAdjustmentInputItem,
@@ -44,15 +45,36 @@ import type {
 } from "@/types/warehouse";
 import type { ReorderRecommendation } from "@/types/reorder";
 import type { UploadResponseData, UploadSessionSummary } from "@/types/upload";
+import { handleSessionExpired } from "@/lib/session";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Semua response backend mengikuti envelope { success, data|error } (AGENTS.md §4),
 // jadi setiap fungsi di sini mengembalikan ApiResponse<T>, bukan data mentah —
 // error bisnis diteruskan apa adanya, tidak dilempar sebagai exception.
+// Response di luar envelope (network error, 5xx teks polos dari proxy, dsb) dinormalisasi
+// jadi ApiError supaya pemanggil selalu aman membaca `res.error.message` (CR v3.5 §1).
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
-  const res = await fetch(`${BASE_URL}${path}`, init);
-  return (await res.json()) as ApiResponse<T>;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, init);
+  } catch {
+    return { success: false, error: { code: "NETWORK_ERROR", message: "Tidak bisa terhubung ke server." } };
+  }
+  // 401 pada request ber-token = sesi berakhir (CR v3.5 §5.3). Login gagal juga 401 tapi
+  // tanpa header Authorization, jadi tidak ikut me-redirect.
+  if (res.status === 401 && hasBearer(init)) handleSessionExpired();
+  const body: unknown = await res.json().catch(() => null);
+  if (body && typeof body === "object" && "success" in body) return body as ApiResponse<T>;
+  return {
+    success: false,
+    error: { code: `HTTP_${res.status}`, message: `Permintaan gagal (status ${res.status}).` },
+  };
+}
+
+function hasBearer(init?: RequestInit): boolean {
+  const auth = new Headers(init?.headers).get("Authorization");
+  return Boolean(auth?.startsWith("Bearer "));
 }
 
 const jsonHeaders = { "Content-Type": "application/json" };
@@ -158,6 +180,10 @@ export const api = {
     latest: (token: string) => request<LatestStock[]>("/api/v1/stock-snapshots/latest", authed(token)),
     importSnapshots: (file: File, token: string) =>
       uploadFile<ImportResult>("/api/v1/stock-snapshots/import", file, token),
+    snapshots: (materialId: string, token: string) =>
+      request<StockSnapshot[]>(`/api/v1/stock-snapshots?material_id=${encodeURIComponent(materialId)}`, authed(token)),
+    usage: (materialId: string, token: string) =>
+      request<MaterialUsageRow[]>(`/api/v1/material-usage?material_id=${encodeURIComponent(materialId)}`, authed(token)),
     wasteFactors: (token: string) => request<WasteFactor[]>("/api/v1/material-usage/waste-factors", authed(token)),
     importUsage: (file: File, token: string) => uploadFile<ImportResult>("/api/v1/material-usage/import", file, token),
   },
@@ -238,6 +264,8 @@ export const api = {
       uploadFile<ImportResult>("/api/v1/external-variables/values/import", file, token),
     validateValues: (file: File, token: string) =>
       uploadFile<ImportDryRunResult>("/api/v1/external-variables/values/import?dry_run=true", file, token),
+    values: (id: string, token: string) =>
+      request<ExternalVariableValue[]>(`/api/v1/external-variables/${encodeURIComponent(id)}/values`, authed(token)),
     coverage: (horizon: number, token: string) =>
       request<ExternalVariableCoverage[]>(`/api/v1/external-variables/coverage?horizon=${horizon}`, authed(token)),
   },

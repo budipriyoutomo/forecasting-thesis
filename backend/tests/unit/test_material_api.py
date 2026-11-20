@@ -225,3 +225,21 @@ async def test_create_material_harga_negatif_ditolak(client):
         json={"code": "RM-020", "name": "Gula", "unit": "kg", "unit_price": -5},
     )
     assert res.status_code == 422
+
+
+# ── CR v3.5 §5.5 — Material.dimension deprecated (tidak dipakai perhitungan apa pun) ──
+
+
+def test_dimension_ditandai_deprecated_di_openapi():
+    from app.main import app as fastapi_app
+
+    schemas = fastapi_app.openapi()["components"]["schemas"]
+    for name in ("MaterialCreate", "MaterialUpdate"):
+        assert schemas[name]["properties"]["dimension"].get("deprecated") is True, name
+
+
+def test_dimension_masih_diterima_untuk_kompatibilitas():
+    from app.schemas.material import MaterialCreate
+
+    m = MaterialCreate(code="X", name="X", unit="PCS", dimension={"length": 1, "width": 1, "height": 1})
+    assert m.model_dump()["dimension"] == {"length": 1.0, "width": 1.0, "height": 1.0}

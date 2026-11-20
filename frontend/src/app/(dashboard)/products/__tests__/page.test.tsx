@@ -27,6 +27,10 @@ describe("ProductsPage — hapus produk", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api.products, "list").mockResolvedValue({ success: true, data: [product] });
+    // Hapus hanya untuk admin (CR v3.5 §3.2, master.write).
+    vi.spyOn(api.auth, "me").mockResolvedValue({
+      success: true, data: { id: "u1", email: "a@x.id", name: "Admin", role: "admin", is_verified: true },
+    });
   });
 
   it("memanggil API hapus setelah konfirmasi", async () => {

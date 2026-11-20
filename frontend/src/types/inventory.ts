@@ -6,6 +6,23 @@ export interface LatestStock {
   qty: number;
 }
 
+// CR v3.5 §5.2 — riwayat (GET /stock-snapshots, GET /material-usage).
+export interface StockSnapshot {
+  material_id: string;
+  snapshot_date: string;
+  qty: number;
+  uom: string | null;
+}
+
+export interface MaterialUsageRow {
+  material_id: string;
+  product_id: string | null;
+  period: string;
+  production_output: number | null;
+  standard_usage: number | null;
+  actual_usage: number | null;
+}
+
 export interface WasteFactor {
   material_id: string;
   waste_factor: number | null;

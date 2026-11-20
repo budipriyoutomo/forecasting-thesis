@@ -54,3 +54,15 @@ describe("StockProjectionTable", () => {
     expect((screen.getByRole("tab", { name: /planning/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe("StockProjectionTable — peringatan lead time (CR v3.5 §5.6)", () => {
+  it("badge di judul material dengan lead time ≥ 30 hari", () => {
+    render(<StockProjectionTable rows={ROWS} materials={[{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS", lead_time_days: 30 }] as never[]} />);
+    expect(screen.getByText(/lead time ≥ 1 periode/i)).toBeDefined();
+  });
+
+  it("lead time pendek → tanpa badge", () => {
+    render(<StockProjectionTable rows={ROWS} materials={[{ id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS", lead_time_days: 29 }] as never[]} />);
+    expect(screen.queryByText(/lead time ≥ 1 periode/i)).toBeNull();
+  });
+});

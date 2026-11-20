@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 afterEach(() => {
   vi.restoreAllMocks();
   push.mockReset();
+  window.history.replaceState({}, "", "/login");
   document.cookie = "fiq_token=; path=/; max-age=0";
 });
 
@@ -71,5 +72,44 @@ describe("LoginForm", () => {
 
     expect(await screen.findByText(/Email atau password salah/i)).toBeDefined();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  // CR v3.5 §5.3 — kembali ke halaman asal setelah login ulang (param `next` dari middleware/sesi berakhir).
+  async function loginOk() {
+    vi.spyOn(api.auth, "login").mockResolvedValue({
+      success: true,
+      data: {
+        access_token: "tok-abc",
+        token_type: "bearer",
+        user: { id: "1", email: "a@b.com", name: "A", role: "ppic", is_verified: true },
+      },
+    });
+    renderForm();
+    await userEvent.type(screen.getByLabelText(/email/i), "a@b.com");
+    await userEvent.type(screen.getByLabelText(/password/i), "secret");
+    await userEvent.click(screen.getByRole("button", { name: /masuk/i }));
+  }
+
+  it("redirect ke `next` setelah login", async () => {
+    window.history.replaceState({}, "", "/login?next=%2Fmaterials");
+    await loginOk();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/materials"));
+  });
+
+  it("`next` ke domain lain diabaikan → /dashboard", async () => {
+    window.history.replaceState({}, "", "/login?next=https%3A%2F%2Fevil.example");
+    await loginOk();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
+  });
+
+  it("reason=expired menampilkan pesan sesi berakhir", async () => {
+    window.history.replaceState({}, "", "/login?next=%2Fdashboard&reason=expired");
+    renderForm();
+    expect(await screen.findByText(/sesi anda telah berakhir/i)).toBeDefined();
+  });
+
+  it("tanpa reason tidak ada pesan sesi berakhir", () => {
+    renderForm();
+    expect(screen.queryByText(/sesi anda telah berakhir/i)).toBeNull();
   });
 });

@@ -22,6 +22,7 @@ import {
   useMaterials,
   useUpdateMaterial,
 } from "@/hooks/useMaterials";
+import { useCan } from "@/hooks/usePermission";
 import { materialGroups } from "@/lib/warehouse";
 import type { Material, MaterialInput } from "@/types/material";
 
@@ -30,6 +31,7 @@ export default function MaterialsPage() {
   const create = useCreateMaterial();
   const update = useUpdateMaterial();
   const remove = useDeleteMaterial();
+  const canWrite = useCan("master.write");
 
   const [editing, setEditing] = useState<Material | null>(null);
   const [open, setOpen] = useState(false);
@@ -54,10 +56,12 @@ export default function MaterialsPage() {
         title="Master Data Material"
         description="Material dan packaging turunan produk. Lead time dan MOQ di sini dipakai saat menghitung reorder."
         actions={
-          <Button onClick={openCreate}>
-            <Plus />
-            Tambah material
-          </Button>
+          canWrite && (
+            <Button onClick={openCreate}>
+              <Plus />
+              Tambah material
+            </Button>
+          )
         }
       />
 
@@ -70,11 +74,15 @@ export default function MaterialsPage() {
       {materials && (
         <MaterialsTable
           materials={materials}
-          onEdit={(m) => {
-            setEditing(m);
-            setOpen(true);
-          }}
-          onDelete={(m) => remove.mutate(m.id)}
+          onEdit={
+            canWrite
+              ? (m) => {
+                  setEditing(m);
+                  setOpen(true);
+                }
+              : undefined
+          }
+          onDelete={canWrite ? (m) => remove.mutate(m.id) : undefined}
         />
       )}
 

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { ApiResponse } from "@/types/api";
 import type { ImportResult } from "@/types/externalVariable";
-import type { LatestStock, WasteFactor } from "@/types/inventory";
+import type { LatestStock, MaterialUsageRow, StockSnapshot, WasteFactor } from "@/types/inventory";
 
 // Stok ERP & pemakaian aktual material (Fase 11.1/11.5). Kedatangan = hasil ROP (/material-arrivals).
 const KEYS = { latest: ["stock-latest"], waste: ["waste-factors"] };
@@ -23,6 +23,21 @@ function useList<T>(key: string[], fetcher: (token: string) => Promise<ApiRespon
 
 export const useLatestStock = () => useList<LatestStock[]>(KEYS.latest, api.inventory.latest);
 export const useWasteFactors = () => useList<WasteFactor[]>(KEYS.waste, api.inventory.wasteFactors);
+
+// Riwayat per material (CR v3.5 §5.2) — hanya dimuat setelah material dipilih.
+function useHistory<T>(key: string, materialId: string | null, fetcher: (id: string, token: string) => Promise<ApiResponse<T>>) {
+  const token = getToken();
+  return useQuery<T>({
+    queryKey: [key, materialId],
+    enabled: Boolean(token && materialId),
+    queryFn: async () => unwrap(await fetcher(materialId as string, token as string)),
+  });
+}
+
+export const useStockSnapshots = (materialId: string | null) =>
+  useHistory<StockSnapshot[]>(KEYS.latest[0], materialId, api.inventory.snapshots);
+export const useMaterialUsage = (materialId: string | null) =>
+  useHistory<MaterialUsageRow[]>(KEYS.waste[0], materialId, api.inventory.usage);
 
 function useImport(key: string[], upload: (file: File, token: string) => Promise<ApiResponse<ImportResult>>) {
   const qc = useQueryClient();

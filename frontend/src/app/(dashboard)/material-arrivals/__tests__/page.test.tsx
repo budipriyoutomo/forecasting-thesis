@@ -57,6 +57,18 @@ describe("MaterialArrivalsPage", () => {
     await waitFor(() => expect(projection).toHaveBeenCalledWith("r1", "tok"));
   });
 
+  it("pemilih run menampilkan pembuat run (semua run terlihat, CR v3.5 §3.4)", async () => {
+    vi.spyOn(api.forecast, "listRuns").mockResolvedValue({
+      success: true, data: [{ ...RUNS[0], created_by: "Planner PPIC" }, RUNS[1]],
+    } as never);
+    vi.spyOn(api.planning, "projection").mockResolvedValue({ success: true, data: [] } as never);
+    renderPage();
+
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options[0]).toMatch(/oleh Planner PPIC/);
+    expect(options[1]).not.toMatch(/oleh/);
+  });
+
   it("belum ada run → arahkan ke halaman forecast", async () => {
     vi.spyOn(api.forecast, "listRuns").mockResolvedValue({ success: true, data: [] } as never);
     renderPage();

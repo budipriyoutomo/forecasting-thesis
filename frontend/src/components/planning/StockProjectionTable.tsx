@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 
+import { LeadTimeWarning } from "@/components/common/LeadTimeWarning";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/format";
+import { exceedsOnePeriod } from "@/lib/leadTime";
 import { cn } from "@/lib/utils";
 import type { Material } from "@/types/material";
 import type { ProjectionScenario, StockProjectionRow } from "@/types/planning";
@@ -42,6 +44,7 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
   const label = new Map(materials.map((m) => [m.id, `${m.code} — ${m.name}`]));
   // Utilisasi = total stok grup material ÷ kapasitas grup (19 Nov 2026)
   const groupOf = new Map(materials.map((m) => [m.id, m.category?.trim() || null]));
+  const leadTime = new Map(materials.map((m) => [m.id, m.lead_time_days]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -71,10 +74,13 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
 
       {[...byMaterial.entries()].map(([materialId, list]) => (
         <div key={materialId} className="flex flex-col gap-2">
-          <p className="text-sm font-medium">
+          <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium">
             {label.get(materialId) ?? materialId}
+            {exceedsOnePeriod(leadTime.get(materialId)) && (
+              <LeadTimeWarning leadTimeDays={leadTime.get(materialId) as number} />
+            )}
             {groupOf.get(materialId) && (
-              <span className="ml-2 font-normal text-muted-foreground">
+              <span className="font-normal text-muted-foreground">
                 · grup {groupOf.get(materialId)} (utilisasi = total stok grup)
               </span>
             )}

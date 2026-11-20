@@ -8,6 +8,11 @@ biarkan exception handler di main.py yang mengubahnya jadi response JSON
 standar.
 """
 
+# Code untuk error di luar AppError — dipasang oleh exception handler global di main.py
+# (CR v3.5 §1). HTTPException Starlette (404 route, 405 method) memakai `HTTP_<status>`.
+VALIDATION_ERROR = "VALIDATION_ERROR"
+INTERNAL_ERROR = "INTERNAL_ERROR"
+
 
 class AppError(Exception):
     """Base class semua error bisnis yang dikenal sistem."""

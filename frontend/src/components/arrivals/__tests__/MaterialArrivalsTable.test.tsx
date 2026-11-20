@@ -59,3 +59,31 @@ describe("MaterialArrivalsTable — kedatangan hasil hitungan ROP", () => {
     expect(screen.getByText(/tidak ada kedatangan/i)).toBeDefined();
   });
 });
+
+// CR v3.5 §5.6 — asumsi "tiba di periode yang sama" hanya berlaku bila lead time < 1 periode (bulan).
+describe("MaterialArrivalsTable — peringatan lead time", () => {
+  const withLead = [
+    { id: "m1", code: "BTL-WHITE", name: "Bottle White", unit: "PCS", lead_time_days: 45 },
+    { id: "m2", code: "CAP-RED", name: "Cap Red", unit: "PCS", lead_time_days: 7 },
+  ] as never[];
+
+  it("badge hanya untuk material dengan lead time ≥ 30 hari", () => {
+    render(<MaterialArrivalsTable rows={ROWS} recommendations={RECS} materials={withLead} />);
+
+    const badges = screen.getAllByText(/lead time ≥ 1 periode/i);
+    expect(badges).toHaveLength(1); // m1 hanya 1 baris kedatangan
+    expect(badges[0].closest("tr")?.textContent).toContain("BTL-WHITE");
+    expect(badges[0].getAttribute("title")).toMatch(/45 hari/);
+  });
+
+  it("ringkasan menyebut jumlah material yang asumsinya tidak berlaku", () => {
+    render(<MaterialArrivalsTable rows={ROWS} recommendations={RECS} materials={withLead} />);
+    expect(screen.getByText(/1 material dengan lead time ≥ 30 hari/i)).toBeDefined();
+  });
+
+  it("tanpa material lead time panjang → tanpa badge & tanpa ringkasan", () => {
+    render(<MaterialArrivalsTable rows={ROWS} recommendations={RECS} materials={MATERIALS} />);
+    expect(screen.queryByText(/lead time ≥ 1 periode/i)).toBeNull();
+    expect(screen.queryByText(/lead time ≥ 30 hari/i)).toBeNull();
+  });
+});

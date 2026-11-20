@@ -21,7 +21,7 @@ from app.services.inventory_metrics_service import (
     service_level,
     stock_out_rate,
 )
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 USER = "u1"
 OTHER = "u2"
@@ -214,11 +214,11 @@ async def test_run_tidak_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_run_milik_user_lain_403():
+async def test_run_milik_user_lain_tetap_bisa_dihitung():
+    # CR v3.5 §3.4 Opsi A: run terlihat semua role (single-tenant), RBAC yang membatasi.
     run = SimpleNamespace(id="r1", user_id=OTHER)
     svc = _service(run=run)
-    with pytest.raises(ForbiddenRoleError):
-        await svc.compute_for_run(USER, "r1")
+    assert isinstance(await svc.compute_for_run(USER, "r1"), list)
 
 
 # ── Fase 11.7: evaluasi level MATERIAL + inventory days + shortage cost ──

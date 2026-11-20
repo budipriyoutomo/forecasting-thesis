@@ -250,6 +250,24 @@ Keputusan: `RECONCILIATION.md` §"Kedatangan Material = Hasil Hitungan ROP".
 - [x] Frontend: tab Kedatangan di /inventory dihapus; `StockProjectionTable` satu kolom "Kedatangan (ROP)"; halaman baru `/material-arrivals` (read-only, pilih run) + menu navigasi
 - [x] Docs: PRD FR-12.7/12.8, ARCHITECTURE §3/§4/§5/§6.10/§6.11, AGENTS (error code deprecated), RECONCILIATION
 
+## 16. CR v3.5 — Keselarasan FE↔BE & Matriks Role — ✅ SELESAI (§1–§5, 20 Nov 2026)
+
+Keputusan: `docs/Change Request v3.5.md`, `RECONCILIATION.md` §"Keselarasan FE↔BE & Matriks Role".
+
+- [x] §1 Envelope error global (422 `VALIDATION_ERROR`, `HTTP_<status>`, 500 `INTERNAL_ERROR`) + FE `request()` normalisasi non-envelope / `NETWORK_ERROR`
+- [x] §2 Middleware: prefix diturunkan dari `lib/navigation.ts`, matcher negasi; folder kosong `settings/` dihapus
+- [x] §3.4 Visibilitas run Opsi A: cek pemilik dihapus di 8 service; `list_runs()` semua run + `created_by`; dashboard run terbaru organisasi
+- [x] §3.6 Peta izin `app/utils/permissions.py` + `require_permission`; semua router tulis memakai action key
+- [x] §3.6 FE `lib/permissions.ts`, `useCan`, `PermissionGate`; tombol tulis disembunyikan per halaman; settings form read-only
+- [x] §3.7 `test_rbac.py` (endpoint tulis × 4 role, kelengkapan via OpenAPI, sinkron BE↔FE), `rbac-pages.test.tsx`
+- [x] §4 Dashboard `latest_run.n_products` (bukan `n_materials`)
+- [x] §5.3 Sesi berakhir: 401 pada request ber-token (`request()` & `downloadExport`) → `clearToken()` + `/login?next=…&reason=expired` (sekali); `LoginForm` menghormati `next` (`safeNext`, cegah open redirect) + pesan "Sesi Anda telah berakhir"
+- [x] §5.2 Riwayat stok ERP & pemakaian per material (halaman Persediaan), dialog "Lihat nilai" variabel eksternal; `GET /uploads/{id}` didokumentasikan API-only
+- [x] §5.4 `ReorderRecommendation` FE memuat field biaya; kolom "Biaya persediaan" (TIC + pesan/simpan + C, i) di tabel reorder
+- [x] §5.6 Badge "Lead time ≥ 1 periode" (lead time ≥ 30 hari) di Kedatangan Material & proyeksi stok
+- [x] §5.5 `Material.dimension` deprecated (schema `Field(deprecated=…)` → tampil di OpenAPI, docs); kolom DB, API & import CSV tetap — tanpa migration
+- [x] §5.1 Import master data (`POST /products|materials|boms/import`) ditandai **internal** di OpenAPI (tag `internal`, `x-internal`), tanpa UI; RBAC tetap `master.write`
+
 ---
 
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)

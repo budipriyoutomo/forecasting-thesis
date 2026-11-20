@@ -7,7 +7,7 @@ UploadService (tidak inline). Lihat AGENTS.md §4 (envelope) dan docs/ARCHITECTU
 """
 from fastapi import APIRouter, Depends, UploadFile
 
-from app.api.deps import CurrentUser, get_current_user, get_upload_service
+from app.api.deps import CurrentUser, get_current_user, get_upload_service, require_permission
 from app.schemas.upload import to_upload_response, to_upload_summary
 from app.services.upload_service import UploadService
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 @router.post("", status_code=201)
 async def upload_demand_history(
     file: UploadFile,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("data.upload")),
     service: UploadService = Depends(get_upload_service),
 ):
     content = await file.read()

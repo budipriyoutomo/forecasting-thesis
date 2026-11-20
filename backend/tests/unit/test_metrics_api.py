@@ -98,11 +98,11 @@ async def test_cost_summary_tanpa_token_401(client):
 
 
 @pytest.mark.asyncio
-async def test_cost_summary_run_milik_user_lain_403(client):
+async def test_cost_summary_run_milik_user_lain_200(client):
+    # CR v3.5 §3.4 Opsi A: run buatan user lain tetap bisa dibaca.
     _override_cost(SimpleNamespace(id="r1", user_id=OTHER_SUB))
     res = await client.get("/api/v1/forecast/runs/r1/cost-summary", headers=_headers())
-    assert res.status_code == 403
-    assert res.json()["error"]["code"] == "AUTH_FORBIDDEN"
+    assert res.status_code == 200
 
 
 @pytest.mark.asyncio

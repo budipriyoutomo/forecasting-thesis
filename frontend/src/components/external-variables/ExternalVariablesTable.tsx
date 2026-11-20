@@ -56,21 +56,32 @@ export function ExternalVariablesTable({
   onEdit,
   onClearValues,
   onDelete,
+  onViewValues,
 }: {
   variables: ExternalVariable[];
   /** Kelengkapan per variable_id (opsional). */
   coverage?: Record<string, ExternalVariableCoverage>;
-  onToggle: (v: ExternalVariable, next: boolean) => void;
+  /** Tanpa handler (role tanpa izin `extvar.define`) status aktif tampil read-only. */
+  onToggle?: (v: ExternalVariable, next: boolean) => void;
   onEdit?: (v: ExternalVariable) => void;
   onClearValues?: (v: ExternalVariable) => void;
   onDelete?: (v: ExternalVariable) => void;
+  /** CR v3.5 §5.2 — buka nilai per periode (baca, semua role). */
+  onViewValues?: (v: ExternalVariable) => void;
 }) {
   const columns = useMemo<ColumnDef<ExternalVariable>[]>(
     () => [
       {
         accessorKey: "is_active",
         header: "Aktif",
-        cell: ({ row }) => <ActiveSwitch variable={row.original} onToggle={onToggle} />,
+        cell: ({ row }) =>
+          onToggle ? (
+            <ActiveSwitch variable={row.original} onToggle={onToggle} />
+          ) : (
+            <Badge variant={row.original.is_active ? "secondary" : "outline"}>
+              {row.original.is_active ? "Aktif" : "Nonaktif"}
+            </Badge>
+          ),
       },
       {
         accessorKey: "code",
@@ -109,6 +120,11 @@ export function ExternalVariablesTable({
         header: () => <span className="sr-only">Aksi</span>,
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
+            {onViewValues && row.original.n_values > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => onViewValues(row.original)}>
+                Lihat nilai
+              </Button>
+            )}
             {onEdit && (
               <Button variant="ghost" size="sm" onClick={() => onEdit(row.original)}>
                 Ubah
@@ -140,7 +156,7 @@ export function ExternalVariablesTable({
         ),
       },
     ],
-    [coverage, onToggle, onEdit, onClearValues, onDelete],
+    [coverage, onToggle, onEdit, onClearValues, onDelete, onViewValues],
   );
 
   return (

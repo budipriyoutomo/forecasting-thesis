@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
+import { handleSessionExpired } from "@/lib/session";
+
+vi.mock("@/lib/session", () => ({ handleSessionExpired: vi.fn() }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -35,6 +38,78 @@ describe("api.health", () => {
     if (!res.success) {
       expect(res.error.code).toBe("RATE_LIMIT_EXCEEDED");
     }
+  });
+});
+
+// CR v3.5 §1 — response di luar envelope (500 teks polos, `{detail}` FastAPI, network
+// error) harus dinormalisasi jadi ApiError supaya hooks aman membaca `res.error.message`.
+describe("request() normalisasi response non-envelope", () => {
+  it("body bukan JSON (mis. 500 'Internal Server Error') → ApiError HTTP_<status>", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("Internal Server Error", { status: 500 })));
+
+    const res = await api.health();
+
+    expect(res).toEqual({
+      success: false,
+      error: { code: "HTTP_500", message: "Permintaan gagal (status 500)." },
+    });
+  });
+
+  it("body JSON tanpa envelope (`{detail}`) → ApiError HTTP_<status>", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ detail: [{ msg: "x" }] }), { status: 422 })),
+    );
+
+    const res = await api.health();
+
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.code).toBe("HTTP_422");
+  });
+
+  it("network error (fetch reject) → ApiError NETWORK_ERROR, tidak melempar", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+
+    const res = await api.health();
+
+    expect(res).toEqual({
+      success: false,
+      error: { code: "NETWORK_ERROR", message: "Tidak bisa terhubung ke server." },
+    });
+  });
+});
+
+// CR v3.5 §5.3 — 401 pada request ber-token = sesi berakhir → logout + ke /login.
+describe("request() sesi berakhir", () => {
+  afterEach(() => vi.mocked(handleSessionExpired).mockClear());
+
+  const expired = { success: false, error: { code: "AUTH_TOKEN_EXPIRED", message: "Token sudah kadaluarsa" } };
+
+  it("401 pada request ber-token → handleSessionExpired, envelope tetap diteruskan", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(expired), { status: 401 })));
+
+    const res = await api.auth.me("tok-lama");
+
+    expect(handleSessionExpired).toHaveBeenCalledOnce();
+    expect(res).toEqual(expired);
+  });
+
+  it("401 login gagal (tanpa token) → TIDAK dianggap sesi berakhir", async () => {
+    const wrong = { success: false, error: { code: "AUTH_INVALID_CREDENTIALS", message: "Email/password salah" } };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(wrong), { status: 401 })));
+
+    await api.auth.login("a@b.com", "salah");
+
+    expect(handleSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it("403 (role tidak diizinkan) bukan sesi berakhir", async () => {
+    const forbidden = { success: false, error: { code: "AUTH_FORBIDDEN", message: "x" } };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(forbidden), { status: 403 })));
+
+    await api.auth.me("tok");
+
+    expect(handleSessionExpired).not.toHaveBeenCalled();
   });
 });
 
@@ -248,3 +323,19 @@ describe("api.uploads.list", () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 });
+
+// CR v3.5 §5.2 — endpoint GET yang sebelumnya tidak dipakai FE.
+describe("api riwayat (CR v3.5 §5.2)", () => {
+  it.each([
+    [() => api.inventory.snapshots("m 1", "tok"), /\/api\/v1\/stock-snapshots\?material_id=m%201$/],
+    [() => api.inventory.usage("m1", "tok"), /\/api\/v1\/material-usage\?material_id=m1$/],
+    [() => api.externalVariables.values("v1", "tok"), /\/api\/v1\/external-variables\/v1\/values$/],
+  ])("GET %#", async (call, url) => {
+    const spy = mockFetch({ success: true, data: [] });
+    await call();
+    const [u, init] = spy.mock.calls[0];
+    expect(String(u)).toMatch(url);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+});
+

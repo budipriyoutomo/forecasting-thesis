@@ -8,7 +8,7 @@ endpoint masing-masing.
 """
 from fastapi import APIRouter, Body, Depends
 
-from app.api.deps import CurrentUser, get_current_user, get_planning_pipeline_service
+from app.api.deps import CurrentUser, get_planning_pipeline_service, require_permission
 from app.services.planning_pipeline_service import PlanningPipelineService
 
 router = APIRouter(prefix="/forecast/runs", tags=["planning"])
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/forecast/runs", tags=["planning"])
 async def run_planning_pipeline(
     run_id: str,
     current_stock: dict[str, float] | None = Body(default=None, embed=True),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(require_permission("planning.run")),
     service: PlanningPipelineService = Depends(get_planning_pipeline_service),
 ):
     summary = await service.run(current_user.user_id, run_id, current_stock)

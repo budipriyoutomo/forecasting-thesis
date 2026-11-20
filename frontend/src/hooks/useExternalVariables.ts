@@ -9,6 +9,7 @@ import type { ApiResponse } from "@/types/api";
 import type {
   ExternalVariable,
   ExternalVariableCoverage,
+  ExternalVariableValue,
   ExternalVariableInput,
   ImportDryRunResult,
   ImportResult,
@@ -38,6 +39,16 @@ export function useExternalVariableCoverage(horizon = 12) {
     queryKey: [...KEY, "coverage", horizon],
     enabled: Boolean(token),
     queryFn: async () => unwrap(await api.externalVariables.coverage(horizon, token as string)),
+  });
+}
+
+// Nilai per periode satu variabel (CR v3.5 §5.2) — dimuat saat dialog "Lihat nilai" dibuka.
+export function useExternalVariableValues(id: string | null) {
+  const token = getToken();
+  return useQuery<ExternalVariableValue[]>({
+    queryKey: [...KEY, "values", id],
+    enabled: Boolean(token && id),
+    queryFn: async () => unwrap(await api.externalVariables.values(id as string, token as string)),
   });
 }
 

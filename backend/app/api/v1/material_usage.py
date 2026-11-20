@@ -7,7 +7,7 @@ GET  /material-usage/waste-factors → Σ aktual ÷ Σ standar per material
 """
 from fastapi import APIRouter, Depends, UploadFile
 
-from app.api.deps import get_current_user, get_material_usage_service, require_role
+from app.api.deps import get_current_user, get_material_usage_service, require_permission
 from app.services.material_usage_service import MaterialUsageService
 
 router = APIRouter(prefix="/material-usage", tags=["material-usage"])
@@ -17,7 +17,7 @@ def _f(v):
     return float(v) if v is not None else None
 
 
-@router.post("/import", dependencies=[Depends(require_role("admin", "ppic"))])
+@router.post("/import", dependencies=[Depends(require_permission("data.import_stock"))])
 async def import_material_usage(file: UploadFile, service: MaterialUsageService = Depends(get_material_usage_service)):
     result = await service.import_usage(file.filename or "", await file.read())
     return {"success": True, "data": result, "message": f"{result['imported']} baris pemakaian diimpor"}

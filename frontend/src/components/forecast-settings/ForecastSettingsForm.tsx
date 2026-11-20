@@ -88,12 +88,15 @@ export function ForecastSettingsForm({
   onSubmit,
   pending = false,
   error = null,
+  readOnly = false,
 }: {
   initial: ForecastSettingsInput;
   available: string[];
   onSubmit: (input: ForecastSettingsInput) => void;
   pending?: boolean;
   error?: string | null;
+  /** Role tanpa izin `settings.write` (CR v3.5 §3.2): semua kontrol nonaktif, tanpa tombol simpan. */
+  readOnly?: boolean;
 }) {
   const [metrics, setMetrics] = useState<Set<DisplayMetric>>(
     () => new Set(initial.display_metrics ?? ALL_DISPLAY_METRICS),
@@ -137,6 +140,7 @@ export function ForecastSettingsForm({
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (readOnly) return;
         onSubmit({
           display_metrics: ALL_DISPLAY_METRICS.filter((m) => metrics.has(m)),
           enabled_methods: available.filter((m) => enabled.has(m)),
@@ -152,6 +156,8 @@ export function ForecastSettingsForm({
         });
       }}
     >
+      {/* disabled fieldset menonaktifkan seluruh kontrol di dalamnya sekaligus. */}
+      <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-4">
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">Metrik yang ditampilkan</legend>
         <p className="text-sm text-muted-foreground">
@@ -341,11 +347,14 @@ export function ForecastSettingsForm({
         </Alert>
       )}
 
-      <div>
-        <Button type="submit" disabled={pending || noneEnabled || noMetric || !alphaGrid || !maWindowValid}>
-          {pending ? "Menyimpan…" : "Simpan pengaturan"}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div>
+          <Button type="submit" disabled={pending || noneEnabled || noMetric || !alphaGrid || !maWindowValid}>
+            {pending ? "Menyimpan…" : "Simpan pengaturan"}
+          </Button>
+        </div>
+      )}
+      </fieldset>
     </form>
   );
 }

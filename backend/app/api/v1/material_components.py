@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user, get_material_component_service, require_role
+from app.api.deps import get_current_user, get_material_component_service, require_permission
 from app.services.material_component_service import MaterialComponentService
 
 router = APIRouter(tags=["material-components"])
@@ -41,7 +41,7 @@ async def list_components(material_id: str, service: MaterialComponentService = 
     return {"success": True, "data": [_out(r) for r in await service.list(material_id)]}
 
 
-@router.post("/materials/{material_id}/components", dependencies=[Depends(require_role("admin"))])
+@router.post("/materials/{material_id}/components", dependencies=[Depends(require_permission("master.write"))])
 async def add_component(
     material_id: str,
     payload: MaterialComponentCreate,
@@ -51,7 +51,7 @@ async def add_component(
     return JSONResponse(status_code=201, content={"success": True, "data": _out(row)})
 
 
-@router.delete("/material-components/{component_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/material-components/{component_id}", dependencies=[Depends(require_permission("master.write"))])
 async def delete_component(component_id: str, service: MaterialComponentService = Depends(get_material_component_service)):
     await service.delete(component_id)
     return {"success": True, "data": {"id": component_id, "deleted": True}}

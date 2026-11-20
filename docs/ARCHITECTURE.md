@@ -209,7 +209,7 @@ forecastiq/
 | unit | VARCHAR | satuan |
 | lead_time_days | INTEGER | |
 | moq | NUMERIC | minimum order quantity |
-| dimension | JSONB | `{length, width, height}` — dimensi fisik material |
+| dimension | JSONB | `{length, width, height}` — dimensi fisik material. **Deprecated (CR v3.5 §5.5, 20 Nov 2026):** tidak dipakai perhitungan apa pun sejak kapasitas gudang per produk/grup material; tetap diterima API & import CSV (`length`/`width`/`height`) dan dikembalikan `GET /materials` demi kompatibilitas, tidak tampil di FE, kolom tidak di-drop |
 | manual_safety_stock | NUMERIC, nullable | override manual |
 | unit_price | NUMERIC(18,4), nullable | harga beli per `unit`, IDR (2 Okt 2026) — dasar biaya pembelian (informasi) & biaya material per produk via BOM |
 | created_at / updated_at | TIMESTAMPTZ | |
@@ -457,30 +457,30 @@ GET    /api/v1/products
 POST   /api/v1/products
 PUT    /api/v1/products/{id}
 DELETE /api/v1/products/{id}
-POST   /api/v1/products/import
+POST   /api/v1/products/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 GET    /api/v1/materials
 POST   /api/v1/materials
 PUT    /api/v1/materials/{id}
 DELETE /api/v1/materials/{id}
-POST   /api/v1/materials/import
+POST   /api/v1/materials/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 GET    /api/v1/boms?product_id=...
 POST   /api/v1/boms
 POST   /api/v1/boms/bulk          # {product_id, items:[{material_id, qty_per_unit}]} — 19 Nov 2026
 PUT    /api/v1/boms/{id}
 DELETE /api/v1/boms/{id}
-POST   /api/v1/boms/import
+POST   /api/v1/boms/import   # internal: seed/migrasi via API, tanpa UI (CR v3.5 §5.1)
 
 POST   /api/v1/uploads                    # upload Forecast/Planning/Actual historis
-GET    /api/v1/uploads/{session_id}
+GET    /api/v1/uploads/{session_id}       # API-only (CR v3.5 §5.2): FE memakai daftar GET /uploads yang sudah memuat ringkasan sesi
 GET    /api/v1/uploads
 
 POST   /api/v1/forecast/runs              # trigger forecast run (horizon, method opsional)
-GET    /api/v1/forecast/runs                  # daftar run milik user, terbaru dulu (?limit=, maks 200) — 20 Nov 2026
+GET    /api/v1/forecast/runs                  # daftar SEMUA run (semua user, CR v3.5 §3.4), terbaru dulu (?limit=, maks 200) + `created_by` (nama, fallback email) — 20 Nov 2026
 GET    /api/v1/forecast/runs/{run_id}
 GET    /api/v1/forecast/results?product_id=...
-POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; run milik user lain → 403
+POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; role selain admin/ppic → 403 AUTH_FORBIDDEN (`forecast.select`)
 POST   /api/v1/forecast/runs/{run_id}/selection        # Fase 11.15 — satu metode untuk semua produk di run {method, reason} → {n_selected, skipped_product_ids, results}; produk tanpa metode itu dilewati
 
 POST   /api/v1/reorder/recommendations    # generate & persist rekomendasi (body: run_id, current_stock per material — lihat catatan di §4 `reorder_recommendations`)
@@ -512,7 +512,7 @@ POST   /api/v1/overrides
 GET    /api/v1/overrides?target_id=...
 GET    /api/v1/overrides/reorder?run_id=...&material_id=...   # v3.3 — riwayat per (run, material)
 
-GET    /api/v1/dashboard/summary
+GET    /api/v1/dashboard/summary         # latest_run = run terbaru organisasi; latest_run.n_products = jumlah produk di run (CR v3.5 §4, dulu n_materials); n_materials level atas = jumlah master material
 ```
 
 > **Perubahan 2 Oktober 2026 (Konsolidasi Master Data):**
@@ -549,11 +549,67 @@ UNSUPPORTED_FORECAST_METHOD  WAREHOUSE_CONFIG_NOT_FOUND     WAREHOUSE_CAPACITY_E
 OVERRIDE_REASON_REQUIRED     OVERRIDE_TARGET_NOT_FOUND      STORAGE_UPLOAD_FAILED
 RATE_LIMIT_EXCEEDED          WAREHOUSE_CONFIG_EXISTS        COST_TEMPLATE_NOT_FOUND
 COST_TEMPLATE_NAME_EXISTS    WAREHOUSE_CAPACITY_INVALID
+VALIDATION_ERROR             INTERNAL_ERROR                 HTTP_<status>
 ```
+
+> **Tambahan 20 Nov 2026 (CR v3.5 §1):** exception handler global di `app/main.py` menjamin **semua** response memakai envelope — `RequestValidationError` → 422 `VALIDATION_ERROR` (pesan `"<field>: <pesan>"`, prefix `Value error, ` dibuang supaya pesan validator berbahasa Indonesia sampai ke user), `HTTPException` Starlette → `HTTP_<status>` (404 route tidak ada, 405 method salah), exception lain → 500 `INTERNAL_ERROR` generik (stack trace hanya di log). Frontend `request()` menormalisasi body non-envelope jadi `HTTP_<status>` dan fetch gagal jadi `NETWORK_ERROR` (client-only).
 
 > **Tambahan 2 Oktober 2026:** `WAREHOUSE_CONFIG_EXISTS` (409, produk sudah punya baris kapasitas — sudah dipakai di kode sejak 24 Agustus 2026, baru didokumentasikan), `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409), `WAREHOUSE_CAPACITY_INVALID` (400 — field yang diwajibkan mode/unit produk kosong atau ≤ 0, qty negatif, atau kapasitas efektif 0). Lihat `RECONCILIATION.md` §"Konsolidasi Master Data".
 
 > `WAREHOUSE_CAPACITY_EXCEEDED` bukan hard-block (400) melainkan flag di response 200 (`warehouse_validations.is_within_capacity = false`) — keputusan akhir tetap di tangan planner via override, sesuai FR-6.4 di `PRD.md`. `BOM_NOT_FOUND` dipakai saat baris BOM yang dirujuk tidak ada (CRUD/import, atau saat reorder/cost butuh BOM produk). `AUTH_FORBIDDEN` (403) dipakai saat user terautentikasi tapi tidak berhak atas resource yang diminta (beda dengan `AUTH_INVALID_CREDENTIALS`/`AUTH_TOKEN_EXPIRED` yang 401). `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS` dipakai saat `code` duplikat pada create/import produk atau material. `OVERRIDE_TARGET_NOT_FOUND` dipakai saat `target_id` pada `POST /api/v1/overrides` tidak ditemukan di tabel yang dirujuk `target_type`. Empat code ini diwarisi dari implementasi v2.0 di git (lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1").
+
+### 5.1 RBAC per endpoint & visibilitas run (CR v3.5 §3, 20 Nov 2026)
+
+Sumber tunggal: `backend/app/utils/permissions.py` (`PERMISSIONS: action → roles`), dipakai router lewat
+`Depends(require_permission("<action>"))` (`app/api/deps.py`). Cermin frontend: `frontend/src/lib/permissions.ts`
+(`can()` / `useCan()` menyembunyikan tombol tulis). `tests/unit/test_rbac.py` memastikan: peta = matriks,
+setiap operasi non-GET di OpenAPI terdaftar (endpoint tulis baru tidak bisa lolos tanpa RBAC), setiap endpoint
+tulis × 4 role → 403/lolos sesuai matriks, dan peta backend = frontend.
+
+| Action | Role | Endpoint |
+|---|---|---|
+| `master.write` | admin | `POST/PUT/DELETE /products*`, `/materials*`, `/boms*` (termasuk `/import`, `/bulk`), `POST /materials/{id}/components`, `DELETE /material-components/{id}`, `/warehouse/config*`, `/cost-templates*` (termasuk `/activate`) |
+| `settings.write` | admin | `PUT /forecast-settings` |
+| `extvar.define` | admin | `POST /external-variables`, `PUT/DELETE /external-variables/{id}`, `DELETE /external-variables/{id}/values` |
+| `extvar.import` | admin, ppic | `POST /external-variables/values/import` (+ `?dry_run=true`) |
+| `data.upload` | admin, ppic | `POST /uploads` |
+| `data.import_stock` | admin, ppic | `POST /stock-snapshots/import`, `POST /material-usage/import` |
+| `forecast.run` | admin, ppic | `POST /forecast/runs` |
+| `forecast.select` | admin, ppic | `POST /forecast/results/{id}/selection`, `POST /forecast/runs/{id}/selection` |
+| `override.create` | admin, ppic | `POST /overrides` |
+| `planning.run` | admin, ppic | `POST /reorder/recommendations`, `POST /forecast/runs/{id}/plan`, `POST /forecast/runs/{id}/stock-projection` |
+| `capacity.adjust` | admin, ppic | `POST /forecast/runs/{id}/capacity-adjustments`, `/suggest`, `/reset` |
+| (baca) | semua | seluruh `GET`, termasuk `/export` & `/template` |
+
+**Visibilitas run (Opsi A, MVP single-tenant):** tidak ada cek pemilik run di service mana pun — run cukup
+harus ada (`FORECAST_RUN_NOT_FOUND`). Dashboard "run terakhir" = run terbaru organisasi
+(`get_latest_run()`), `GET /forecast/runs` = semua run + `created_by`. `user_id` tetap dicatat sebagai pelaku
+(run, override, capacity adjustment). Upload session tetap per user (riwayat upload milik sendiri).
+Post-MVP (Opsi B): `forecast_runs.approval_status` (`DRAFT`/`FINAL`), `approved_by/at`,
+`POST /forecast/runs/{id}/finalize`; Purchasing & Viewer default hanya melihat run FINAL.
+
+Frontend: halaman tetap bisa dibuka semua role (baca); tombol tulis tidak dirender tanpa izin;
+`/forecast/new` & `/forecast/new/config` menampilkan "Hanya PPIC/Admin yang dapat menjalankan forecast"
++ link ke Kedatangan Material untuk Purchasing/Viewer. Middleware (`src/middleware.ts`) memproteksi
+setiap prefix `href` di `lib/navigation.ts` — halaman baru di sidebar otomatis butuh login.
+Sesi berakhir (CR v3.5 §5.3): response **401 pada request yang membawa Bearer token** (`lib/api.ts` `request()`,
+`lib/download.ts`) → `lib/session.ts` `handleSessionExpired()` menghapus cookie dan full-navigate ke
+`/login?next=<path>&reason=expired` (sekali walau banyak query gagal). Deteksi pakai status + header, bukan kode
+saja, karena backend memakai `AUTH_INVALID_CREDENTIALS` baik untuk token invalid maupun login salah. Setelah login,
+`LoginForm` kembali ke `next` lewat `safeNext()` (hanya path relatif internal, bukan `/login`).
+
+Pemakaian endpoint baca di FE (CR v3.5 §5.2/§5.4/§5.6):
+- `GET /stock-snapshots?material_id=` & `GET /material-usage?material_id=` → bagian "Riwayat stok ERP" / "Riwayat
+  pemakaian" di halaman Persediaan Material (dimuat setelah material dipilih).
+- `GET /external-variables/{id}/values` → dialog "Lihat nilai" per variabel (semua role).
+- `GET /uploads/{session_id}` → API-only.
+- `POST /products|materials|boms/import` → **internal** (seed/migrasi data awal oleh Admin lewat API, tanpa UI):
+  tag OpenAPI `internal` + `x-internal: true` (`app/api/openapi.py`), RBAC tetap `master.write`. Input harian lewat form CRUD.
+- Tabel reorder menampilkan kolom "Biaya persediaan" per material dari `total_inventory_cost`, `ordering_cost`,
+  `holding_cost`, `unit_price_used` (C), `holding_rate_used` (i %, hanya EOQ klasik).
+- Batasan thesis "pesanan ROP tiba di periode yang sama" hanya valid bila lead time < 1 periode: material dengan
+  `lead_time_days ≥ 30` (`frontend/src/lib/leadTime.ts`) diberi badge "Lead time ≥ 1 periode" di halaman Kedatangan
+  Material & tabel proyeksi stok, plus ringkasan jumlah material terdampak. Murni peringatan — hitungan tidak berubah.
 
 ## 6. Forecasting Engine — Comparative Selection (Final v3.0)
 
@@ -941,7 +997,7 @@ POST /material-usage/import · GET /material-usage · GET /material-usage/waste-
 GET/POST /materials/{id}/components · DELETE /material-components/{id} · GET /boms/tree?product_id=
 POST /stock-snapshots/import · GET /stock-snapshots · GET /stock-snapshots/latest
 ~~GET/POST /material-receipts · POST /material-receipts/import · PUT/DELETE /material-receipts/{id}~~   # dihapus 20 Nov 2026 (kedatangan = hasil ROP)
-GET  /forecast/runs?limit=50                       # run milik user terbaru dulu [{run_id, status, horizon, horizon_unit, created_at}] — pemilih run halaman Kedatangan Material (20 Nov 2026)
+GET  /forecast/runs?limit=50                       # semua run terbaru dulu [{run_id, status, horizon, horizon_unit, created_at, created_by}] — pemilih run halaman Kedatangan Material (20 Nov 2026)
 POST/GET /forecast/runs/{id}/stock-projection       # `receipt_qty` deprecated (selalu null sejak 20 Nov 2026); kedatangan = `order_qty`
 GET  /forecast/runs/{id}/stock-projection/export?format=xlsx|pdf&scenario=proposed|baseline
 GET  /forecast/runs/{id}/inventory-metrics/export?format=xlsx|pdf&target_type=product|material
@@ -1018,6 +1074,8 @@ Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
 - Template biaya tidak ada → `COST_TEMPLATE_NOT_FOUND` (404); nama duplikat → `COST_TEMPLATE_NAME_EXISTS` (409). **Tidak ada template aktif bukan error** — EOQ/TIC fallback ke `DEFAULT_*` env dan `cost-summary.cost_source = "env"` (Fase 10).
 - Nilai tidak valid di baris CSV import produk/material (mis. harga/MOQ negatif) → `UPLOAD_INVALID_FORMAT` per baris, bukan 500 dari `ValidationError` yang lolos (Fase 10).
 - Tidak ada stack trace / detail internal yang di-expose ke client; semua di-log server-side.
+- Validasi skema request gagal → 422 `VALIDATION_ERROR`; route/method tidak ada → `HTTP_404`/`HTTP_405`; exception tak tertangani → 500 `INTERNAL_ERROR` — semuanya tetap envelope `{success:false, error}` (CR v3.5 §1).
+- Role tidak diizinkan untuk aksi tulis → 403 `AUTH_FORBIDDEN` (peta `app/utils/permissions.py`, §5.1). Run milik user lain **bukan** alasan 403 (Opsi A).
 
 ## 9. Testing & Coverage (ringkas — detail penuh di `AGENTS.md` §3)
 

@@ -22,6 +22,7 @@ import {
   useProducts,
   useUpdateProduct,
 } from "@/hooks/useProducts";
+import { useCan } from "@/hooks/usePermission";
 import type { Product, ProductInput } from "@/types/product";
 
 export default function ProductsPage() {
@@ -29,6 +30,7 @@ export default function ProductsPage() {
   const create = useCreateProduct();
   const update = useUpdateProduct();
   const remove = useDeleteProduct();
+  const canWrite = useCan("master.write");
 
   const [editing, setEditing] = useState<Product | null>(null);
   const [open, setOpen] = useState(false);
@@ -58,10 +60,12 @@ export default function ProductsPage() {
         title="Master Data Produk"
         description="Daftar SKU produk jadi yang menjadi dasar forecast dan penurunan kebutuhan material."
         actions={
-          <Button onClick={openCreate}>
-            <Plus />
-            Tambah produk
-          </Button>
+          canWrite && (
+            <Button onClick={openCreate}>
+              <Plus />
+              Tambah produk
+            </Button>
+          )
         }
       />
 
@@ -76,7 +80,13 @@ export default function ProductsPage() {
           <AlertDescription>Gagal menghapus produk: {remove.error.message}</AlertDescription>
         </Alert>
       )}
-      {products && <ProductsTable products={products} onEdit={openEdit} onDelete={(p) => remove.mutate(p.id)} />}
+      {products && (
+        <ProductsTable
+          products={products}
+          onEdit={canWrite ? openEdit : undefined}
+          onDelete={canWrite ? (p) => remove.mutate(p.id) : undefined}
+        />
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

@@ -140,3 +140,33 @@ describe("ReorderTable — qty override yang berlaku", () => {
     expect(note.getAttribute("title")).toMatch(/kontrak supplier/i);
   });
 });
+
+// CR v3.5 §5.4 — rincian biaya persediaan per material.
+describe("ReorderTable — biaya per material", () => {
+  const COSTED: ReorderRecommendation[] = [
+    {
+      ...RECS[0],
+      ordering_cost: "120000", holding_cost: "30000", total_inventory_cost: "150000",
+      unit_price_used: "2500", holding_rate_used: "20",
+    },
+    RECS[1],
+  ];
+
+  it("kolom TIC dengan rincian biaya pesan & simpan, plus C dan i yang dipakai", () => {
+    render(<ReorderTable recommendations={COSTED} />);
+
+    const row = screen.getByText("m1").closest("tr") as HTMLElement;
+    expect(row.textContent).toMatch(/Rp\s?150\.000/);
+    expect(row.textContent).toMatch(/Pesan Rp\s?120\.000/);
+    expect(row.textContent).toMatch(/Simpan Rp\s?30\.000/);
+    expect(row.textContent).toMatch(/C Rp\s?2\.500/);
+    expect(row.textContent).toMatch(/i 20%/);
+  });
+
+  it("tanpa data biaya → tanda —", () => {
+    render(<ReorderTable recommendations={COSTED} />);
+    const row = screen.getByText("m2").closest("tr") as HTMLElement;
+    expect(screen.getByRole("columnheader", { name: /biaya persediaan/i })).toBeDefined();
+    expect(row.textContent).toContain("—");
+  });
+});

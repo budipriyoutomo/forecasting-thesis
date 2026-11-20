@@ -112,7 +112,9 @@ RATE_LIMIT_EXCEEDED            WAREHOUSE_CONFIG_EXISTS         COST_TEMPLATE_NOT
 COST_TEMPLATE_NAME_EXISTS      WAREHOUSE_CAPACITY_INVALID
 EXTERNAL_VARIABLE_NOT_FOUND    EXTERNAL_VARIABLE_CODE_EXISTS  BOM_CYCLE_DETECTED
 MATERIAL_COMPONENT_NOT_FOUND   STOCK_SNAPSHOT_NOT_FOUND       MATERIAL_RECEIPT_NOT_FOUND
+VALIDATION_ERROR               INTERNAL_ERROR                 HTTP_<status>
 ```
+> **Tambahan 20 Nov 2026** (CR v3.5 §1, `RECONCILIATION.md` §"Keselarasan FE↔BE & Matriks Role"): dipasang oleh exception handler global di `app/main.py` supaya **tidak ada** response di luar envelope — `VALIDATION_ERROR` (422, validasi Pydantic gagal; pesan = `"<field>: <pesan validator>"`), `INTERNAL_ERROR` (500, exception tak tertangani; detail hanya ke log), `HTTP_<status>` (mis. `HTTP_404` route tidak ada, `HTTP_405` method salah). Frontend menambah `NETWORK_ERROR` (khusus client, fetch gagal) dan `HTTP_<status>` untuk body non-envelope (`lib/api.ts` `request()`). Catatan: validasi skema Pydantic tetap **422** (bawaan FastAPI, sudah dipakai test sejak v3.0), sedangkan validasi isi file/CSV tetap 400 `UPLOAD_INVALID_FORMAT`.
 > **Tambahan 2 Oktober 2026** (`RECONCILIATION.md` §"Konsolidasi Master Data"): `COST_TEMPLATE_NOT_FOUND` (404), `COST_TEMPLATE_NAME_EXISTS` (409), `WAREHOUSE_CAPACITY_INVALID` (400, input pallet/dus tidak lengkap/tidak valid untuk mode & unit produknya), dan `WAREHOUSE_CONFIG_EXISTS` (409) — yang terakhir sudah dipakai kode sejak 24 Agustus 2026 tapi baru didaftarkan di sini.
 > **Tambahan 30 Oktober 2026** (Fase 11, `RECONCILIATION.md` §"Rekonsiliasi v3.2"): `EXTERNAL_VARIABLE_NOT_FOUND` (404), `EXTERNAL_VARIABLE_CODE_EXISTS` (409), `BOM_CYCLE_DETECTED` (422, komponen material membentuk siklus), `MATERIAL_COMPONENT_NOT_FOUND` (404), `STOCK_SNAPSHOT_NOT_FOUND` (404, disiapkan), `MATERIAL_RECEIPT_NOT_FOUND` (404; **deprecated 20 Nov 2026** — endpoint kedatangan manual dihapus, kedatangan = hasil ROP; jangan dipakai lagi). `MISSING_UNIT_PRICE` / `MISSING_HOLDING_RATE` adalah **status per item** reorder (`item_status`), bukan error HTTP.
 > Daftar ini final hasil v3.1 (v3.0 + 4 code yang diwarisi dari implementasi v2.0 di git: `AUTH_FORBIDDEN`, `PRODUCT_CODE_EXISTS`, `MATERIAL_CODE_EXISTS`, `OVERRIDE_TARGET_NOT_FOUND` — lihat `RECONCILIATION.md` §"Rekonsiliasi v3.1"). Jangan tambah error code sepihak — kalau butuh code baru, tambahkan di sini dulu (dan di `ARCHITECTURE.md` §5) sebelum dipakai di kode. `WAREHOUSE_CAPACITY_EXCEEDED` dipakai sebagai *flag* di data response (200), **bukan** status error HTTP — lihat `ARCHITECTURE.md` §5.
@@ -312,6 +314,8 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 | 18 | ❌ Membuat resource turunan (mis. reorder recommendation) hanya dengan `GET` tanpa `POST` generate | Resource yang dihitung dari forecast+BOM+request-time input (`current_stock`) wajib punya `POST` generate & persist dulu — lihat `ARCHITECTURE.md` §5 |
 | 19 | ❌ Membuat `code` produk/material tanpa cek unik | Duplikat harus ditolak dengan `PRODUCT_CODE_EXISTS`/`MATERIAL_CODE_EXISTS`, bukan dibiarkan lolos ke database constraint error |
 | 20 | ❌ Memilih metode pemenang otomatis / menambah peringkat metrik di mode otomatis, atau service hilir membaca `forecast_results` mentah (bukan lewat `ForecastSelectionService`) | Keputusan user Fase 11.15: planner yang memilih metode; hasil yang belum dipilih harus dilewati, bukan diam-diam diisi metode lain |
+| 21 | ❌ Memakai `require_role(...)` langsung di router, atau menambah endpoint tulis tanpa `require_permission("<action>")` | Peta izin tunggal di `app/utils/permissions.py` (cermin `frontend/src/lib/permissions.ts`, dicek `test_rbac.py`) — CR v3.5 §3 |
+| 22 | ❌ Membatasi baca run berdasarkan pemilik (`run.user_id != user_id`) | Opsi A CR v3.5 §3.4: run terlihat semua role (single-tenant); `user_id` hanya jejak audit pelaku |
 
 ---
 
@@ -333,5 +337,6 @@ Lihat `docs/ARCHITECTURE.md` §3 untuk struktur folder lengkap (frontend + backe
 - [ ] Konversi satuan periode ↔ hari (SS/ROP, annualisasi EOQ) dites dengan data bulanan (Fase 11.0)
 - [ ] Rumus titik pesan (ROP) & qty pesan **hanya** dari `reorder_service` (`compute_rop`, `compute_order_qty`, `OrderPolicy`) — modul lain (proyeksi stok, cost, export) tidak merumuskan ulang (v3.3, Fase 11.9)
 - [ ] Mode otomatis sudah diuji: `candidates_evaluated` tersimpan lengkap (metrik + deret forecast tiap metode), **tanpa pemenang & tanpa peringkat**; pilihan planner (override, alasan wajib) yang menentukan metode berlaku; hasil belum dipilih dilewati hilir
+- [ ] Endpoint tulis baru memakai `require_permission("<action>")`, didaftarkan di `WRITE_ENDPOINTS` `tests/unit/test_rbac.py`, dan tombolnya di frontend disembunyikan dengan `useCan("<action>")` (CR v3.5 §3)
 - [ ] Field `code` pada resource baru (produk/material/dsb) sudah dicek unik sebelum insert, dan pesan error mengikuti pola `*_CODE_EXISTS`
 - [ ] Resource yang di-generate dari perhitungan (bukan CRUD murni) menyediakan endpoint `POST` untuk generate & persist sebelum `GET` untuk membaca — lihat `ARCHITECTURE.md` §5

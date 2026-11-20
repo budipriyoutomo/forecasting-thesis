@@ -15,7 +15,7 @@ RBAC: baca semua role terautentikasi, tulis admin. Logika lewat CostTemplateServ
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from app.api.deps import get_cost_template_service, get_current_user, require_role
+from app.api.deps import get_cost_template_service, get_current_user, require_permission
 from app.schemas.cost_template import (
     CostTemplateCreate,
     CostTemplateItemOut,
@@ -99,7 +99,7 @@ async def get_cost_template_summary(
     }
 
 
-@router.post("", dependencies=[Depends(require_role("admin"))])
+@router.post("", dependencies=[Depends(require_permission("master.write"))])
 async def create_cost_template(
     payload: CostTemplateCreate, service: CostTemplateService = Depends(get_cost_template_service)
 ):
@@ -107,7 +107,7 @@ async def create_cost_template(
     return JSONResponse(status_code=201, content={"success": True, "data": _to_response(template)})
 
 
-@router.put("/{template_id}", dependencies=[Depends(require_role("admin"))])
+@router.put("/{template_id}", dependencies=[Depends(require_permission("master.write"))])
 async def update_cost_template(
     template_id: str,
     payload: CostTemplateUpdate,
@@ -116,14 +116,14 @@ async def update_cost_template(
     return {"success": True, "data": _to_response(await service.update(template_id, payload))}
 
 
-@router.post("/{template_id}/activate", dependencies=[Depends(require_role("admin"))])
+@router.post("/{template_id}/activate", dependencies=[Depends(require_permission("master.write"))])
 async def activate_cost_template(
     template_id: str, service: CostTemplateService = Depends(get_cost_template_service)
 ):
     return {"success": True, "data": _to_response(await service.activate(template_id))}
 
 
-@router.delete("/{template_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{template_id}", dependencies=[Depends(require_permission("master.write"))])
 async def delete_cost_template(
     template_id: str, service: CostTemplateService = Depends(get_cost_template_service)
 ):

@@ -26,6 +26,7 @@ import {
   useUpdateCostTemplate,
 } from "@/hooks/useCostTemplates";
 import { useMaterials } from "@/hooks/useMaterials";
+import { useCan } from "@/hooks/usePermission";
 import type { CostTemplate, CostTemplateInput } from "@/types/costTemplate";
 
 export default function CostTemplatesPage() {
@@ -35,6 +36,7 @@ export default function CostTemplatesPage() {
   const update = useUpdateCostTemplate();
   const activate = useActivateCostTemplate();
   const remove = useDeleteCostTemplate();
+  const canWrite = useCan("master.write");
 
   const [editing, setEditing] = useState<CostTemplate | null>(null);
   const [open, setOpen] = useState(false);
@@ -63,15 +65,17 @@ export default function CostTemplatesPage() {
         title="Template Biaya"
         description="Biaya pesan (S) dan biaya simpan (H) untuk EOQ & total biaya persediaan, beserta rincian overhead dan depresiasi aset penyimpanan sebagai dasar menentukan H."
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus />
-            Tambah template
-          </Button>
+          canWrite && (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus />
+              Tambah template
+            </Button>
+          )
         }
       />
 
@@ -98,12 +102,16 @@ export default function CostTemplatesPage() {
         <CostTemplatesTable
           templates={templates}
           onSelect={(t) => setSelectedId(t.id)}
-          onEdit={(t) => {
-            setEditing(t);
-            setOpen(true);
-          }}
-          onActivate={(t) => activate.mutate(t.id)}
-          onDelete={(t) => remove.mutate(t.id)}
+          onEdit={
+            canWrite
+              ? (t) => {
+                  setEditing(t);
+                  setOpen(true);
+                }
+              : undefined
+          }
+          onActivate={canWrite ? (t) => activate.mutate(t.id) : undefined}
+          onDelete={canWrite ? (t) => remove.mutate(t.id) : undefined}
         />
       )}
 

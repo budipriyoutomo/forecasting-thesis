@@ -12,7 +12,7 @@ export interface DashboardSummary {
   latest_run: {
     run_id: string;
     status: string;
-    n_materials: number;
+    n_products: number; // jumlah forecast_results = produk (CR v3.5 §4)
     n_completed: number;
     n_failed: number;
     avg_mase: number | null;

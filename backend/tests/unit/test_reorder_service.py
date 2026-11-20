@@ -10,7 +10,7 @@ import pytest
 
 from app.config import get_settings
 from app.services.reorder_service import ReorderService, compute_eoq
-from app.utils.exceptions import ForbiddenRoleError, ForecastRunNotFoundError
+from app.utils.exceptions import ForecastRunNotFoundError
 
 USER = "u1"
 OTHER = "u2"
@@ -138,10 +138,10 @@ async def test_generate_run_tidak_ada_404():
 
 
 @pytest.mark.asyncio
-async def test_generate_run_milik_user_lain_403():
+async def test_generate_run_milik_user_lain_diizinkan():
+    # CR v3.5 §3.4 Opsi A: kepemilikan run tidak membatasi; RBAC endpoint yang membatasi.
     svc = _service(_run(user=OTHER), [], {}, [])
-    with pytest.raises(ForbiddenRoleError):
-        await svc.generate_for_run(USER, "r1")
+    assert await svc.generate_for_run(USER, "r1") == []
 
 
 @pytest.mark.asyncio
