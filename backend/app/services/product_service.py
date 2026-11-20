@@ -4,6 +4,8 @@ ProductService — CRUD master data produk jadi + import CSV (Fase 2 v3.0).
 Mirror MaterialService (repo injectable, model_factory memisahkan pembuatan ORM
 dari logika bisnis untuk test). `code` unik → ProductCodeExistsError.
 """
+from __future__ import annotations
+
 import csv as csv_module
 import io
 from decimal import Decimal, InvalidOperation

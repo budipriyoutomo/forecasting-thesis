@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_product_service
+from app.api.deps import get_override_service, get_product_service
 from app.main import app
 from tests.unit.test_external_variable_api import _headers, _override
 
@@ -37,6 +37,8 @@ async def test_validasi_pydantic_422_pakai_envelope_dan_pesan_indonesia(client):
 
 @pytest.mark.asyncio
 async def test_validasi_query_param_422_envelope(client, auth_headers):
+    # Override service supaya dependency get_db tidak tersentuh — CI tidak punya DATABASE_URL.
+    app.dependency_overrides[get_override_service] = lambda: object()
     res = await client.get("/api/v1/overrides/reorder?run_id=r1", headers=auth_headers)
 
     assert res.status_code == 422
