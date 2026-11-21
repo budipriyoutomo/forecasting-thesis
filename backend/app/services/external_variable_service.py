@@ -140,6 +140,31 @@ class ExternalVariableService:
         await self.get(variable_id)
         return await self._repo.list_values(variable_id, product_id)
 
+    async def update_values(self, variable_id: str, items) -> int:
+        """Ubah/tambah nilai per periode langsung dari UI (21 Nov 2026) — aturan sama dengan import:
+        periode digeser ke awal bulan, flag 0/1, per produk wajib produk valid, global abaikan produk.
+        All-or-nothing: satu item invalid → tidak ada yang ditulis."""
+        var = await self.get(variable_id)
+        rows: dict[tuple, object] = {}
+        for item in items:
+            period = item.period.replace(day=1)
+            if var.value_type == "flag" and item.value not in (0, 1):
+                raise UploadInvalidFormatError(
+                    f"Periode {period}: variabel flag '{var.code}' harus bernilai 0 atau 1."
+                )
+            product_id = None
+            if var.scope == "product":
+                if not item.product_id:
+                    raise UploadInvalidFormatError(f"Periode {period}: Produk wajib untuk variabel per produk.")
+                product = await self._products.get_by_id(item.product_id)
+                if product is None:
+                    raise UploadInvalidFormatError(f"Periode {period}: Produk '{item.product_id}' tidak ditemukan.")
+                product_id = product.id
+            rows[(str(product_id), period)] = self._value(
+                variable_id=var.id, product_id=product_id, period=period, value=item.value
+            )
+        return await self._repo.upsert_values(list(rows.values()))
+
     async def clear_values(self, variable_id: str) -> int:
         await self.get(variable_id)
         return await self._repo.delete_values(variable_id)
@@ -277,40 +302,35 @@ class ExternalVariableService:
         return [ts.date() for ts in pd.date_range(start, end, freq="MS")]
 
     async def template(self, horizon: int) -> tuple[bytes, str]:
-        """Template import format lebar (CR v3.4 §4.3): variabel AKTIF × periode demand + horizon,
-        terisi nilai global yang sudah ada supaya planner cukup melengkapi sel kosong.
-        Kolom product_code hanya muncul bila ada variabel aktif per produk (baris per produk
-        ditambahkan planner sendiri)."""
+        """Template import format lebar — KOSONG, hanya header (keputusan user 21 Nov 2026,
+        menggantikan template terisi CR v3.4 §4.3): `period` [, `product_code` bila ada variabel
+        aktif per produk] + satu kolom per kode variabel AKTIF. Tanpa baris periode & tanpa nilai
+        tersimpan; planner mengetik sendiri. `horizon` dipertahankan demi kompatibilitas API
+        (`GET /template?horizon=`), tidak lagi memengaruhi isi."""
         active = sorted(await self._repo.list_active(), key=lambda v: v.code)
-        periods = await self._expected_periods(horizon)
-        existing: dict[tuple[str, date], float] = {}
-        if active:
-            for r in await self._repo.values_for([v.id for v in active], None):
-                if r.product_id is None:
-                    existing[(str(r.variable_id), r.period)] = float(r.value)
-
         has_product = any(v.scope == "product" for v in active)
         headers = ["period", *(["product_code"] if has_product else []), *(v.code for v in active)]
         wb = Workbook()
         ws = wb.active
         ws.title = "nilai"
         ws.append(headers)
-        for p in periods:
-            ws.append([
-                p, *([None] if has_product else []),
-                *(existing.get((str(v.id), p)) if v.scope == "global" else None for v in active),
-            ])
-        for row in ws.iter_rows(min_row=2, max_col=1):
-            row[0].number_format = "yyyy-mm-dd"
+        ws.column_dimensions["A"].width = 14
 
         info = wb.create_sheet("petunjuk")
         info.append(["kode", "nama", "tipe", "cakupan", "satuan"])
         for v in active:
             info.append([v.code, v.name, v.value_type, v.scope, v.unit])
         info.append([])
-        info.append(["Kosongkan sel atau isi '-' bila nilai belum ada. Koma desimal & tanggal mana pun di bulan itu diterima."])
+        for line in (
+            "Isi satu baris per bulan di sheet 'nilai'. Kolom period ditulis YYYY-MM-DD, mis. 2024-01-01 "
+            "(tanggal mana pun di bulan itu diterima; hindari 'Jan-24').",
+            "Isi periode histori demand + horizon forecast — variabel yang nilainya belum lengkap tidak dipakai model.",
+            "Kosongkan sel atau isi '-' bila nilai belum ada. Koma desimal diterima. Variabel flag bernilai 0/1.",
+            "Nilai untuk variabel & bulan yang sudah tersimpan akan ditimpa.",
+        ):
+            info.append([line])
         if has_product:
-            info.append(["Variabel per produk: tambahkan satu baris per produk & periode, isi product_code."])
+            info.append(["Variabel per produk: isi product_code, satu baris per produk & periode."])
 
         buf = io.BytesIO()
         wb.save(buf)

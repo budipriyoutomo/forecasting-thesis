@@ -21,6 +21,13 @@ export interface ExternalVariableValue {
   value: number;
 }
 
+// PUT /external-variables/{id}/values — ubah/tambah nilai dari dialog "Ubah" (21 Nov 2026)
+export interface ExternalVariableValueChange {
+  period: string;
+  value: number;
+  product_id: string | null;
+}
+
 export interface ExternalVariableInput {
   code?: string;
   name?: string;

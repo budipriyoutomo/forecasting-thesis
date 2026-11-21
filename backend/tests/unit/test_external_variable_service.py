@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from app.schemas.external_variable import ExternalVariableCreate, ExternalVariableUpdate
+from app.schemas.external_variable import ExternalVariableCreate, ExternalVariableUpdate, ExternalVariableValueIn
 from app.services.external_variable_service import ExternalVariableService, build_exog
 from app.utils.exceptions import (
     ExternalVariableCodeExistsError,
@@ -99,6 +99,10 @@ class FakeDemand:
 class FakeProducts:
     def __init__(self, products):
         self._by_code = {p.code: p for p in products}
+        self._by_id = {str(p.id): p for p in products}
+
+    async def get_by_id(self, product_id):
+        return self._by_id.get(str(product_id))
 
     async def get_by_code(self, code):
         return self._by_code.get(code)
@@ -167,6 +171,52 @@ async def test_delete_ikut_menghapus_nilai():
     svc, repo = _svc([_var("v1", "suhu")], [_val("v1", date(2026, 1, 1), 30)])
     await svc.delete("v1")
     assert repo.values == [] and repo.vars == {}
+
+
+# ── Ubah nilai langsung dari dialog "Ubah" (21 Nov 2026) ──
+
+
+def _items(*rows):
+    return [ExternalVariableValueIn(**r) for r in rows]
+
+
+@pytest.mark.asyncio
+async def test_update_values_menimpa_dan_menambah_periode():
+    svc, repo = _svc([_var("v1", "suhu")], [_val("v1", date(2026, 1, 1), 30)])
+    n = await svc.update_values(
+        "v1", _items({"period": "2026-01-01", "value": 31.5}, {"period": "2026-02-15", "value": 29})
+    )
+    assert n == 2
+    got = {(r.period, r.value) for r in repo.values}
+    assert got == {(date(2026, 1, 1), 31.5), (date(2026, 2, 1), 29)}  # periode digeser ke awal bulan
+
+
+@pytest.mark.asyncio
+async def test_update_values_per_produk_wajib_produk_valid():
+    svc, repo = _svc([_var("v1", "harga", scope="product")])
+    with pytest.raises(UploadInvalidFormatError, match="Produk wajib"):
+        await svc.update_values("v1", _items({"period": "2026-01-01", "value": 1}))
+    with pytest.raises(UploadInvalidFormatError, match="tidak ditemukan"):
+        await svc.update_values("v1", _items({"period": "2026-01-01", "value": 1, "product_id": "zz"}))
+    assert await svc.update_values("v1", _items({"period": "2026-01-01", "value": 1, "product_id": "p1"})) == 1
+    assert repo.values[0].product_id == "p1"
+
+
+@pytest.mark.asyncio
+async def test_update_values_global_abaikan_produk_dan_flag_harus_0_1():
+    svc, repo = _svc([_var("v1", "promo", value_type="flag")])
+    with pytest.raises(UploadInvalidFormatError, match="0 atau 1"):
+        await svc.update_values("v1", _items({"period": "2026-01-01", "value": 2}))
+    assert repo.values == []  # all-or-nothing
+    await svc.update_values("v1", _items({"period": "2026-01-01", "value": 1, "product_id": "p1"}))
+    assert repo.values[0].product_id is None
+
+
+@pytest.mark.asyncio
+async def test_update_values_variabel_tidak_ada():
+    svc, _ = _svc()
+    with pytest.raises(ExternalVariableNotFoundError):
+        await svc.update_values("x", _items({"period": "2026-01-01", "value": 1}))
 
 
 # ── Import nilai ──
@@ -455,7 +505,9 @@ async def test_import_error_menyebut_jumlah_error_lain():
 
 
 @pytest.mark.asyncio
-async def test_template_xlsx_variabel_aktif_periode_demand_plus_horizon():
+async def test_template_xlsx_header_saja_tanpa_baris_data():
+    """21 Nov 2026 (keputusan user): template kosong — hanya header variabel AKTIF, tanpa baris
+    periode dan tanpa nilai tersimpan (menggantikan template terisi CR v3.4 §4.3)."""
     svc, _ = _svc(
         [_var("v1", "suhu"), _var("v2", "promo", "flag", "product"), _var("v3", "tbi", active=False)],
         [_val("v1", date(2024, 1, 1), 27)],
@@ -466,8 +518,24 @@ async def test_template_xlsx_variabel_aktif_periode_demand_plus_horizon():
 
     assert filename.endswith(".xlsx")
     assert list(df.columns) == ["period", "product_code", "promo", "suhu"]
-    assert [d.date() for d in pd.to_datetime(df["period"])] == [date(2024, 1, 1), date(2024, 2, 1), date(2024, 3, 1)]
-    assert df["suhu"].iloc[0] == 27 and pd.isna(df["suhu"].iloc[1])
+    assert df.empty
+
+
+@pytest.mark.asyncio
+async def test_template_tanpa_variabel_per_produk_tanpa_kolom_product_code():
+    svc, _ = _svc([_var("v1", "suhu")], demand=FakeDemand(date(2024, 1, 1), date(2024, 1, 1)))
+    content, _ = await svc.template(horizon=1)
+    assert list(pd.read_excel(io.BytesIO(content), sheet_name="nilai").columns) == ["period", "suhu"]
+
+
+@pytest.mark.asyncio
+async def test_template_sheet_petunjuk_berisi_kode_dan_contoh_tanggal():
+    svc, _ = _svc([_var("v1", "suhu")])
+    content, _ = await svc.template(horizon=1)
+    info = pd.read_excel(io.BytesIO(content), sheet_name="petunjuk", header=None).fillna("")
+    text = " ".join(str(v) for v in info.values.ravel())
+    assert "suhu" in text
+    assert "2024-01-01" in text or "YYYY-MM-DD" in text
 
 
 @pytest.mark.asyncio
@@ -476,7 +544,7 @@ async def test_template_diisi_lalu_diimport_ulang():
     svc, _ = _svc([_var("v1", "suhu")], demand=FakeDemand(date(2024, 1, 1), date(2024, 1, 1)))
     content, _ = await svc.template(horizon=1)
     df = pd.read_excel(io.BytesIO(content), sheet_name="nilai")
-    df["suhu"] = [27.0, 28.0]
+    df = pd.DataFrame({"period": ["2024-01-01", "2024-02-01"], "suhu": [27.0, 28.0]})[list(df.columns)]
     buf = io.BytesIO()
     df.to_excel(buf, index=False, sheet_name="nilai")
 

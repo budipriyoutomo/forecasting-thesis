@@ -99,6 +99,7 @@ WRITE_ENDPOINTS: dict[tuple[str, str], str] = {
     ("DELETE", "/api/v1/external-variables/{variable_id}"): "extvar.define",
     ("DELETE", "/api/v1/external-variables/{variable_id}/values"): "extvar.define",
     ("POST", "/api/v1/external-variables/values/import"): "extvar.import",
+    ("PUT", "/api/v1/external-variables/{variable_id}/values"): "extvar.import",
     ("POST", "/api/v1/uploads"): "data.upload",
     ("POST", "/api/v1/stock-snapshots/import"): "data.import_stock",
     ("POST", "/api/v1/material-usage/import"): "data.import_stock",

@@ -132,6 +132,27 @@ async def test_import_invalid_400(client):
 
 
 @pytest.mark.asyncio
+async def test_ubah_nilai_per_periode(client):
+    repo = _override([_var("v1", "suhu")], [_val("v1", date(2026, 1, 1), 30)])
+    body = {"values": [{"period": "2026-01-01", "value": 31}, {"period": "2026-02-01", "value": 28}]}
+    res = await client.put(f"{BASE}/v1/values", json=body, headers=_headers("ppic"))
+    assert res.status_code == 200
+    assert res.json()["data"] == {"id": "v1", "updated": 2}
+    assert sorted((r.period.isoformat(), r.value) for r in repo.values) == [("2026-01-01", 31), ("2026-02-01", 28)]
+
+
+@pytest.mark.asyncio
+async def test_ubah_nilai_rbac_dan_validasi(client):
+    _override([_var("v1", "promo", value_type="flag")])
+    body = {"values": [{"period": "2026-01-01", "value": 1}]}
+    assert (await client.put(f"{BASE}/v1/values", json=body, headers=_headers("viewer"))).status_code == 403
+    assert (await client.put(f"{BASE}/v1/values", json={"values": []}, headers=_headers("admin"))).status_code == 422
+    bad = {"values": [{"period": "2026-01-01", "value": 5}]}
+    res = await client.put(f"{BASE}/v1/values", json=bad, headers=_headers("admin"))
+    assert res.status_code == 400 and res.json()["error"]["code"] == "UPLOAD_INVALID_FORMAT"
+
+
+@pytest.mark.asyncio
 async def test_hapus_semua_nilai(client):
     repo = _override([_var("v1", "suhu")], [_val("v1", date(2026, 1, 1), 30)])
     res = await client.delete(f"{BASE}/v1/values", headers=_headers("admin"))

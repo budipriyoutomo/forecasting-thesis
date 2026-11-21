@@ -10,6 +10,7 @@ import type {
   ExternalVariable,
   ExternalVariableCoverage,
   ExternalVariableValue,
+  ExternalVariableValueChange,
   ExternalVariableInput,
   ImportDryRunResult,
   ImportResult,
@@ -78,6 +79,16 @@ export function useDeleteExternalVariable() {
   });
 }
 
+/** Ubah/tambah nilai per periode dari dialog "Ubah" (21 Nov 2026). Invalidate KEY → daftar,
+ * kelengkapan, dan nilai ikut segar. */
+export function useUpdateExternalValues() {
+  const qc = useQueryClient();
+  return useMutation<{ id: string; updated: number }, Error, { id: string; values: ExternalVariableValueChange[] }>({
+    mutationFn: async ({ id, values }) => unwrap(await api.externalVariables.updateValues(id, values, getToken() as string)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
 export function useImportExternalValues() {
   const qc = useQueryClient();
   return useMutation<ImportResult, Error, File>({
@@ -93,7 +104,7 @@ export function useValidateExternalValues() {
   });
 }
 
-/** CR v3.4 §4.3 — unduh template import format lebar (.xlsx): variabel aktif × periode demand + horizon. */
+/** Unduh template import format lebar (.xlsx) — kosong, header saja: period [+ product_code] + kode variabel aktif (21 Nov 2026). */
 export function useDownloadExternalTemplate(horizon = 12) {
   return useMutation<Blob, Error, void>({
     mutationFn: () =>

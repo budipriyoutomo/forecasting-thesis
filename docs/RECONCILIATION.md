@@ -1124,3 +1124,23 @@ Keputusan turunan:
 **Konsekuensi (disadari):** role & status dibawa JWT, jadi perubahan berlaku saat login berikutnya — token
 lama tetap berlaku hingga `JWT_EXPIRE_HOURS` (default 24 jam). Cek per request dicatat post-MVP.
 
+### Template variabel eksternal = header saja (keputusan user 21 Nov 2026)
+Menggantikan CR v3.4 §4.3 (template terisi baris periode demand + horizon dan nilai global tersimpan). User
+menilai template terisi membingungkan ("banyak data, seharusnya kosong"); dipilih **kosong total**, bukan
+"periode terisi, nilai kosong". `GET /external-variables/template` kini hanya berisi header `period`
+[+ `product_code` bila ada variabel aktif per produk] + kode variabel aktif; sheet `petunjuk` memuat daftar
+kode dan contoh format tanggal `YYYY-MM-DD`. Parameter `horizon` tetap diterima (kompatibilitas) tapi
+diabaikan. Konsekuensi: planner mengetik tanggal sendiri — risiko 'Jan-24' terbaca 24-Jan tetap ditangkap
+validasi import (error bentrok bulan yang sama) dan dijelaskan di petunjuk.
+
+### Ubah nilai variabel eksternal dari dialog "Ubah" (21 Nov 2026)
+Laporan user: tombol **Ubah** di `/external-variables` hanya membuka definisi (header), nilai per periode tidak
+bisa diubah — satu-satunya jalan adalah import ulang file. Ditambah `PUT /external-variables/{id}/values`
+(body `{values: [{period, value, product_id?}]}`, 1–5000 item) dengan aturan sama seperti import: periode
+digeser ke awal bulan, flag 0/1, per produk wajib produk valid, global mengabaikan `product_id`,
+all-or-nothing. RBAC `extvar.import` (admin & PPIC) — konsisten dengan import yang juga menimpa nilai;
+hapus nilai tetap `extvar.define`. Dialog "Ubah" kini ber-tab **Definisi** (admin) | **Nilai per periode**
+(admin & PPIC; edit sel, tambah periode baru, hanya baris berubah yang dikirim), lebih lebar (`max-w-2xl`)
+dan isi bisa di-scroll (`max-h-[90vh]`) supaya form tidak terpotong. Konsekuensi: PPIC kini melihat tombol
+Ubah (tab Definisi nonaktif).
+

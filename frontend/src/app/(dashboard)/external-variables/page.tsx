@@ -8,12 +8,14 @@ import { ImportButton } from "@/components/common/ImportButton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
 import { ExternalVariableForm } from "@/components/external-variables/ExternalVariableForm";
+import { ExternalVariableValuesEditor } from "@/components/external-variables/ExternalVariableValuesEditor";
 import { ExternalVariableValuesTable } from "@/components/external-variables/ExternalVariableValuesTable";
 import { ExternalVariablesTable } from "@/components/external-variables/ExternalVariablesTable";
 import { ImportValidationResult } from "@/components/external-variables/ImportValidationResult";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useDeleteExternalVariable,
   useDownloadExternalTemplate,
@@ -22,6 +24,7 @@ import {
   useExternalVariableValues,
   useImportExternalValues,
   useSaveExternalVariable,
+  useUpdateExternalValues,
   useValidateExternalValues,
 } from "@/hooks/useExternalVariables";
 import { useCan } from "@/hooks/usePermission";
@@ -50,7 +53,31 @@ export default function ExternalVariablesPage() {
   const values = useExternalVariableValues(viewing?.id ?? null);
   const { data: products } = useProducts();
 
+  const updateValues = useUpdateExternalValues();
+  // Nilai untuk tab "Nilai per periode" di dialog Ubah (21 Nov 2026).
+  const editValues = useExternalVariableValues(open && editing && canImport ? editing.id : null);
+
   const onError = (e: Error) => toast.error(e.message);
+
+  const definitionForm = (
+    <ExternalVariableForm
+      key={editing?.id ?? "new"}
+      initial={editing ?? undefined}
+      submitting={save.isPending}
+      error={save.error?.message ?? null}
+      onSubmit={(input) =>
+        save.mutate(
+          { id: editing?.id, input },
+          {
+            onSuccess: () => {
+              setOpen(false);
+              toast.success(editing ? `Variabel ${editing.code} diperbarui` : "Variabel ditambahkan");
+            },
+          },
+        )
+      }
+    />
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -131,7 +158,7 @@ export default function ExternalVariablesPage() {
           coverage={coverageById}
           onToggle={canDefine ? (v, next) => save.mutate({ id: v.id, input: { is_active: next } }, { onError }) : undefined}
           onEdit={
-            canDefine
+            canDefine || canImport
               ? (v) => {
                   setEditing(v);
                   setOpen(true);
@@ -168,18 +195,59 @@ export default function ExternalVariablesPage() {
       </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b px-6 pb-4 pt-6">
             <DialogTitle>{editing ? `Ubah ${editing.code}` : "Tambah variabel eksternal"}</DialogTitle>
-            <DialogDescription>Kode dipakai sebagai nama fitur model dan tidak bisa diubah setelah dibuat.</DialogDescription>
+            <DialogDescription>
+              {editing
+                ? `${editing.name}${editing.unit ? ` (${editing.unit})` : ""} — ubah definisi atau nilai per periode.`
+                : "Kode dipakai sebagai nama fitur model dan tidak bisa diubah setelah dibuat."}
+            </DialogDescription>
           </DialogHeader>
-          <ExternalVariableForm
-            key={editing?.id ?? "new"}
-            initial={editing ?? undefined}
-            submitting={save.isPending}
-            error={save.error?.message ?? null}
-            onSubmit={(input) => save.mutate({ id: editing?.id, input }, { onSuccess: () => setOpen(false) })}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {editing ? (
+              <Tabs key={editing.id} defaultValue={canDefine ? "definition" : "values"}>
+                <TabsList className="mb-4 grid w-full grid-cols-2">
+                  <TabsTrigger value="definition" disabled={!canDefine}>
+                    Definisi
+                  </TabsTrigger>
+                  <TabsTrigger value="values" disabled={!canImport}>
+                    Nilai per periode{editing.n_values ? ` (${editing.n_values})` : ""}
+                  </TabsTrigger>
+                </TabsList>
+                {canDefine && <TabsContent value="definition">{definitionForm}</TabsContent>}
+                {canImport && (
+                  <TabsContent value="values">
+                    {editValues.isPending ? (
+                      <TableSkeleton />
+                    ) : editValues.isError ? (
+                      <Alert variant="destructive">
+                        <AlertDescription>{editValues.error.message}</AlertDescription>
+                      </Alert>
+                    ) : (
+                      <ExternalVariableValuesEditor
+                        key={editValues.dataUpdatedAt}
+                        values={editValues.data ?? []}
+                        valueType={editing.value_type}
+                        scope={editing.scope}
+                        products={products ?? []}
+                        saving={updateValues.isPending}
+                        error={updateValues.error?.message ?? null}
+                        onSave={(items) =>
+                          updateValues.mutate(
+                            { id: editing.id, values: items },
+                            { onSuccess: (r) => toast.success(`${r.updated} nilai ${editing.code} disimpan`) },
+                          )
+                        }
+                      />
+                    )}
+                  </TabsContent>
+                )}
+              </Tabs>
+            ) : (
+              definitionForm
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

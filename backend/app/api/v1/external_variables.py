@@ -9,6 +9,7 @@ PUT    /external-variables/{id}            → ubah / toggle aktif (admin)
 DELETE /external-variables/{id}            → hapus + seluruh nilainya (admin)
 POST   /external-variables/values/import   → upload nilai per periode CSV/XLSX (admin), ?dry_run=true validasi saja
 GET    /external-variables/{id}/values     → nilai (opsional ?product_id=)
+PUT    /external-variables/{id}/values     → ubah/tambah nilai per periode dari UI (admin & PPIC)
 DELETE /external-variables/{id}/values     → hapus seluruh nilai (admin)
 
 RBAC: baca semua role terautentikasi, tulis admin.
@@ -23,6 +24,7 @@ from app.schemas.external_variable import (
     ExternalVariableOut,
     ExternalVariableUpdate,
     ExternalVariableValueOut,
+    ExternalVariableValuesUpdate,
 )
 from app.services.external_variable_service import ExternalVariableService
 
@@ -138,6 +140,16 @@ async def list_external_variable_values(
         for r in rows
     ]
     return {"success": True, "data": data}
+
+
+@router.put("/{variable_id}/values", dependencies=[Depends(require_permission("extvar.import"))])
+async def update_external_variable_values(
+    variable_id: str,
+    payload: ExternalVariableValuesUpdate,
+    service: ExternalVariableService = Depends(get_external_variable_service),
+):
+    n = await service.update_values(variable_id, payload.values)
+    return {"success": True, "data": {"id": variable_id, "updated": n}, "message": f"{n} nilai disimpan"}
 
 
 @router.delete("/{variable_id}/values", dependencies=[Depends(require_permission("extvar.define"))])

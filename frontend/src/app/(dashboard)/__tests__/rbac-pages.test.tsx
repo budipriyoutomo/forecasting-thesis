@@ -72,7 +72,7 @@ vi.mock("@/hooks/useExternalVariables", () => ({
   useSaveExternalVariable: stubs.mutation, useDeleteExternalVariable: stubs.mutation,
   useImportExternalValues: stubs.mutation, useValidateExternalValues: stubs.mutation,
   useDownloadExternalTemplate: stubs.mutation,
-  useExternalVariableValues: stubs.query(undefined),
+  useExternalVariableValues: stubs.query(undefined), useUpdateExternalValues: stubs.mutation,
 }));
 vi.mock("@/hooks/useForecastSettings", () => ({
   useForecastSettings: stubs.query({
@@ -168,7 +168,7 @@ describe("Variabel eksternal", () => {
     expect(q(/import nilai/i)).toHaveLength(1);
     expect(q(/validasi file/i)).toHaveLength(1);
     expect(q(/tambah variabel/i)).toHaveLength(0);
-    expect(q(/^ubah$/i)).toHaveLength(0);
+    expect(q(/^ubah$/i)).toHaveLength(1); // 21 Nov 2026: PPIC boleh ubah nilai per periode (tab Definisi nonaktif)
     expect(q(/^hapus$/i)).toHaveLength(0);
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
   });

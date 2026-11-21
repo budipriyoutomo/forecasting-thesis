@@ -1,7 +1,7 @@
 // Template CSV untuk setiap tombol import — supaya struktur file yang diunggah user tidak
 // melenceng dari kontrak backend. Dibangun di browser (bukan endpoint baru): isinya statis.
 // Pengecualian: variabel eksternal memakai template dinamis dari backend
-// (GET /external-variables/template — kolom = variabel aktif, baris = periode demand + horizon).
+// (GET /external-variables/template — header saja: period [+ product_code] + kode variabel aktif).
 //
 // Header kolom WAJIB sama persis dengan yang dibaca service backend (dicek di templates.test.ts):
 //   demand          → backend/app/services/data_ingestion_service.py

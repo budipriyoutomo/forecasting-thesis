@@ -23,6 +23,7 @@ import type {
   ExternalVariable,
   ExternalVariableCoverage,
   ExternalVariableValue,
+  ExternalVariableValueChange,
   ExternalVariableInput,
   ImportDryRunResult,
   ImportResult,
@@ -284,6 +285,11 @@ export const api = {
       request<{ id: string; deleted_values: number }>(
         `/api/v1/external-variables/${id}/values`,
         authed(token, { method: "DELETE" }),
+      ),
+    updateValues: (id: string, values: ExternalVariableValueChange[], token: string) =>
+      request<{ id: string; updated: number }>(
+        `/api/v1/external-variables/${encodeURIComponent(id)}/values`,
+        authed(token, { method: "PUT", body: JSON.stringify({ values }) }),
       ),
     importValues: (file: File, token: string) =>
       uploadFile<ImportResult>("/api/v1/external-variables/values/import", file, token),

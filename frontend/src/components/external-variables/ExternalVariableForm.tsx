@@ -6,15 +6,7 @@ import { z } from "zod";
 
 import { FormError } from "@/components/common/FormError";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ExternalVariable, ExternalVariableInput } from "@/types/externalVariable";
@@ -40,8 +32,16 @@ const TYPE_OPTIONS = [
 ] as const;
 
 const SCOPE_OPTIONS = [
-  { value: "global", label: "Global", hint: "Satu deret untuk semua produk (cuaca, musim)" },
-  { value: "product", label: "Per produk", hint: "Nilai berbeda per SKU (harga, promo)" },
+  {
+    value: "global",
+    label: "Global",
+    hint: "Satu deret untuk semua produk (cuaca, musim)",
+  },
+  {
+    value: "product",
+    label: "Per produk",
+    hint: "Nilai berbeda per SKU (harga, promo)",
+  },
 ] as const;
 
 export function ExternalVariableForm({
@@ -81,33 +81,37 @@ export function ExternalVariableForm({
   return (
     <Form {...form}>
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <FormField
-          control={form.control}
-          name="code"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Kode</FormLabel>
-              <FormControl>
-                <Input placeholder="suhu" disabled={Boolean(initial)} {...field} />
-              </FormControl>
-              <FormDescription>Dipakai sebagai nama fitur model & kolom variable_code saat import.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Nama</FormLabel>
-              <FormControl>
-                <Input placeholder="Suhu rata-rata" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="code"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Kode</FormLabel>
+                <FormControl>
+                  <Input placeholder="suhu" disabled={Boolean(initial)} {...field} />
+                </FormControl>
+                <FormDescription>
+                  {initial ? "Kode tidak bisa diubah." : "Nama fitur model & kolom variable_code saat import."}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Nama</FormLabel>
+                <FormControl>
+                  <Input placeholder="Suhu rata-rata" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         {(
           [
             ["value_type", "Tipe nilai", TYPE_OPTIONS],
@@ -146,8 +150,8 @@ export function ExternalVariableForm({
         {/* CR v3.4 §4.4–4.5 */}
         <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
           <li>
-            Variabel kategori (lebih dari 2 nilai, mis. musim Hujan/Kemarau/Peralihan) buat sebagai beberapa flag —
-            kode 1/2/3 dibaca model sebagai urutan.
+            Variabel kategori (lebih dari 2 nilai, mis. musim Hujan/Kemarau/Peralihan) buat sebagai beberapa flag — kode
+            1/2/3 dibaca model sebagai urutan.
           </li>
           <li>
             Jangan buat variabel turunan demand (permintaan, perubahan permintaan, elastisitas harga): model akan
@@ -181,9 +185,11 @@ export function ExternalVariableForm({
           )}
         />
         <FormError message={error ?? null} />
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Menyimpan…" : "Simpan variabel"}
-        </Button>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Menyimpan…" : "Simpan variabel"}
+          </Button>
+        </div>
       </form>
     </Form>
   );

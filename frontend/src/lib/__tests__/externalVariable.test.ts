@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { exogUsage, importSummary } from "@/lib/externalVariable";
+import { exogUsage, importSummary, valueChanges } from "@/lib/externalVariable";
 
 // CR v3.4 §4.1 — planner harus tahu bila periode dinormalisasi / baris ganda ditimpa.
 describe("importSummary", () => {
@@ -55,5 +55,49 @@ describe("exogUsage", () => {
       dropped: [{ code: "suhu", reason: "Alasan tidak tercatat (forecast lama)" }],
       total: 1,
     });
+  });
+});
+
+// 21 Nov 2026 — ubah nilai per periode dari dialog "Ubah".
+describe("valueChanges", () => {
+  const base = { product_id: null, original: null as string | null };
+
+  it("hanya mengirim baris yang berubah atau baru; koma desimal diterima", () => {
+    const r = valueChanges(
+      [
+        { ...base, period: "2026-01-01", value: "30", original: "30" },
+        { ...base, period: "2026-02-01", value: "31,5", original: "30" },
+        { ...base, period: "2026-03", value: "29" },
+      ],
+      { value_type: "numeric", scope: "global" },
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.items).toEqual([
+      { period: "2026-02-01", value: 31.5, product_id: null },
+      { period: "2026-03-01", value: 29, product_id: null },
+    ]);
+  });
+
+  it("melaporkan nilai kosong/bukan angka, flag selain 0/1, periode & produk kosong", () => {
+    const r = valueChanges(
+      [
+        { ...base, period: "2026-01-01", value: "abc", product_id: "p1" },
+        { ...base, period: "2026-02-01", value: "2", product_id: "p1" },
+        { ...base, period: "", value: "1", product_id: "p1" },
+        { ...base, period: "2026-04-01", value: "" },
+      ],
+      { value_type: "flag", scope: "product" },
+    );
+    expect(r.items).toEqual([]);
+    expect(r.errors).toHaveLength(4);
+    expect(r.errors.join(" ")).toMatch(/bukan angka/);
+    expect(r.errors.join(" ")).toMatch(/0 atau 1/);
+    expect(r.errors.join(" ")).toMatch(/Periode wajib/);
+    expect(r.errors.join(" ")).toMatch(/Produk wajib/);
+  });
+
+  it("baris kosong yang belum disentuh diabaikan", () => {
+    const r = valueChanges([{ ...base, period: "", value: "" }], { value_type: "numeric", scope: "global" });
+    expect(r).toEqual({ items: [], errors: [] });
   });
 });

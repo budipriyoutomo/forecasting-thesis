@@ -1,4 +1,9 @@
-import type { ImportResult } from "@/types/externalVariable";
+import type {
+  ExternalScope,
+  ExternalValueType,
+  ExternalVariableValueChange,
+  ImportResult,
+} from "@/types/externalVariable";
 
 /** Ringkasan import nilai variabel eksternal untuk toast (CR v3.4 §4.1). */
 export function importSummary(r: ImportResult): string {
@@ -49,4 +54,57 @@ export function exogUsage(hp: Record<string, unknown> | null | undefined): ExogU
       : [];
   const total = used.length + dropped.length;
   return total === 0 ? null : { used, dropped, total };
+}
+
+// ── Ubah nilai per periode dari dialog "Ubah" (21 Nov 2026) — PUT /external-variables/{id}/values ──
+
+export interface EditableValueRow {
+  /** "YYYY-MM-DD" (baris tersimpan) atau "YYYY-MM" (input bulan baris baru) */
+  period: string;
+  product_id: string | null;
+  /** Teks input; koma desimal diterima */
+  value: string;
+  /** Nilai tersimpan sebagai teks; null = baris baru */
+  original: string | null;
+}
+
+/** Normalisasi "YYYY-MM[-DD]" → "YYYY-MM-01" (sama dengan backend: periode = awal bulan). */
+function monthStart(period: string): string | null {
+  const m = /^(\d{4})-(\d{2})/.exec(period);
+  return m ? `${m[1]}-${m[2]}-01` : null;
+}
+
+/** Baris editor → item yang berubah/baru + daftar error (semua dikumpulkan, tidak berhenti di yang pertama). */
+export function valueChanges(
+  rows: EditableValueRow[],
+  variable: { value_type: ExternalValueType; scope: ExternalScope },
+): { items: ExternalVariableValueChange[]; errors: string[] } {
+  const items: ExternalVariableValueChange[] = [];
+  const errors: string[] = [];
+  rows.forEach((row) => {
+    const text = row.value.trim();
+    if (row.original === null && !text && !row.period) return; // baris baru kosong
+    if (row.original !== null && text === row.original) return; // tidak berubah
+    const label = row.period ? row.period.slice(0, 7) : "baris baru";
+    const period = monthStart(row.period);
+    if (!period) {
+      errors.push(`${label}: Periode wajib diisi.`);
+      return;
+    }
+    if (variable.scope === "product" && !row.product_id) {
+      errors.push(`${label}: Produk wajib untuk variabel per produk.`);
+      return;
+    }
+    const value = Number(text.replace(/\s/g, "").replace(",", "."));
+    if (!text || !Number.isFinite(value)) {
+      errors.push(`${label}: nilai bukan angka valid.`);
+      return;
+    }
+    if (variable.value_type === "flag" && value !== 0 && value !== 1) {
+      errors.push(`${label}: variabel flag harus bernilai 0 atau 1.`);
+      return;
+    }
+    items.push({ period, value, product_id: variable.scope === "product" ? row.product_id : null });
+  });
+  return { items, errors };
 }

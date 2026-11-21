@@ -584,7 +584,7 @@ tulis × 4 role → 403/lolos sesuai matriks, dan peta backend = frontend.
 | `master.write` | admin | `POST/PUT/DELETE /products*`, `/materials*`, `/boms*` (termasuk `/import`, `/bulk`), `POST /materials/{id}/components`, `DELETE /material-components/{id}`, `/warehouse/config*`, `/cost-templates*` (termasuk `/activate`, `/deactivate`) |
 | `settings.write` | admin | `PUT /forecast-settings` |
 | `extvar.define` | admin | `POST /external-variables`, `PUT/DELETE /external-variables/{id}`, `DELETE /external-variables/{id}/values` |
-| `extvar.import` | admin, ppic | `POST /external-variables/values/import` (+ `?dry_run=true`) |
+| `extvar.import` | admin, ppic | `POST /external-variables/values/import` (+ `?dry_run=true`), `PUT /external-variables/{id}/values` |
 | `data.upload` | admin, ppic | `POST /uploads` |
 | `data.import_stock` | admin, ppic | `POST /stock-snapshots/import`, `POST /material-usage/import` |
 | `forecast.run` | admin, ppic | `POST /forecast/runs` |
@@ -616,7 +616,8 @@ saja, karena backend memakai `AUTH_INVALID_CREDENTIALS` baik untuk token invalid
 Pemakaian endpoint baca di FE (CR v3.5 §5.2/§5.4/§5.6):
 - `GET /stock-snapshots?material_id=` & `GET /material-usage?material_id=` → bagian "Riwayat stok ERP" / "Riwayat
   pemakaian" di halaman Persediaan Material (dimuat setelah material dipilih).
-- `GET /external-variables/{id}/values` → dialog "Lihat nilai" per variabel (semua role).
+- `GET /external-variables/{id}/values` → dialog "Lihat nilai" per variabel (semua role) dan tab "Nilai per periode"
+  di dialog "Ubah"; `PUT /external-variables/{id}/values` menyimpan sel yang diubah/ditambah (21 Nov 2026).
 - `GET /uploads/{session_id}` → API-only.
 - `POST /products|materials|boms/import` → **internal** (seed/migrasi data awal oleh Admin lewat API, tanpa UI):
   tag OpenAPI `internal` + `x-internal: true` (`app/api/openapi.py`), RBAC tetap `master.write`. Input harian lewat form CRUD.
@@ -1004,10 +1005,11 @@ Sumber keputusan: `docs/REVISI_V2.md` §6.1 & `RECONCILIATION.md` §"Rekonsilias
 ```
 GET/PUT /forecast-settings
 GET/POST /external-variables · PUT/DELETE /external-variables/{id}
-POST /external-variables/values/import · GET/DELETE /external-variables/{id}/values
+POST /external-variables/values/import · GET/PUT/DELETE /external-variables/{id}/values
+PUT  /external-variables/{id}/values                  # {values: [{period, value, product_id?}]} → {id, updated}; aturan = import, all-or-nothing (21 Nov 2026)
 POST /external-variables/values/import?dry_run=true   # validasi saja: {valid, errors[≤100], n_errors, ...} — CR v3.4
 GET  /external-variables/coverage?horizon=12          # [{variable_id, code, first_period, last_period, n_expected, n_filled, missing_periods[]}] — CR v3.4
-GET  /external-variables/template?horizon=12          # .xlsx format lebar (variabel aktif × periode demand + horizon) — CR v3.4
+GET  /external-variables/template?horizon=12          # .xlsx format lebar, KOSONG: header period [+ product_code] + kode variabel aktif, tanpa baris (21 Nov 2026; `horizon` diabaikan, dipertahankan demi kompatibilitas)
 POST /material-usage/import · GET /material-usage · GET /material-usage/waste-factors
 GET/POST /materials/{id}/components · DELETE /material-components/{id} · GET /boms/tree?product_id=
 POST /stock-snapshots/import · GET /stock-snapshots · GET /stock-snapshots/latest

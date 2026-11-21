@@ -66,6 +66,18 @@ class ExternalVariableValueOut(BaseModel):
     value: float
 
 
+class ExternalVariableValueIn(BaseModel):
+    """Satu nilai yang diubah/ditambah langsung dari UI (21 Nov 2026). `period` digeser ke awal bulan."""
+
+    period: date
+    value: float
+    product_id: str | None = None
+
+
+class ExternalVariableValuesUpdate(BaseModel):
+    values: list[ExternalVariableValueIn] = Field(min_length=1, max_length=5000)
+
+
 class ExternalVariableCoverageOut(BaseModel):
     """CR v3.4 §4.2 — kelengkapan nilai vs periode demand + horizon."""
 
