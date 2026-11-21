@@ -88,6 +88,17 @@ async def test_set_active_matikan_yang_lain_dulu_baru_aktifkan():
 
 
 @pytest.mark.asyncio
+async def test_set_inactive_hanya_template_itu():
+    session = _session()
+    await SqlCostTemplateRepository(session).set_inactive("t1")
+    (stmt,) = (c.args[0] for c in session.execute.await_args_list)
+    sql = _sql(stmt)
+    assert "SET is_active=" in sql and "cost_templates.id =" in sql
+    assert stmt.compile().params["is_active"] is False
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_delete():
     session = _session()
     tpl = object()

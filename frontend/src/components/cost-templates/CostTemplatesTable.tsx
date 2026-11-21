@@ -15,12 +15,14 @@ export function CostTemplatesTable({
   onSelect,
   onEdit,
   onActivate,
+  onDeactivate,
   onDelete,
 }: {
   templates: CostTemplate[];
   onSelect?: (t: CostTemplate) => void;
   onEdit?: (t: CostTemplate) => void;
   onActivate?: (t: CostTemplate) => void;
+  onDeactivate?: (t: CostTemplate) => void;
   onDelete?: (t: CostTemplate) => void;
 }) {
   const columns = useMemo<ColumnDef<CostTemplate>[]>(
@@ -76,6 +78,19 @@ export function CostTemplatesTable({
                 onConfirm={() => onActivate(row.original)}
               />
             )}
+            {onDeactivate && row.original.is_active && (
+              <ConfirmDialog
+                trigger={
+                  <Button variant="ghost" size="sm">
+                    Nonaktifkan
+                  </Button>
+                }
+                title={`Nonaktifkan ${row.original.name}?`}
+                description="Setelah dinonaktifkan tidak ada template aktif — perhitungan reorder/EOQ & total biaya berikutnya memakai biaya default sistem sampai template lain diaktifkan. Template tidak dihapus."
+                confirmLabel="Ya, nonaktifkan"
+                onConfirm={() => onDeactivate(row.original)}
+              />
+            )}
             {onEdit && (
               <Button variant="ghost" size="sm" onClick={() => onEdit(row.original)}>
                 Ubah
@@ -102,7 +117,7 @@ export function CostTemplatesTable({
         ),
       },
     ],
-    [onSelect, onEdit, onActivate, onDelete],
+    [onSelect, onEdit, onActivate, onDeactivate, onDelete],
   );
 
   return (

@@ -36,8 +36,7 @@ export function CostTemplateSummaryPanel({
   const unpriced = materials.length - priced.length;
 
   return (
-    <section className="flex flex-col gap-4">
-      <h3 className="text-sm font-medium text-muted-foreground">Ringkasan — {template.name}</h3>
+    <section aria-label={`Ringkasan ${template.name}`} className="flex flex-col gap-4">
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Depresiasi aset / bulan" value={formatMoney(summary.total_depreciation_monthly)} />

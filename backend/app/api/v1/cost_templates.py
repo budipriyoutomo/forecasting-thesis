@@ -8,6 +8,7 @@ GET    /cost-templates/{id}/summary    → Σ depresiasi/overhead per bulan & sa
 POST   /cost-templates                 → buat (admin), tidak otomatis aktif
 PUT    /cost-templates/{id}            → ganti penuh termasuk items (admin)
 POST   /cost-templates/{id}/activate   → jadikan satu-satunya aktif (admin)
+POST   /cost-templates/{id}/deactivate → nonaktifkan (admin); tanpa template aktif → EOQ pakai env
 DELETE /cost-templates/{id}            → hapus (admin); bila aktif → EOQ kembali ke env
 
 RBAC: baca semua role terautentikasi, tulis admin. Logika lewat CostTemplateService.
@@ -121,6 +122,13 @@ async def activate_cost_template(
     template_id: str, service: CostTemplateService = Depends(get_cost_template_service)
 ):
     return {"success": True, "data": _to_response(await service.activate(template_id))}
+
+
+@router.post("/{template_id}/deactivate", dependencies=[Depends(require_permission("master.write"))])
+async def deactivate_cost_template(
+    template_id: str, service: CostTemplateService = Depends(get_cost_template_service)
+):
+    return {"success": True, "data": _to_response(await service.deactivate(template_id))}
 
 
 @router.delete("/{template_id}", dependencies=[Depends(require_permission("master.write"))])

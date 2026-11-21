@@ -65,7 +65,7 @@ vi.mock("@/hooks/useCostTemplates", () => ({
   useCostTemplates: stubs.query([fx.TEMPLATE, { ...fx.TEMPLATE, id: "t2", name: "Alt", is_active: false }]),
   useCostTemplateSummary: stubs.query(undefined),
   useCreateCostTemplate: stubs.mutation, useUpdateCostTemplate: stubs.mutation,
-  useActivateCostTemplate: stubs.mutation, useDeleteCostTemplate: stubs.mutation,
+  useActivateCostTemplate: stubs.mutation, useDeactivateCostTemplate: stubs.mutation, useDeleteCostTemplate: stubs.mutation,
 }));
 vi.mock("@/hooks/useExternalVariables", () => ({
   useExternalVariables: stubs.query([fx.VARIABLE]), useExternalVariableCoverage: stubs.query([]),
@@ -143,11 +143,12 @@ describe("BOM multi-level", () => {
 });
 
 describe("Template biaya", () => {
-  it("tombol aktifkan hanya untuk admin", () => {
+  it("tombol aktifkan & nonaktifkan hanya untuk admin", () => {
     renderAs("admin", CostTemplatesPage);
-    expect(q(/aktifkan/i)).toHaveLength(1);
+    expect(q(/^aktifkan$/i)).toHaveLength(1);
+    expect(q(/^nonaktifkan$/i)).toHaveLength(1);
   });
-  it("viewer tidak bisa mengaktifkan", () => {
+  it("viewer tidak bisa mengaktifkan / menonaktifkan", () => {
     renderAs("viewer", CostTemplatesPage);
     expect(q(/aktifkan/i)).toHaveLength(0);
   });

@@ -53,6 +53,13 @@ class SqlCostTemplateRepository:
         )
         await self._session.flush()
 
+    async def set_inactive(self, template_id) -> None:
+        # Nonaktifkan (21 Nov 2026) — boleh tidak ada template aktif: EOQ pakai biaya default env.
+        await self._session.execute(
+            update(CostTemplate).where(CostTemplate.id == template_id).values(is_active=False)
+        )
+        await self._session.flush()
+
     async def delete(self, template: CostTemplate) -> None:
         await self._session.delete(template)
         await self._session.flush()

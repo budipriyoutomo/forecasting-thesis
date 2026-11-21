@@ -343,6 +343,13 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       }),
 
+    // Nonaktifkan (21 Nov 2026) — tanpa template aktif, EOQ & total biaya memakai biaya default sistem.
+    deactivate: (id: string, token: string): Promise<ApiResponse<CostTemplate>> =>
+      request<CostTemplate>(`/api/v1/cost-templates/${id}/deactivate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+
     remove: (id: string, token: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> =>
       request<{ id: string; deleted: boolean }>(`/api/v1/cost-templates/${id}`, {
         method: "DELETE",

@@ -205,6 +205,30 @@ async def test_activate_tidak_ada_404(client):
 
 
 @pytest.mark.asyncio
+async def test_deactivate_admin(client):
+    _override([_tpl("t1", "A", active=True)])
+    res = await client.post(f"{BASE}/t1/deactivate", headers=_headers("admin"))
+    assert res.status_code == 200
+    assert res.json()["data"]["is_active"] is False
+    active = await client.get(f"{BASE}/active", headers=_headers("viewer"))
+    assert active.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_deactivate_non_admin_403(client):
+    _override([_tpl("t1", "A", active=True)])
+    res = await client.post(f"{BASE}/t1/deactivate", headers=_headers("ppic"))
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_deactivate_tidak_ada_404(client):
+    _override()
+    res = await client.post(f"{BASE}/ghost/deactivate", headers=_headers("admin"))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_delete_admin(client):
     _override([_tpl()])
     res = await client.delete(f"{BASE}/t1", headers=_headers("admin"))

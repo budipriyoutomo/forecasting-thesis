@@ -178,6 +178,9 @@ class FakeTemplateRepo:
         for t in self._rows.values():
             t.is_active = t.id == template_id
 
+    async def set_inactive(self, template_id):
+        self._rows[template_id].is_active = False
+
     async def delete(self, template):
         self._rows.pop(template.id, None)
 
@@ -310,6 +313,30 @@ async def test_activate_hanya_satu_aktif():
 async def test_activate_tidak_ada_404():
     with pytest.raises(CostTemplateNotFoundError):
         await _service().activate("ghost")
+
+
+# Nonaktifkan template (21 Nov 2026): tanpa template aktif EOQ kembali ke biaya default env.
+@pytest.mark.asyncio
+async def test_deactivate_template_aktif_jadi_tidak_ada_yang_aktif():
+    svc = _service([_tpl("t1", "A", active=True), _tpl("t2", "B")])
+    t = await svc.deactivate("t1")
+    assert t.is_active is False
+    with pytest.raises(CostTemplateNotFoundError):
+        await svc.get_active()
+
+
+@pytest.mark.asyncio
+async def test_deactivate_template_tidak_aktif_idempoten():
+    svc = _service([_tpl("t1", "A", active=True), _tpl("t2", "B")])
+    t = await svc.deactivate("t2")
+    assert t.is_active is False
+    assert (await svc.get_active()).id == "t1"
+
+
+@pytest.mark.asyncio
+async def test_deactivate_tidak_ada_404():
+    with pytest.raises(CostTemplateNotFoundError):
+        await _service().deactivate("ghost")
 
 
 @pytest.mark.asyncio

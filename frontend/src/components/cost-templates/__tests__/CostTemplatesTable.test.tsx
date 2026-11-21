@@ -34,4 +34,15 @@ describe("CostTemplatesTable", () => {
     await userEvent.click(screen.getByRole("button", { name: /lihat ringkasan/i }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
   });
+
+  it("tombol Nonaktifkan hanya untuk template aktif, dengan konfirmasi", async () => {
+    const onDeactivate = vi.fn();
+    render(<CostTemplatesTable templates={[TEMPLATE, NON_AKTIF]} onDeactivate={onDeactivate} />);
+    const buttons = screen.getAllByRole("button", { name: "Nonaktifkan" });
+    expect(buttons.length).toBe(1);
+    await userEvent.click(buttons[0]);
+    expect(onDeactivate).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("button", { name: /ya, nonaktifkan/i }));
+    expect(onDeactivate).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
+  });
 });

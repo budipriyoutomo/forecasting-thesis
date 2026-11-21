@@ -9,6 +9,7 @@ import { CostTemplateForm } from "@/components/cost-templates/CostTemplateForm";
 import { CostTemplateSummaryPanel } from "@/components/cost-templates/CostTemplateSummaryPanel";
 import { CostTemplatesTable } from "@/components/cost-templates/CostTemplatesTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,11 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   useActivateCostTemplate,
   useCostTemplateSummary,
   useCostTemplates,
   useCreateCostTemplate,
+  useDeactivateCostTemplate,
   useDeleteCostTemplate,
   useUpdateCostTemplate,
 } from "@/hooks/useCostTemplates";
@@ -35,20 +38,18 @@ export default function CostTemplatesPage() {
   const create = useCreateCostTemplate();
   const update = useUpdateCostTemplate();
   const activate = useActivateCostTemplate();
+  const deactivate = useDeactivateCostTemplate();
   const remove = useDeleteCostTemplate();
   const canWrite = useCan("master.write");
 
   const [editing, setEditing] = useState<CostTemplate | null>(null);
   const [open, setOpen] = useState(false);
+  // "Lihat ringkasan" membuka panel samping (21 Nov 2026). Sebelumnya panel inline di bawah tabel
+  // sudah menampilkan template aktif sejak awal, jadi klik pada template yang sama tampak tidak
+  // berbuat apa-apa, dan error ringkasan tidak pernah ditampilkan.
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  // Ringkasan default: template aktif, atau yang pertama bila belum ada yang aktif.
-  const selected =
-    templates?.find((t) => t.id === selectedId) ??
-    templates?.find((t) => t.is_active) ??
-    templates?.[0] ??
-    null;
-  const { data: summary } = useCostTemplateSummary(selected?.id ?? null);
+  const selected = templates?.find((t) => t.id === selectedId) ?? null;
+  const summary = useCostTemplateSummary(selected?.id ?? null);
   const active = templates?.find((t) => t.is_active);
 
   const formError = (create.error || update.error)?.message ?? null;
@@ -93,9 +94,9 @@ export default function CostTemplatesPage() {
           <AlertDescription>Gagal memuat template biaya.</AlertDescription>
         </Alert>
       )}
-      {(activate.error || remove.error) && (
+      {(activate.error || deactivate.error || remove.error) && (
         <Alert variant="destructive">
-          <AlertDescription>{(activate.error || remove.error)?.message}</AlertDescription>
+          <AlertDescription>{(activate.error || deactivate.error || remove.error)?.message}</AlertDescription>
         </Alert>
       )}
       {templates && (
@@ -111,13 +112,32 @@ export default function CostTemplatesPage() {
               : undefined
           }
           onActivate={canWrite ? (t) => activate.mutate(t.id) : undefined}
+          onDeactivate={canWrite ? (t) => deactivate.mutate(t.id) : undefined}
           onDelete={canWrite ? (t) => remove.mutate(t.id) : undefined}
         />
       )}
 
-      {selected && summary && (
-        <CostTemplateSummaryPanel template={selected} summary={summary} materials={materials ?? []} />
-      )}
+      <Sheet open={selected !== null} onOpenChange={(o) => !o && setSelectedId(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Ringkasan — {selected?.name}</SheetTitle>
+            <SheetDescription>
+              Komponen biaya per bulan, saran biaya simpan (H) & i (%), dan harga pembelian material.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            {summary.isPending && <Skeleton className="h-40 w-full" />}
+            {summary.isError && (
+              <Alert variant="destructive">
+                <AlertDescription>Gagal memuat ringkasan: {summary.error.message}</AlertDescription>
+              </Alert>
+            )}
+            {selected && summary.data && (
+              <CostTemplateSummaryPanel template={selected} summary={summary.data} materials={materials ?? []} />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">

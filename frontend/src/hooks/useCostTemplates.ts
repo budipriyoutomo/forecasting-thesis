@@ -70,6 +70,18 @@ export function useActivateCostTemplate() {
   });
 }
 
+export function useDeactivateCostTemplate() {
+  const qc = useQueryClient();
+  return useMutation<CostTemplate, Error, string>({
+    mutationFn: async (id) => {
+      const res = await api.costTemplates.deactivate(id, getToken() as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
 export function useDeleteCostTemplate() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({

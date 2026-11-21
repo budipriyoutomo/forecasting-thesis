@@ -92,6 +92,7 @@ WRITE_ENDPOINTS: dict[tuple[str, str], str] = {
     ("PUT", "/api/v1/cost-templates/{template_id}"): "master.write",
     ("DELETE", "/api/v1/cost-templates/{template_id}"): "master.write",
     ("POST", "/api/v1/cost-templates/{template_id}/activate"): "master.write",
+    ("POST", "/api/v1/cost-templates/{template_id}/deactivate"): "master.write",
     ("PUT", "/api/v1/forecast-settings"): "settings.write",
     ("POST", "/api/v1/external-variables"): "extvar.define",
     ("PUT", "/api/v1/external-variables/{variable_id}"): "extvar.define",

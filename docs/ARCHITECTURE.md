@@ -510,6 +510,7 @@ GET    /api/v1/cost-templates/{id}/summary         # Σ depresiasi/bln, Σ overh
 POST   /api/v1/cost-templates                      # buat (admin) — items nested, TIDAK otomatis aktif
 PUT    /api/v1/cost-templates/{id}                 # ubah (admin) — items replace-all
 POST   /api/v1/cost-templates/{id}/activate        # jadikan satu-satunya aktif (admin)
+POST   /api/v1/cost-templates/{id}/deactivate      # nonaktifkan, idempoten (admin); tanpa template aktif → EOQ & TIC pakai DEFAULT_* env (21 Nov 2026)
 DELETE /api/v1/cost-templates/{id}                 # hapus (admin); bila aktif → EOQ kembali ke fallback env
 
 GET    /api/v1/forecast/runs/{run_id}/inventory-metrics
@@ -580,7 +581,7 @@ tulis × 4 role → 403/lolos sesuai matriks, dan peta backend = frontend.
 
 | Action | Role | Endpoint |
 |---|---|---|
-| `master.write` | admin | `POST/PUT/DELETE /products*`, `/materials*`, `/boms*` (termasuk `/import`, `/bulk`), `POST /materials/{id}/components`, `DELETE /material-components/{id}`, `/warehouse/config*`, `/cost-templates*` (termasuk `/activate`) |
+| `master.write` | admin | `POST/PUT/DELETE /products*`, `/materials*`, `/boms*` (termasuk `/import`, `/bulk`), `POST /materials/{id}/components`, `DELETE /material-components/{id}`, `/warehouse/config*`, `/cost-templates*` (termasuk `/activate`, `/deactivate`) |
 | `settings.write` | admin | `PUT /forecast-settings` |
 | `extvar.define` | admin | `POST /external-variables`, `PUT/DELETE /external-variables/{id}`, `DELETE /external-variables/{id}/values` |
 | `extvar.import` | admin, ppic | `POST /external-variables/values/import` (+ `?dry_run=true`) |

@@ -189,6 +189,13 @@ class CostTemplateService:
         await self._repo.set_active(template.id)
         return await self.get(template_id)
 
+    async def deactivate(self, template_id: str):
+        """Nonaktifkan template (idempoten). Tanpa template aktif → EOQ & TIC memakai DEFAULT_* env."""
+        template = await self.get(template_id)
+        if template.is_active:
+            await self._repo.set_inactive(template.id)
+        return await self.get(template_id)
+
     async def delete(self, template_id: str) -> None:
         template = await self.get(template_id)
         await self._repo.delete(template)
