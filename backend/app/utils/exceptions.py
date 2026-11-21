@@ -209,3 +209,31 @@ class StockSnapshotNotFoundError(AppError):
 
     status_code = 404
     code = "STOCK_SNAPSHOT_NOT_FOUND"
+
+
+class AuthAccountInactiveError(AppError):
+    """CR v3.7 — akun dinonaktifkan admin lewat User Management; kredensial Supabase tetap valid."""
+
+    status_code = 403
+    code = "AUTH_ACCOUNT_INACTIVE"
+
+
+class UserNotFoundError(AppError):
+    """CR v3.7 — profil user (tabel `users`) tidak ada."""
+
+    status_code = 404
+    code = "USER_NOT_FOUND"
+
+
+class UserEmailExistsError(AppError):
+    """CR v3.7 — email sudah dipakai profil user lain."""
+
+    status_code = 409
+    code = "USER_EMAIL_EXISTS"
+
+
+class UserSelfLockoutError(AppError):
+    """CR v3.7 — admin mencoba menurunkan role / menonaktifkan dirinya sendiri."""
+
+    status_code = 422
+    code = "USER_SELF_LOCKOUT"

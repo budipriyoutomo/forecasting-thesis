@@ -29,6 +29,7 @@ from app.api.v1 import (
     reorder,
     stock_projection,
     uploads,
+    users,
     warehouse,
 )
 from app.config import get_settings
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
 app.include_router(products.router, prefix="/api/v1")
 app.include_router(materials.router, prefix="/api/v1")
 app.include_router(material_usage.router, prefix="/api/v1")

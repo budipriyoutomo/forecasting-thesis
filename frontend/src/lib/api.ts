@@ -1,5 +1,6 @@
 import type { ApiResponse, HealthData } from "@/types/api";
 import type { LoginResponseData, User } from "@/types/auth";
+import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/types/user";
 import type { DashboardSummary } from "@/types/dashboard";
 import type {
   ForecastResult,
@@ -107,6 +108,26 @@ export const api = {
       request<User>("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
+      }),
+  },
+
+  // CR v3.7 — User Management (admin, `user.manage`).
+  users: {
+    list: (token: string): Promise<ApiResponse<ManagedUser[]>> =>
+      request<ManagedUser[]>("/api/v1/users", authed(token)),
+
+    create: (input: UserCreateInput, token: string): Promise<ApiResponse<ManagedUser>> =>
+      request<ManagedUser>("/api/v1/users", {
+        method: "POST",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      }),
+
+    update: (id: string, input: UserUpdateInput, token: string): Promise<ApiResponse<ManagedUser>> =>
+      request<ManagedUser>(`/api/v1/users/${id}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
       }),
   },
 

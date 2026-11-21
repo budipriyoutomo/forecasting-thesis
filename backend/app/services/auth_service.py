@@ -4,7 +4,8 @@ AuthService — orkestrasi login & profil (Fase 1, FR-8).
 Alur login:
   1. Verifikasi kredensial ke authenticator (Supabase Auth) → Identity.
   2. Ambil profil user dari tabel `users` (role, is_verified).
-  3. Tolak kalau profil tidak ada (InvalidCredentials) atau belum verified.
+  3. Tolak kalau profil tidak ada (InvalidCredentials), belum verified, atau dinonaktifkan
+     admin (AUTH_ACCOUNT_INACTIVE, CR v3.7).
   4. Terbitkan JWT backend sendiri (app/utils/auth.py) berisi sub + role,
      dipakai semua endpoint lain lewat get_current_user (AGENTS.md pola existing).
 
@@ -14,7 +15,7 @@ from typing import Protocol
 
 from app.services.supabase_auth import Identity
 from app.utils.auth import create_access_token
-from app.utils.exceptions import AuthEmailNotVerifiedError, InvalidCredentialsError
+from app.utils.exceptions import AuthAccountInactiveError, AuthEmailNotVerifiedError, InvalidCredentialsError
 
 __all__ = ["AuthService", "Identity"]
 
@@ -43,6 +44,8 @@ class AuthService:
             raise InvalidCredentialsError("Email atau password salah.")
         if not user.is_verified:
             raise AuthEmailNotVerifiedError("Email belum terverifikasi.")
+        if not user.is_active:
+            raise AuthAccountInactiveError("Akun Anda dinonaktifkan. Hubungi admin.")
 
         token = create_access_token(str(user.id), user.role)
         return token, user

@@ -15,12 +15,20 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { useMe } from "@/hooks/useAuth";
 import { NAV_GROUPS, isActive } from "@/lib/navigation";
+import { can } from "@/lib/permissions";
 
 // Navigasi utama. Strukturnya datang dari src/lib/navigation.ts supaya sidebar dan
 // breadcrumb selalu bersumber dari daftar yang sama.
 export function AppSidebar() {
   const pathname = usePathname();
+  const { data: me } = useMe();
+  // Menu ber-`permission` disembunyikan untuk role tanpa izin; grup kosong ikut hilang.
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !i.permission || can(me?.role, i.permission)),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <Sidebar collapsible="icon">
@@ -45,7 +53,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

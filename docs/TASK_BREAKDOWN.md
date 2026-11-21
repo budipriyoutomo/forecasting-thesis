@@ -270,6 +270,17 @@ Keputusan: `docs/Change Request v3.5.md`, `RECONCILIATION.md` §"Keselarasan FE�
 
 ---
 
+## 17. CR v3.7 — User Management — ✅ SELESAI (21 Nov 2026), belum di-commit
+
+Keputusan: `RECONCILIATION.md` §"User Management — CR v3.7".
+
+- [x] BE: `users.is_active` (migration `d3e4f5a6b7c8`), login menolak akun nonaktif (`AUTH_ACCOUNT_INACTIVE`)
+- [x] BE: `UserService` + `GET/POST /users`, `PUT /users/{id}` dengan izin `user.manage` (admin); pengaman `USER_SELF_LOCKOUT`; email lowercase & lookup tidak peka huruf besar
+- [x] FE: halaman `/users` (tabel, ubah role inline, nonaktifkan/aktifkan, dialog tambah user), grup sidebar "Administrasi" — menu ber-`permission` disembunyikan untuk role tanpa izin
+- [ ] Post-MVP: buat akun Supabase langsung dari UI (Admin API + `SUPABASE_SERVICE_ROLE_KEY`) & cek `is_active`/role per request (sekarang berlaku saat login berikutnya)
+
+---
+
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)
 
 1. Fase Migrasi 0 (setup & audit — wajib, jangan dilewati meski buru-buru, ini yang mencegah migrasi jadi rewrite liar)

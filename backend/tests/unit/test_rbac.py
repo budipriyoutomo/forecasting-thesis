@@ -66,6 +66,7 @@ EXPECTED_PERMISSIONS = {
     "override.create": PLANNER,
     "planning.run": PLANNER,
     "capacity.adjust": PLANNER,
+    "user.manage": ADMIN,  # CR v3.7 — User Management
 }
 
 WRITE_ENDPOINTS: dict[tuple[str, str], str] = {
@@ -110,6 +111,8 @@ WRITE_ENDPOINTS: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/forecast/runs/{run_id}/capacity-adjustments"): "capacity.adjust",
     ("POST", "/api/v1/forecast/runs/{run_id}/capacity-adjustments/suggest"): "capacity.adjust",
     ("POST", "/api/v1/forecast/runs/{run_id}/capacity-adjustments/reset"): "capacity.adjust",
+    ("POST", "/api/v1/users"): "user.manage",
+    ("PUT", "/api/v1/users/{user_id}"): "user.manage",
 }
 PUBLIC_WRITE = {("POST", "/api/v1/auth/login")}
 

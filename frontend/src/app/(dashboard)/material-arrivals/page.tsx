@@ -28,7 +28,7 @@ export default function MaterialArrivalsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Kedatangan Material"
-        description="Dihitung sistem dari ROP: pesan bila stok sebelum pesan ≤ ROP, qty sesuai kebijakan di Pengaturan Forecast, tiba di periode yang sama."
+        description="Dihitung sistem dari ROP: pesan bila stok sebelum pesan ≤ ROP, qty sesuai kebijakan di menu Pengaturan, tiba di periode yang sama."
       />
 
       {runs.isPending ? (

@@ -54,6 +54,7 @@ from app.services.stock_projection_service import StockProjectionService
 from app.services.storage_service import StorageService, build_s3_client
 from app.services.dev_auth import build_authenticator
 from app.services.upload_service import UploadService
+from app.services.user_service import UserService
 from app.services.warehouse_service import WarehouseService
 from app.utils.auth import decode_access_token
 from app.utils.permissions import PERMISSIONS
@@ -113,6 +114,10 @@ def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
     # Authenticator dipilih per-environment: Supabase Auth, atau dev login lokal
     # kalau ENVIRONMENT=development + DEV_AUTH_ENABLED (app/services/dev_auth.py).
     return AuthService(SqlUserRepository(session), build_authenticator())
+
+
+def get_user_service(session: AsyncSession = Depends(get_db)) -> UserService:
+    return UserService(SqlUserRepository(session))
 
 
 def get_material_service(session: AsyncSession = Depends(get_db)) -> MaterialService:

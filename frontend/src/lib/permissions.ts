@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   "override.create": ["admin", "ppic"],
   "planning.run": ["admin", "ppic"],
   "capacity.adjust": ["admin", "ppic"],
+  "user.manage": ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Action = keyof typeof PERMISSIONS;

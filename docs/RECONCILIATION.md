@@ -1099,3 +1099,28 @@ Keputusan turunan:
 - **`GET /products/demand-coverage`** baru (baca, semua role) untuk kolom histori di pemilihan produk.
 - §7.4 (penanda override di chart/qty) **tidak berlaku**: tidak ada override *nilai* forecast — override `forecast_result` = pemilihan metode, yang sudah tampil (sumber & alasan pilihan).
 - §8.4 `StatTile.trend` tersedia sebagai prop, belum di-wire (BE belum mengirim delta run sebelumnya); sparkline tidak dibuat.
+
+
+## User Management — CR v3.7 (21 Nov 2026)
+
+**Konteks:** RBAC CR v3.5 hanya menegakkan izin (403 + tombol disembunyikan); role diatur lewat
+`seed_dev_users` / insert manual (DEPLOYMENT.md). User minta halaman pengelolaan user (21 Nov 2026).
+
+**Keputusan (default yang dipilih, dikonfirmasi saat review):**
+- **Profil saja, password tetap di Supabase Auth.** `POST /users` hanya membuat baris `users` (email, nama,
+  role, `is_verified=true`); admin membuat akun login di Supabase dengan email yang sama. Login dicocokkan
+  lewat email (`AuthService`), jadi urutan pembuatan bebas. Membuat akun Supabase dari UI (Admin API +
+  service role key) dicatat post-MVP.
+- **Nonaktifkan, bukan hapus** — `forecast_runs`, `overrides`, dst. menyimpan FK `user_id`. Kolom baru
+  `users.is_active` (default true, migration `d3e4f5a6b7c8`); login akun nonaktif → 403 `AUTH_ACCOUNT_INACTIVE`.
+- **Izin `user.manage` = admin, termasuk GET** — daftar user berisi email pribadi; pengecualian dari aturan
+  CR v3.5 "semua GET terbuka".
+- **Anti-lockout:** admin tidak bisa mengubah role / menonaktifkan dirinya sendiri (`USER_SELF_LOCKOUT`, 422).
+  Karena aktor selalu admin aktif, minimal satu admin selalu tersisa — tidak perlu cek "admin terakhir".
+- **Email dinormalisasi lowercase**; `get_by_email` tidak peka huruf besar (profil lama hasil insert manual).
+- Sidebar: `NavItem.permission` opsional; grup "Administrasi" hilang bila kosong. Middleware otomatis
+  memproteksi `/users` (prefix dari navigasi).
+
+**Konsekuensi (disadari):** role & status dibawa JWT, jadi perubahan berlaku saat login berikutnya — token
+lama tetap berlaku hingga `JWT_EXPIRE_HOURS` (default 24 jam). Cek per request dicatat post-MVP.
+

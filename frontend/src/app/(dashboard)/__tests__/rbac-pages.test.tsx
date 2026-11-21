@@ -181,7 +181,7 @@ describe("Variabel eksternal", () => {
   });
 });
 
-describe("Pengaturan forecast (settings.write = admin)", () => {
+describe("Pengaturan (settings.write = admin)", () => {
   it("admin bisa menyimpan", () => {
     renderAs("admin", ForecastSettingsPage);
     expect(q(/simpan/i)).toHaveLength(1);

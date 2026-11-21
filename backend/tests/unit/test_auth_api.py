@@ -18,7 +18,8 @@ UID = uuid.UUID("22222222-2222-2222-2222-222222222222")
 
 
 class FakeUser:
-    def __init__(self, id, email, name, role, is_verified):
+    def __init__(self, id, email, name, role, is_verified, is_active=True):
+        self.is_active = is_active
         self.id = id
         self.email = email
         self.name = name
@@ -91,6 +92,17 @@ async def test_login_email_belum_verified_403(client):
 
     assert res.status_code == 403
     assert res.json()["error"]["code"] == "AUTH_EMAIL_NOT_VERIFIED"
+
+
+@pytest.mark.asyncio
+async def test_login_akun_nonaktif_403(client):
+    # CR v3.7 — dinonaktifkan admin lewat User Management.
+    _override_service([FakeUser(UID, "old@corp.com", "Old", "ppic", True, is_active=False)])
+
+    res = await client.post("/api/v1/auth/login", json={"email": "old@corp.com", "password": "correct"})
+
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "AUTH_ACCOUNT_INACTIVE"
 
 
 @pytest.mark.asyncio

@@ -30,5 +30,5 @@ export const FAILURE_FIX: Record<string, string> = {
   INSUFFICIENT_DATA:
     "Lengkapi histori demand produk ini (upload CSV demand dengan periode lebih panjang), lalu buat forecast baru.",
   MODEL_SELECTION_FAILED:
-    "Periksa data demand produk ini (banyak nilai nol / lonjakan ekstrem), aktifkan metode lain di Pengaturan Forecast, lalu buat forecast baru.",
+    "Periksa data demand produk ini (banyak nilai nol / lonjakan ekstrem), aktifkan metode lain di menu Pengaturan, lalu buat forecast baru.",
 };

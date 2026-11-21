@@ -175,8 +175,10 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
   | Generate reorder / plan / proyeksi stok, adjust kapasitas | ✅ | ✅ | ❌ | ❌ |
   | Lihat run, reorder, kedatangan material, proyeksi, metrik, biaya, dashboard, audit trail | ✅ | ✅ | ✅ | ✅ |
   | Export (xlsx/pdf) & download template | ✅ | ✅ | ✅ | ✅ |
+  | Manajemen User (daftar, tambah, ubah role, nonaktifkan) — CR v3.7 | ✅ | ❌ | ❌ | ❌ |
 
 - FR-8.3 Visibilitas run (MVP, single-tenant): **semua run terlihat semua role** — Purchasing melihat reorder & kedatangan material dari run buatan PPIC (user story #5). Yang dibatasi hanya aksi tulis (FR-8.2); pelaku tetap tercatat (`user_id`). Post-MVP: run berstatus "Final/Disetujui" (`DRAFT`/`FINAL`) yang menjadi default tampilan Purchasing & Viewer.
+- FR-8.4 Manajemen User (CR v3.7, 21 Nov 2026) — halaman `/users`, khusus Admin: daftar user; tambah user (email + nama + role; akun login/password tetap dibuat di Supabase Auth dengan email yang sama); ubah role; nonaktifkan/aktifkan (user tidak dihapus karena riwayat run/override menyimpan pelakunya). Admin tidak bisa menurunkan role atau menonaktifkan dirinya sendiri, sehingga selalu ada minimal satu admin. Perubahan role/status berlaku saat user login berikutnya.
 
 ### FR-9 BOM Breakdown & Kebutuhan Material **[REMOVED 24 Agustus 2026]**
 > **Dibatalkan.** Hasil forecast adalah **produk**, titik — tidak ada entitas kebutuhan material yang tersimpan per run. Tabel `material_requirements`, endpoint `GET /forecast/runs/{run_id}/material-requirements`, dan target override `material_requirement` dihapus (lihat `RECONCILIATION.md` §"Forecast produk-only").

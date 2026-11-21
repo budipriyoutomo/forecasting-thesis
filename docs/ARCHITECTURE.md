@@ -187,6 +187,7 @@ forecastiq/
 | name | VARCHAR(100) | |
 | role | VARCHAR(20) | admin / ppic / purchasing / viewer |
 | is_verified | BOOLEAN | default false |
+| is_active | BOOLEAN | default true — false = tidak bisa login (`AUTH_ACCOUNT_INACTIVE`); user tidak dihapus karena FK run/override (CR v3.7, migration `d3e4f5a6b7c8`) |
 | created_at / updated_at | TIMESTAMPTZ | |
 
 ### `products` (baru — produk jadi, objek forecasting utama)
@@ -454,6 +455,10 @@ Adjust SS & Buffer per (run, material) agar stok akhir proyeksi muat kapasitas g
 POST   /api/v1/auth/login
 GET    /api/v1/auth/me
 
+GET    /api/v1/users                 → admin (user.manage), CR v3.7
+POST   /api/v1/users                 → daftarkan profil + role (password tetap di Supabase Auth)
+PUT    /api/v1/users/{id}            → ubah name / role / is_active
+
 GET    /api/v1/products
 POST   /api/v1/products
 PUT    /api/v1/products/{id}
@@ -553,7 +558,11 @@ OVERRIDE_REASON_REQUIRED     OVERRIDE_TARGET_NOT_FOUND      STORAGE_UPLOAD_FAILE
 RATE_LIMIT_EXCEEDED          WAREHOUSE_CONFIG_EXISTS        COST_TEMPLATE_NOT_FOUND
 COST_TEMPLATE_NAME_EXISTS    WAREHOUSE_CAPACITY_INVALID
 VALIDATION_ERROR             INTERNAL_ERROR                 HTTP_<status>
+AUTH_ACCOUNT_INACTIVE        USER_NOT_FOUND                 USER_EMAIL_EXISTS
+USER_SELF_LOCKOUT
 ```
+
+> **Tambahan 21 Nov 2026 (CR v3.7 User Management):** `AUTH_ACCOUNT_INACTIVE` (403), `USER_NOT_FOUND` (404), `USER_EMAIL_EXISTS` (409), `USER_SELF_LOCKOUT` (422).
 
 > **Tambahan 20 Nov 2026 (CR v3.5 §1):** exception handler global di `app/main.py` menjamin **semua** response memakai envelope — `RequestValidationError` → 422 `VALIDATION_ERROR` (pesan `"<field>: <pesan>"`, prefix `Value error, ` dibuang supaya pesan validator berbahasa Indonesia sampai ke user), `HTTPException` Starlette → `HTTP_<status>` (404 route tidak ada, 405 method salah), exception lain → 500 `INTERNAL_ERROR` generik (stack trace hanya di log). Frontend `request()` menormalisasi body non-envelope jadi `HTTP_<status>` dan fetch gagal jadi `NETWORK_ERROR` (client-only).
 
@@ -582,7 +591,8 @@ tulis × 4 role → 403/lolos sesuai matriks, dan peta backend = frontend.
 | `override.create` | admin, ppic | `POST /overrides` |
 | `planning.run` | admin, ppic | `POST /reorder/recommendations`, `POST /forecast/runs/{id}/plan`, `POST /forecast/runs/{id}/stock-projection` |
 | `capacity.adjust` | admin, ppic | `POST /forecast/runs/{id}/capacity-adjustments`, `/suggest`, `/reset` |
-| (baca) | semua | seluruh `GET`, termasuk `/export` & `/template` |
+| `user.manage` | admin | `GET/POST /users`, `PUT /users/{id}` — **termasuk GET** (data pribadi), pengecualian aturan baris di bawah (CR v3.7) |
+| (baca) | semua | seluruh `GET` lain, termasuk `/export` & `/template` |
 
 **Visibilitas run (Opsi A, MVP single-tenant):** tidak ada cek pemilik run di service mana pun — run cukup
 harus ada (`FORECAST_RUN_NOT_FOUND`). Dashboard "run terakhir" = run terbaru organisasi

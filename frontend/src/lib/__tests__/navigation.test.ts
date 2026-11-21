@@ -4,7 +4,7 @@ import { NAV_GROUPS, breadcrumbsFor, isActive } from "@/lib/navigation";
 
 describe("NAV_GROUPS", () => {
   it("mengelompokkan menu mengikuti alur kerja PPIC", () => {
-    expect(NAV_GROUPS.map((g) => g.label)).toEqual(["Utama", "Master Data", "Operasional"]);
+    expect(NAV_GROUPS.map((g) => g.label)).toEqual(["Utama", "Master Data", "Operasional", "Administrasi"]);
   });
 
   it("memuat seluruh menu utama tanpa duplikat href", () => {
@@ -21,8 +21,15 @@ describe("NAV_GROUPS", () => {
       "/inventory",
       "/forecast",
       "/material-arrivals",
+      "/users",
     ]);
     expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+
+  it("Manajemen User dibatasi izin user.manage (CR v3.7)", () => {
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.href === "/users");
+    expect(item?.label).toBe("Manajemen User");
+    expect(item?.permission).toBe("user.manage");
   });
 
   it("setiap menu punya ikon", () => {

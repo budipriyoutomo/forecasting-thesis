@@ -11,14 +11,15 @@ import pytest
 
 from app.config import get_settings
 from app.services.auth_service import AuthService, Identity
-from app.utils.exceptions import AuthEmailNotVerifiedError, InvalidCredentialsError
+from app.utils.exceptions import AuthAccountInactiveError, AuthEmailNotVerifiedError, InvalidCredentialsError
 
 settings = get_settings()
 
 
 class FakeUser:
-    def __init__(self, id, email, name, role, is_verified):
+    def __init__(self, id, email, name, role, is_verified, is_active=True):
         self.id = id
+        self.is_active = is_active
         self.email = email
         self.name = name
         self.role = role
@@ -109,3 +110,13 @@ async def test_get_profile_tidak_ada_invalid_credentials():
 
     with pytest.raises(InvalidCredentialsError):
         await svc.get_profile("00000000-0000-0000-0000-000000000000")
+
+
+@pytest.mark.asyncio
+async def test_login_akun_nonaktif_ditolak():
+    # CR v3.7 — admin menonaktifkan user lewat User Management; kredensial Supabase tetap valid.
+    user = FakeUser(UID, "old@corp.com", "Old", "ppic", True, is_active=False)
+    svc = _service([user])
+
+    with pytest.raises(AuthAccountInactiveError):
+        await svc.login("old@corp.com", "correct")

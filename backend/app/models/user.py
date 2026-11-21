@@ -28,6 +28,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # CR v3.7 — nonaktif = tidak bisa login (User Management). User tidak dihapus karena
+    # forecast run / override menyimpan FK ke users.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

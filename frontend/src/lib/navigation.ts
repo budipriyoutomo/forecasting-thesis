@@ -9,9 +9,12 @@ import {
   Package,
   SlidersHorizontal,
   Truck,
+  Users,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
+
+import type { Action } from "@/lib/permissions";
 
 // Sumber tunggal struktur navigasi: dipakai sidebar sekaligus breadcrumb, supaya
 // keduanya tidak bisa saling tidak sinkron. Urutan grup mengikuti alur kerja PPIC —
@@ -23,6 +26,8 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Menu hanya tampil untuk role yang punya izin ini (CR v3.7); tanpa = semua role. */
+  permission?: Action;
 }
 
 export interface NavGroup {
@@ -43,7 +48,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/boms", label: "BOM", icon: Network },
       { href: "/warehouse", label: "Kapasitas Gudang", icon: Warehouse },
       { href: "/cost-templates", label: "Template Biaya", icon: Calculator },
-      { href: "/forecast-settings", label: "Pengaturan Forecast", icon: SlidersHorizontal },
+      { href: "/forecast-settings", label: "Pengaturan", icon: SlidersHorizontal },
       { href: "/external-variables", label: "Variabel Eksternal", icon: CloudSun },
     ],
   },
@@ -55,6 +60,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/forecast", label: "Forecast", icon: LineChart },
       { href: "/material-arrivals", label: "Kedatangan Material", icon: Truck },
     ],
+  },
+  {
+    label: "Administrasi",
+    items: [{ href: "/users", label: "Manajemen User", icon: Users, permission: "user.manage" }],
   },
 ];
 

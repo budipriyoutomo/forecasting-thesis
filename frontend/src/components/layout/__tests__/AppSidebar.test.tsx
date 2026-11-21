@@ -6,6 +6,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 
 const mockPathname = vi.fn(() => "/dashboard");
 vi.mock("next/navigation", () => ({ usePathname: () => mockPathname() }));
+const me = vi.hoisted(() => ({ role: "admin" as string }));
+vi.mock("@/hooks/useAuth", () => ({ useMe: () => ({ data: { role: me.role } }) }));
 
 function renderSidebar() {
   return render(
@@ -61,5 +63,21 @@ describe("AppSidebar", () => {
     renderSidebar();
 
     expect(screen.getByRole("link", { name: /forecastiq/i }).getAttribute("href")).toBe("/dashboard");
+  });
+
+  // CR v3.7 — menu ber-`permission` hanya tampil untuk role yang berizin.
+  it("menu Manajemen User hanya tampil untuk admin", () => {
+    mockPathname.mockReturnValue("/dashboard");
+    me.role = "admin";
+    const { unmount } = renderSidebar();
+    expect(screen.getByRole("link", { name: "Manajemen User" }).getAttribute("href")).toBe("/users");
+    expect(screen.getByText("Administrasi")).toBeDefined();
+    unmount();
+
+    me.role = "ppic";
+    renderSidebar();
+    expect(screen.queryByRole("link", { name: "Manajemen User" })).toBeNull();
+    expect(screen.queryByText("Administrasi")).toBeNull();
+    me.role = "admin";
   });
 });

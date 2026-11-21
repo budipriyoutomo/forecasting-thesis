@@ -45,3 +45,31 @@ describe("InventoryPage — riwayat per material", () => {
     expect(snapshots).toHaveBeenCalledWith("m1", "tok");
   });
 });
+
+// Setiap tombol import punya template unduhan + catatan pengisian (hanya untuk role yang boleh import).
+describe("InventoryPage — template import", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(api.materials, "list").mockResolvedValue({ success: true, data: MATERIALS } as never);
+    vi.spyOn(api.products, "list").mockResolvedValue({ success: true, data: [] } as never);
+    vi.spyOn(api.inventory, "latest").mockResolvedValue({ success: true, data: [] } as never);
+    vi.spyOn(api.inventory, "wasteFactors").mockResolvedValue({ success: true, data: [] } as never);
+  });
+
+  it("tab stok & pemakaian masing-masing punya tombol unduh template untuk admin", async () => {
+    vi.spyOn(api.auth, "me").mockResolvedValue({ success: true, data: { role: "admin" } } as never);
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: /unduh template stok/i })).toBeDefined();
+    await userEvent.click(screen.getByRole("tab", { name: /pemakaian aktual/i }));
+    expect(await screen.findByRole("button", { name: /unduh template pemakaian/i })).toBeDefined();
+  });
+
+  it("viewer tidak melihat template (tidak bisa import)", async () => {
+    vi.spyOn(api.auth, "me").mockResolvedValue({ success: true, data: { role: "viewer" } } as never);
+    renderPage();
+
+    await screen.findByRole("region", { name: /riwayat stok erp/i });
+    expect(screen.queryByRole("button", { name: /unduh template/i })).toBeNull();
+  });
+});

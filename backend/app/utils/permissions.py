@@ -24,4 +24,5 @@ PERMISSIONS: dict[str, tuple[str, ...]] = {
     "override.create": PLANNER,
     "planning.run": PLANNER,  # reorder, plan, proyeksi stok
     "capacity.adjust": PLANNER,  # suggest / simpan / reset
+    "user.manage": ADMIN_ONLY,  # CR v3.7 User Management — termasuk GET /users (data pribadi)
 }
