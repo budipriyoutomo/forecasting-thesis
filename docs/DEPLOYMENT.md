@@ -538,8 +538,11 @@ make prod-logs s=backend
   S3_ADDRESSING_STYLE=path
   ```
   lalu `make prod-restart s=backend` (ini env backend biasa, **tidak** perlu build ulang).
-- Upload berhasil tapi gagal saat validasi/pindah permanen → `copy_object` bermasalah.
-  Belum diuji ke IDCloudHost; laporkan lognya kalau kejadian.
+- Log `MissingContentLength` saat `PutObject` → boto3 ≥ 1.36 mengirim checksum CRC32 lewat
+  aws-chunked encoding yang ditolak IDCloudHost. Sudah ditangani di `build_s3_client`
+  (`request_checksum_calculation="when_required"`, 23 Nov 2026) — pastikan image backend sudah versi ini.
+- Diuji ke IDCloudHost 23 Nov 2026: `put_object`, `copy_object` (temp → permanent), `delete_object`
+  berhasil dengan `S3_ADDRESSING_STYLE` `auto` maupun `path`.
 
 ### 8.6 Perubahan `NEXT_PUBLIC_*` tidak berpengaruh
 

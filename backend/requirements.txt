@@ -24,7 +24,7 @@ alembic>=1.13.2
 asyncpg>=0.30.0
 
 # Object storage (Fase 3+)
-boto3>=1.35.24        # kompatibel dengan Cloudflare R2 (S3 API)
+boto3>=1.36.0         # S3-compatible; >=1.36 untuk opsi request_checksum_calculation
 
 # Export (Fase 8)
 openpyxl>=3.1.5       # Excel (.xlsx)

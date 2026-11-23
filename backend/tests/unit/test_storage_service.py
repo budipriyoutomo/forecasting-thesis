@@ -149,3 +149,18 @@ def test_build_s3_client_addressing_style_path_diteruskan_ke_config(monkeypatch)
     config = fake_boto3.client.call_args.kwargs["config"]
     assert config.s3["addressing_style"] == "path"
     assert config.signature_version == "s3v4"
+
+
+def test_build_s3_client_checksum_hanya_bila_diwajibkan(monkeypatch):
+    """Regresi 23 Nov 2026 — boto3 ≥ 1.36 default mengirim checksum CRC32 via aws-chunked encoding;
+    IDCloudHost menolak PutObject dengan MissingContentLength (diuji ke bucket asli)."""
+    from app.services import storage_service
+
+    _konfigurasi_s3(monkeypatch)
+    fake_boto3, _ = _fake_boto3(monkeypatch)
+
+    storage_service.build_s3_client()
+
+    config = fake_boto3.client.call_args.kwargs["config"]
+    assert config.request_checksum_calculation == "when_required"
+    assert config.response_checksum_validation == "when_required"

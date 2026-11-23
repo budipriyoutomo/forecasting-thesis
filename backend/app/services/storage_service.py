@@ -48,6 +48,11 @@ def build_s3_client():
         config=Config(
             s3={"addressing_style": settings.S3_ADDRESSING_STYLE},
             signature_version="s3v4",
+            # boto3 ≥ 1.36 default "when_supported": PutObject dikirim aws-chunked + checksum CRC32
+            # di trailer. IDCloudHost (dan banyak S3-compatible lain) menolak dengan
+            # MissingContentLength → semua upload STORAGE_UPLOAD_FAILED (diuji 23 Nov 2026).
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         ),
     )
 
