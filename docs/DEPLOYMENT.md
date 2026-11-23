@@ -528,7 +528,10 @@ make prod-logs s=backend
 
 ### 8.5 Upload gagal (`STORAGE_UPLOAD_FAILED`)
 
-- Pesan "Object storage belum dikonfigurasi" → `S3_ENDPOINT_URL`/`S3_ACCESS_KEY` kosong.
+- Sejak 23 Nov 2026 storage **best-effort**: bila `S3_ENDPOINT_URL`/`S3_ACCESS_KEY` kosong, upload demand
+  tetap berhasil tanpa arsip file asli dan menampilkan warning "File asli tidak diarsipkan". Kalau warning
+  itu muncul di production, isi `S3_*` di `.env.prod`. `STORAGE_UPLOAD_FAILED` kini hanya muncul bila
+  storage terkonfigurasi tapi gagal (kredensial/endpoint/addressing style).
 - Kredensial terisi tapi tetap gagal → kemungkinan besar **addressing style**. Kalau
   provider tidak punya wildcard DNS untuk `{bucket}.is3.cloudhost.id`, ubah di `.env.prod`:
   ```

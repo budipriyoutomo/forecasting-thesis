@@ -17,8 +17,17 @@ from app.repositories.demand_history_repository import SqlDemandHistoryRepositor
 from app.repositories.product_repository import SqlProductRepository
 from app.repositories.upload_session_repository import SqlUploadSessionRepository
 from app.services.storage_service import StorageService, build_s3_client
+from app.utils.exceptions import StorageUploadFailedError
 from app.services.upload_service import UploadService
 from app.db.session import get_sessionmaker
+
+
+def _storage() -> StorageService | None:
+    # Storage belum dikonfigurasi → upload tidak pernah menaruh file temp; cukup tandai expired.
+    try:
+        return StorageService(build_s3_client())
+    except StorageUploadFailedError:
+        return None
 
 
 async def run() -> int:
@@ -26,7 +35,7 @@ async def run() -> int:
         # `demand`/`products` tak dipakai cleanup_expired (hanya storage+sessions),
         # tapi tetap wajib diisi — konstruktor UploadService tidak punya default.
         service = UploadService(
-            storage=StorageService(build_s3_client()),
+            storage=_storage(),
             sessions=SqlUploadSessionRepository(session),
             demand=SqlDemandHistoryRepository(session),
             products=SqlProductRepository(session),

@@ -98,11 +98,16 @@ export const DEMAND_TEMPLATE: ImportTemplateSpec = {
     ["SKU-002", "2026-05-01", 560, 580, 555],
     ["SKU-002", "2026-06-01", 570, 600, 610],
   ],
+  // Upload demand hanya menerima CSV (diarsip sebagai raw.csv) — bukan COMMON_NOTES yang menyebut .xlsx.
   notes: [
-    ...COMMON_NOTES,
+    COMMON_NOTES[0],
+    "Hapus baris contoh lalu isi dengan data Anda. Simpan sebagai CSV (pemisah koma atau titik koma) — file .xlsx tidak diterima.",
+    "Tanggal ditulis YYYY-MM-DD (mis. 2026-01-01). Format 01/10/2026 ditolak karena ambigu (hari/bulan); 'Jan-26' bisa terbaca 26 Januari.",
     "Satu file boleh berisi banyak SKU — cukup tambahkan baris baru dengan product_code berbeda.",
-    "Minimal 10 baris data agar bisa diproses; satu baris = satu SKU di satu periode.",
-    "Angka tanpa pemisah ribuan (1180, bukan 1.180). Kolom opsional boleh dikosongkan.",
+    "Minimal 10 baris data valid agar bisa diproses; satu baris = satu SKU di satu periode.",
+    "Desimal boleh titik (1180.5) atau koma (1180,5). Jangan pakai pemisah ribuan (1180, bukan 1.180). Angka tidak boleh negatif.",
+    "Kolom opsional boleh dikosongkan. Baris dengan actual kosong dilewati dan dilaporkan sebagai peringatan.",
+    "Satu baris bermasalah (tanggal/angka tidak valid) membuat seluruh file ditolak — pesan error menyebut nomor barisnya.",
   ],
 };
 

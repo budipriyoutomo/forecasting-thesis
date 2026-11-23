@@ -136,9 +136,20 @@ def get_bom_service(session: AsyncSession = Depends(get_db)) -> BomService:
     )
 
 
+def optional_storage() -> StorageService | None:
+    """Object storage bila dikonfigurasi, else None (best-effort: upload & export tetap jalan).
+    Storage yang terkonfigurasi tapi gagal tetap STORAGE_UPLOAD_FAILED saat dipakai."""
+    try:
+        return StorageService(build_s3_client())
+    except StorageUploadFailedError:
+        return None
+
+
 def get_upload_service(session: AsyncSession = Depends(get_db)) -> UploadService:
+    # Dulu build_s3_client() di sini membuat SEMUA endpoint /uploads (termasuk GET riwayat)
+    # gagal 503 bila S3_* kosong — sebelum file sempat divalidasi.
     return UploadService(
-        storage=StorageService(build_s3_client()),
+        storage=optional_storage(),
         sessions=SqlUploadSessionRepository(session),
         demand=SqlDemandHistoryRepository(session),
         products=SqlProductRepository(session),
@@ -207,10 +218,7 @@ def get_reorder_service(session: AsyncSession = Depends(get_db)) -> ReorderServi
 def get_export_service(session: AsyncSession = Depends(get_db)) -> ExportService:
     # Storage best-effort: kalau object storage belum dikonfigurasi, export tetap jalan
     # (file diunduh langsung), arsip ke storage di-skip.
-    try:
-        storage = StorageService(build_s3_client())
-    except StorageUploadFailedError:
-        storage = None
+    storage = optional_storage()
     return ExportService(
         forecast_repo=_selected_forecast(session),
         reorder_repo=SqlReorderRepository(session),

@@ -206,3 +206,40 @@ async def test_cleanup_expired_hapus_temp_dan_tandai_expired():
     assert count == 1
     assert s.status == "expired"
     svc._storage.delete_temp.assert_called_once()
+
+
+# ── 23 Nov 2026 — object storage belum dikonfigurasi (mis. dev lokal) dulu membuat SEMUA
+# endpoint /uploads (termasuk GET riwayat) gagal STORAGE_UPLOAD_FAILED. Kini best-effort,
+# sama seperti export: data demand tetap tersimpan, arsip file asli dilewati + warning.
+
+
+def _service_no_storage():
+    return UploadService(storage=None, sessions=FakeSessionRepo(), demand=FakeDemandRepo(), products=FakeProductRepo())
+
+
+@pytest.mark.asyncio
+async def test_create_tanpa_storage_tetap_simpan_demand_dan_beri_warning():
+    svc = _service_no_storage()
+
+    session = await svc.create_from_upload(USER, "data.csv", _csv())
+
+    assert session.status == "validated" and session.file_url is None
+    assert len(svc._demand.rows) == 12
+    assert any("tidak diarsipkan" in w for w in session.warnings)
+
+
+@pytest.mark.asyncio
+async def test_create_tanpa_storage_file_invalid_tetap_ditolak_format():
+    with pytest.raises(UploadInvalidFormatError):
+        await _service_no_storage().create_from_upload(USER, "data.txt", _csv())
+
+
+@pytest.mark.asyncio
+async def test_cleanup_tanpa_storage_tetap_tandai_expired():
+    svc = _service_no_storage()
+    now = datetime.now(timezone.utc)
+    s = MagicMock(id="s1", file_name="a.csv", status="pending", expires_at=now - timedelta(hours=2), user_id=USER)
+    svc._sessions.items["s1"] = s
+
+    assert await svc.cleanup_expired(now) == 1
+    assert s.status == "expired"

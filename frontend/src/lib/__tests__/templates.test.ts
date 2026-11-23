@@ -171,3 +171,10 @@ describe("template dengan kode master data", () => {
     });
   });
 });
+
+describe("DEMAND_TEMPLATE catatan sesuai aturan upload demand (CSV saja)", () => {
+  it("tidak menjanjikan .xlsx — endpoint /uploads hanya menerima .csv", () => {
+    expect(DEMAND_TEMPLATE.notes.some((n) => /\.xlsx tidak diterima/.test(n))).toBe(true);
+    expect(DEMAND_TEMPLATE.notes.some((n) => /CSV \(pemisah koma\) atau \.xlsx/.test(n))).toBe(false);
+  });
+});

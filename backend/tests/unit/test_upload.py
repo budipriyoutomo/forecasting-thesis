@@ -141,3 +141,16 @@ async def test_get_upload_not_found(client, auth_headers, upload_service):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "SESSION_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_storage_belum_dikonfigurasi_upload_dan_riwayat_tetap_jalan(client, auth_headers, valid_csv_bytes, monkeypatch):
+    """Regresi 23 Nov 2026 — dulu 503 STORAGE_UPLOAD_FAILED di semua endpoint /uploads."""
+    from app.api import deps
+    from app.utils.exceptions import StorageUploadFailedError
+
+    def not_configured():
+        raise StorageUploadFailedError("Object storage belum dikonfigurasi.")
+
+    monkeypatch.setattr(deps, "build_s3_client", not_configured)
+    assert deps.optional_storage() is None

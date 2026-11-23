@@ -16,18 +16,20 @@ from app.utils.exceptions import UploadInvalidFormatError
 _EXCEL = (".xlsx", ".xls")
 
 
-def read_table(filename: str, content: bytes) -> pd.DataFrame:
+def read_table(filename: str, content: bytes, as_text: bool = False) -> pd.DataFrame:
+    """`as_text=True` → semua sel dibaca string (kode `001` tidak jadi angka 1)."""
     name = (filename or "").lower()
+    dtype = str if as_text else None
     if not content:
         raise UploadInvalidFormatError("File kosong.")
     try:
         if name.endswith(_EXCEL):
-            df = pd.read_excel(io.BytesIO(content))
+            df = pd.read_excel(io.BytesIO(content), dtype=dtype)
         elif name.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig")
+            df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig", dtype=dtype)
             # Excel locale Indonesia menyimpan "CSV" berpemisah ';' → terbaca satu kolom.
             if len(df.columns) == 1 and ";" in str(df.columns[0]):
-                df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig", sep=";")
+                df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig", sep=";", dtype=dtype)
         else:
             raise UploadInvalidFormatError("Format file harus .csv atau .xlsx.")
     except UploadInvalidFormatError:

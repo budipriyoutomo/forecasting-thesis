@@ -1074,6 +1074,8 @@ Cron cleanup setiap 30 menit menghapus `temp/` yang sudah lewat `expires_at`.
 
 **Provider-agnostic.** `storage_service.py` hanya memakai operasi S3 standar — `put_object`, `copy_object`, `delete_object` — tanpa presigned URL dan tanpa API khas vendor. Endpoint, region, kredensial, dan addressing style semuanya dibaca dari env (`S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ADDRESSING_STYLE`), jadi pindah provider cukup ganti env tanpa menyentuh kode. Provider aktif: **IDCloudHost Object Storage** (`https://is3.cloudhost.id`, region `SouthJkt-a`) — lihat `RECONCILIATION.md` §Migrasi Object Storage untuk alasannya.
 
+**Best-effort (23 Nov 2026).** `S3_*` kosong → upload demand & export tetap jalan tanpa arsip (`upload_sessions.file_url` NULL + warning); storage terkonfigurasi yang gagal tetap `STORAGE_UPLOAD_FAILED`. Lihat `RECONCILIATION.md` §"Validasi Import & Storage Best-effort".
+
 `S3_ADDRESSING_STYLE` dipakai kalau provider tidak punya wildcard DNS `{bucket}.{endpoint}`: set `path` supaya boto3 memakai `{endpoint}/{bucket}/{key}`. Signature dipatok `s3v4`.
 
 ## 8. Error Handling

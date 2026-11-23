@@ -39,13 +39,84 @@ def test_extract_demand_rows_normalisasi_periode():
     assert [r["period"].isoformat() for r in rows] == ["2024-01-01", "2024-02-01"]
 
 
-def test_baris_actual_invalid_di_skip():
-    content = _csv(
-        "product_code,period,actual",
-        ["SKU-1,2026-01-01,abc", "SKU-1,2026-02-01,120"],
-    )
+def test_baris_actual_kosong_dilewati():
+    content = _csv("product_code,period,actual", ["SKU-1,2026-01-01,", "SKU-1,2026-02-01,120"])
     rows = ing.extract_demand_rows(content)
     assert [str(r["actual"]) for r in rows] == ["120"]
+
+
+# ── 23 Nov 2026 — baris rusak dulu dibuang diam-diam (upload "sukses" padahal data hilang)
+# atau lolos lalu crash di DB (500). Kini seluruh file ditolak dengan nomor baris, sama
+# seperti importer stok ERP / pemakaian material.
+
+_H = "product_code,period,forecast_existing,planning,actual"
+
+
+@pytest.mark.parametrize(
+    "row,match",
+    [
+        ("SKU-1,2026-02-01,1,1,abc", "Baris 3: 'actual' bukan angka valid"),
+        ("SKU-1,2026-02-01,1,1,Infinity", "Baris 3: 'actual' bukan angka valid"),
+        ("SKU-1,2026-02-01,1,1,1e20", "Baris 3: 'actual' terlalu besar"),
+        ("SKU-1,2026-02-01,1,1,-5", "Baris 3: 'actual' tidak boleh negatif"),
+        ("SKU-1,2026-02-01,x,1,5", "Baris 3: 'forecast_existing' bukan angka valid"),
+        ("SKU-1,2026-02-01,1,-1,5", "Baris 3: 'planning' tidak boleh negatif"),
+        ("SKU-1,,1,1,5", "Baris 3: 'period' wajib diisi"),
+        ("SKU-1,besok,1,1,5", "Baris 3: 'period' bukan tanggal valid"),
+        # dd/mm vs mm/dd ambigu — dulu 05/10/2025 diam-diam jadi Mei.
+        ("SKU-1,05/10/2025,1,1,5", "Baris 3: 'period'.*YYYY-MM-DD"),
+        (",2026-02-01,1,1,5", "Baris 3: 'product_code' wajib diisi"),
+    ],
+)
+def test_baris_tidak_valid_menolak_file(row, match):
+    content = _csv(_H, ["SKU-1,2026-01-01,1,1,5", row])
+    with pytest.raises(UploadInvalidFormatError, match=match):
+        ing.extract_demand_rows(content)
+
+
+def test_validate_baris_rusak_tidak_dihitung_lolos():
+    rows = [f"SKU-1,2025-{m:02d}-01,1,1,{m}" for m in range(1, 12)] + ["SKU-1,xx,1,1,1"]
+    with pytest.raises(UploadInvalidFormatError, match="Baris 13"):
+        ing.parse_and_validate_csv("f.csv", _csv(_H, rows))
+
+
+def test_validate_n_rows_hanya_baris_tersimpan_dan_actual_kosong_dilaporkan():
+    rows = [f"SKU-1,2025-{m:02d}-01,1,1,{m}" for m in range(1, 13)] + ["SKU-1,2026-01-01,1,1,", ",,,,", ",,,,"]
+    summary = ing.parse_and_validate_csv("f.csv", _csv(_H, rows))
+    assert summary["n_rows"] == 12
+    assert summary["warnings"] == ["1 baris dengan 'actual' kosong dilewati (baris 14)."]
+
+
+def test_validate_minimal_baris_dihitung_dari_baris_valid():
+    # 12 baris di file, tapi 3 actual kosong → hanya 9 baris valid (< UPLOAD_MIN_ROWS 10).
+    rows = [f"SKU-1,2025-{m:02d}-01,1,1,{m if m <= 9 else ''}" for m in range(1, 13)]
+    with pytest.raises(InsufficientDataError, match="9 baris"):
+        ing.parse_and_validate_csv("f.csv", _csv(_H, rows))
+
+
+def test_duplikat_produk_tanggal_diterima_tapi_dilaporkan():
+    # Bisa sah (mis. per channel) — dijumlahkan saat forecast seperti CR v3.4, tapi tidak diam-diam.
+    rows = [f"SKU-1,2025-{m:02d}-01,1,1,{m}" for m in range(1, 13)] + ["SKU-1,2025-01-01,1,1,7"]
+    summary = ing.parse_and_validate_csv("f.csv", _csv(_H, rows))
+    assert summary["n_rows"] == 13
+    assert summary["warnings"] == [
+        "1 baris punya produk + tanggal yang sama dengan baris lain (mis. baris 14 = baris 2: SKU-1 2025-01-01) "
+        "— nilainya dijumlahkan saat forecast. Hapus bila tidak disengaja (mis. file terunggah dua kali)."
+    ]
+
+
+def test_csv_excel_indonesia_titik_koma_desimal_koma_dan_kode_angka():
+    content = "product_code;period;forecast_existing;planning;actual\n001;2026-01-01;90,5;95;1.234,5\n".encode()
+    rows = ing.extract_demand_rows(content)
+    assert rows[0]["product_code"] == "001"  # dulu terbaca angka → "1"
+    assert rows[0]["forecast_existing"] == Decimal("90.5")
+    assert rows[0]["actual"] == Decimal("1234.5")
+
+
+def test_bom_utf8_dan_format_bulan_tetap_diterima():
+    content = "\ufeffproduct_code,period,actual\nSKU-1,Jan-2024,5\nSKU-1,2024-02-24 00:00:00,6\n".encode()
+    rows = ing.extract_demand_rows(content)
+    assert [r["period"].isoformat() for r in rows] == ["2024-01-01", "2024-02-01"]
 
 
 def test_validate_kolom_actual_hilang():

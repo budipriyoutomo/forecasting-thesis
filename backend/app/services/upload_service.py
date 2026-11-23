@@ -6,12 +6,15 @@ Alur POST upload (single-step, langsung divalidasi):
   1. Cek ukuran file (UPLOAD_FILE_TOO_LARGE).
   2. Parse + validasi CSV demand (UPLOAD_INVALID_FORMAT / INSUFFICIENT_DATA).
   3. Simpan file ke storage temp, lalu move ke permanent (STORAGE_UPLOAD_FAILED).
+     Storage belum dikonfigurasi (storage=None, mis. dev lokal) → arsip dilewati + warning;
+     data demand tetap tersimpan (best-effort seperti export, 23 Nov 2026).
   4. Persist upload_session (status=validated) + demand_history (3 seri paralel).
      product_id di-resolve dari master data produk; kode yang belum terdaftar
      diberi warning tanpa auto-create produk (AGENTS.md §6, pola RECONCILIATION #14).
 
 Semua dependency injectable → mudah dites tanpa DB/storage nyata.
 """
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
@@ -28,6 +31,10 @@ from app.utils.exceptions import (
 )
 
 TEMP_TTL = timedelta(hours=1)
+NO_STORAGE_WARNING = (
+    "File asli tidak diarsipkan: object storage belum dikonfigurasi (S3_*). Data demand tetap tersimpan."
+)
+logger = logging.getLogger(__name__)
 
 
 class _Storage(Protocol):
@@ -37,7 +44,7 @@ class _Storage(Protocol):
 
 
 class UploadService:
-    def __init__(self, storage: _Storage, sessions, demand, products):
+    def __init__(self, storage: _Storage | None, sessions, demand, products):
         self._storage = storage
         self._sessions = sessions
         self._demand = demand
@@ -59,14 +66,20 @@ class UploadService:
         summary = data_ingestion_service.parse_and_validate_csv(filename, content)
 
         session_id = str(uuid.uuid4())
-        self._storage.upload_temp(session_id, filename, content)
-        permanent_url = self._storage.move_to_permanent(user_id, session_id, filename)
+        permanent_url = None
+        if self._storage is not None:
+            self._storage.upload_temp(session_id, filename, content)
+            permanent_url = self._storage.move_to_permanent(user_id, session_id, filename)
+        else:
+            logger.warning("Upload %s: object storage belum dikonfigurasi, arsip file dilewati.", session_id)
 
         rows = data_ingestion_service.extract_demand_rows(content)
         codes = {r["product_code"] for r in rows}
         code_to_id = await self._products.map_codes_to_ids(codes)
 
         warnings = list(summary.get("warnings") or []) + data_ingestion_service.demand_period_warnings(rows)
+        if permanent_url is None:
+            warnings.append(NO_STORAGE_WARNING)
         unknown = sorted(codes - code_to_id.keys())
         if unknown:
             warnings.append(
@@ -128,7 +141,8 @@ class UploadService:
         expired = await self._sessions.list_expired_pending(now)
         for session in expired:
             try:
-                self._storage.delete_temp(str(session.id), session.file_name)
+                if self._storage is not None:
+                    self._storage.delete_temp(str(session.id), session.file_name)
             except Exception:
                 # Kegagalan hapus 1 file tidak boleh menggagalkan cleanup lainnya.
                 pass

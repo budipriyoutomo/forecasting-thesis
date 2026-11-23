@@ -1144,3 +1144,38 @@ hapus nilai tetap `extvar.define`. Dialog "Ubah" kini ber-tab **Definisi** (admi
 dan isi bisa di-scroll (`max-h-[90vh]`) supaya form tidak terpotong. Konsekuensi: PPIC kini melihat tombol
 Ubah (tab Definisi nonaktif).
 
+
+## Validasi Import & Storage Best-effort (23 Nov 2026)
+
+Audit import `/inventory` (stok ERP, pemakaian aktual) dan `/forecast` (demand) atas laporan user
+`INTERNAL_ERROR` dan `STORAGE_UPLOAD_FAILED`.
+
+### Storage best-effort untuk upload demand
+`get_upload_service` dulu memanggil `build_s3_client()` di dependency → bila `S3_*` kosong (dev lokal)
+**semua** endpoint `/uploads`, termasuk `GET` riwayat, gagal 503 sebelum file divalidasi. Kini
+`optional_storage()` (dipakai upload & export): storage tak dikonfigurasi → arsip `raw.csv` dilewati,
+`upload_sessions.file_url` NULL (migrasi `e4f5a6b7c8d9`), warning di session, data demand tetap tersimpan.
+Storage yang **terkonfigurasi tapi gagal** tetap `STORAGE_UPLOAD_FAILED` — misconfig kredensial tidak
+disembunyikan. Konsekuensi: di production tanpa `S3_*`, upload tetap jalan tanpa arsip; warning
+"File asli tidak diarsipkan" adalah penandanya.
+
+### Aturan baris import diseragamkan (all-or-nothing + nomor baris)
+Importer demand dulu **membuang diam-diam** baris dengan period/actual tidak valid (upload "sukses",
+`n_rows` menghitung baris yang tidak tersimpan), dan semua importer meloloskan nilai yang lalu crash di DB
+(500). Kini demand, stok ERP, dan pemakaian sama-sama:
+- baris rusak → seluruh file ditolak `UPLOAD_INVALID_FORMAT` dengan nomor baris; baris kosong total dilewati;
+- angka: desimal titik/koma (`parse_decimal_id`), non-negatif, < 10^14 (`Numeric(18,4)`), `Infinity` ditolak;
+- CSV berpemisah `;` (Excel Indonesia) dan BOM UTF-8 diterima; kode dibaca sebagai teks (`001` tetap `001`).
+- tanggal: stok/pemakaian **wajib** `YYYY-MM-DD` atau sel tanggal Excel. Demand tetap toleran (CR v3.4:
+  `Jan-24`, tanggal 24 → awal bulan + warning) **kecuali** `dd/mm/yyyy` numerik yang ambigu → ditolak
+  (dulu `05/10/2025` diam-diam jadi Mei).
+
+Pengecualian disengaja di demand: `actual` kosong tetap **dilewati** (perilaku lama) tapi kini dilaporkan
+dengan nomor baris; produk + tanggal duplikat **diterima** (dijumlahkan saat forecast, bisa sah per
+channel) tapi dilaporkan sebagai warning. `n_rows` = baris yang benar-benar tersimpan; minimal
+`UPLOAD_MIN_ROWS` dihitung dari baris valid. Stok/pemakaian menolak duplikat (unique index).
+
+### Template ↔ aturan
+Template stok/pemakaian memakai kode material/produk/BOM asli dari master data (angka tetap fiktif,
+ada peringatan) sehingga bisa langsung diunggah; template demand tidak lagi menjanjikan `.xlsx`
+(endpoint demand CSV saja).

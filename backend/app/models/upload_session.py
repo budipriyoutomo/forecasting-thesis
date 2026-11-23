@@ -26,7 +26,8 @@ class UploadSession(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL = file asli tidak diarsip (object storage belum dikonfigurasi, 23 Nov 2026).
+    file_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_size_kb: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     n_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     n_products_detected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
