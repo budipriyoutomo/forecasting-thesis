@@ -17,6 +17,9 @@ export interface CostSummary {
   eoq_method?: "classic" | "dynamic";
   shortage_cost?: string | null; // Σ biaya kekurangan material, skenario ForecastIQ
   baseline_shortage_cost?: string | null;
+  // 23 Nov 2026 — rincian TIC baseline (biaya pesan + biaya simpan)
+  baseline_ordering_cost?: string | null;
+  baseline_holding_cost?: string | null;
 }
 
 export type MetricScope = "baseline" | "forecastiq";

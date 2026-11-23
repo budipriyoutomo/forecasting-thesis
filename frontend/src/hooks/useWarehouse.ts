@@ -72,7 +72,7 @@ export function useWarehouseValidation() {
   });
 }
 
-// CR v3.6 §4 — validasi kapasitas produk jadi dimuat otomatis di langkah "Reorder & biaya"
+// CR v3.6 §4 — validasi kapasitas produk jadi dimuat otomatis di langkah "Reorder & gudang"
 // (GET idempoten: backend menghitung ulang & menyimpan per run), tanpa tombol "Cek kapasitas".
 export function useRunWarehouseValidation(runId: string | null) {
   const token = getToken();

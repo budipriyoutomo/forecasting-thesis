@@ -1257,3 +1257,19 @@ material memakai jadwal kedatangan dari ROP dan qty pembelian dari EOQ, 7) simul
    **sistem** (sebelum adjust) dari rekomendasi run yang sama, supaya perbandingan TIC tetap simetris.
    Konsekuensi: A, EOQ, dan TIC naik dibanding sebelumnya. Penghematan (%) bisa bergeser karena kedua sisi ikut naik.
 
+## Langkah "Evaluasi Usulan Inventory" (23 Nov 2026)
+
+**Permintaan user.** Tambah tab baru setelah Perencanaan persediaan: evaluasi usulan inventory — fulfillment rate
+(service level), stockout rate, inventory turnover, holding cost, ordering cost, shortage cost.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- "Tab" = **langkah stepper baru** `evaluation` di antara `planning` dan `reorder` (5 langkah). `?step=reorder` dan
+  default "langkah terakhir" tetap ke Reorder, jadi tautan dashboard tidak berubah. Langkah Reorder diberi label
+  "Reorder & gudang" karena kartu biaya & kinerja inventory **dipindah** ke langkah Evaluasi (tidak tampil dobel).
+- Definisi metrik tidak berubah (`inventory_metrics_service`, §Fase 7). "Fulfillment rate (service level)" ditampilkan
+  sebagai Fulfilment Rate (β) dengan Service Level (α) di bawahnya, sesuai istilah docx Fase 11.10.
+- Ringkasan memakai **rata-rata sederhana antar material** (level material dari proyeksi stok), diberi label
+  "rata-rata material". Metrik level produk tetap di tabel rincian.
+- Biaya total dari `cost-summary`; TIC baseline kini **dirinci** `baseline_ordering_cost` + `baseline_holding_cost`
+  (additive, tanpa migration). Biaya pesan/simpan per material hanya tersedia untuk usulan (rekomendasi reorder).
+

@@ -288,6 +288,13 @@ Keputusan: `RECONCILIATION.md` §"Tampilan Perhitungan Perencanaan Persediaan".
 - [x] FE: `InventoryPlanBreakdown` (7 tab: MRP, SS & buffer, total kebutuhan, EOQ & kebijakan, ROP, kapasitas per grup, simulasi stok) di langkah 3 `RunDetail`; `ReorderDetail` menampilkan input perhitungan
 - [x] Keputusan user: qty pembelian default = kelipatan EOQ (migration `b8d4f0e3c526`) & EOQ dari total kebutuhan MRP + SS + B (`eoq_requirement_series`, `tests/unit/test_eoq_total_requirement.py`)
 
+## 19. Langkah Evaluasi Usulan Inventory — ✅ SELESAI (23 Nov 2026), belum di-commit
+
+Keputusan: `RECONCILIATION.md` §"Langkah Evaluasi Usulan Inventory".
+
+- [x] BE: `cost-summary.baseline_ordering_cost/baseline_holding_cost` (`test_cost_service.py`, `test_metrics_api.py`)
+- [x] FE: langkah stepper `evaluation` (`lib/runSteps.ts`), `InventoryEvaluation` (ringkasan existing vs usulan + rincian per material) di `RunDetail`; biaya & metrik pindah dari langkah Reorder
+
 ---
 
 ## Prioritas Jika Waktu Terbatas (MVP Migrasi Tercepat)

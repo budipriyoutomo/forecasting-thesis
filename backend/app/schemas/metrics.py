@@ -22,6 +22,9 @@ class CostSummaryOut(BaseModel):
     eoq_method: str = "classic"  # Fase 11.4
     shortage_cost: Decimal | None = None  # Fase 11.7 — Σ material scope forecastiq
     baseline_shortage_cost: Decimal | None = None  # Σ material scope baseline
+    # 23 Nov 2026 — rincian TIC baseline: biaya pesan + biaya simpan
+    baseline_ordering_cost: Decimal | None = None
+    baseline_holding_cost: Decimal | None = None
 
 
 class InventoryMetricOut(BaseModel):

@@ -18,6 +18,7 @@ import { runLabel } from "@/components/forecast/RunPicker";
 import { RunStepper } from "@/components/forecast/RunStepper";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
+import { InventoryEvaluation } from "@/components/planning/InventoryEvaluation";
 import { InventoryPlanBreakdown } from "@/components/planning/InventoryPlanBreakdown";
 import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -52,7 +53,8 @@ import type { ReorderRecommendation } from "@/types/reorder";
 
 // CR v3.6 §1/§4 — detail satu forecast run, bisa dibuka ulang (refresh/pindah menu) karena
 // seluruhnya dirender dari query (useForecastRun, proyeksi, reorder, biaya), BUKAN dari state
-// mutation. Alur = stepper: Forecast → Metode terbaik → Perencanaan → Reorder & biaya.
+// mutation. Alur = stepper: Forecast → Metode terbaik → Perencanaan → Evaluasi inventory → Reorder & gudang
+// (langkah Evaluasi disisipkan 23 Nov 2026; biaya & kinerja inventory dipindah ke sana dari langkah Reorder).
 // 23 Nov 2026: langkah 2 = metode terbaik pilihan sistem (bisa diganti planner); run Fase 11.15
 // yang masih PENDING_SELECTION tetap harus dipilih manual.
 // Semua role bisa membaca (CR v3.5 §3.2); tombol aksi disembunyikan lewat useCan.
@@ -289,8 +291,8 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
                 materials={materials ?? []}
               />
               <div>
-                <Button variant="outline" onClick={() => setActive("reorder")}>
-                  Lanjut: reorder & biaya
+                <Button variant="outline" onClick={() => setActive("evaluation")}>
+                  Lanjut: evaluasi usulan inventory
                 </Button>
               </div>
             </>
@@ -303,10 +305,52 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
         </section>
       )}
 
+      {current === "evaluation" && step.status !== "locked" && (
+        <section className="flex flex-col gap-6" aria-labelledby="step-evaluation">
+          <div>
+            <h2 id="step-evaluation" className="text-lg font-medium">
+              4. Evaluasi usulan inventory
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Kinerja usulan ForecastIQ dibanding kondisi existing (planning perusahaan): fulfilment rate (service
+              level), stockout rate, inventory turnover, holding cost, ordering cost dan shortage cost.
+            </p>
+          </div>
+          {cost.isError && <FormError message={cost.error.message} />}
+          {inventoryMetrics.isPending ? (
+            <TableSkeleton />
+          ) : (
+            <InventoryEvaluation
+              metrics={inventoryMetrics.data ?? []}
+              cost={cost.data}
+              recommendations={reorderList.data ?? []}
+              materials={materials ?? []}
+              products={products ?? []}
+            />
+          )}
+          <div className="flex flex-col gap-3">
+            <h3 className="font-medium">Rincian biaya &amp; metrik per produk / material</h3>
+            {cost.data && <CostSummaryCard summary={cost.data} />}
+            {inventoryMetrics.data && inventoryMetrics.data.length > 0 && (
+              <InventoryMetricsTable
+                metrics={inventoryMetrics.data}
+                materials={materials ?? []}
+                products={products ?? []}
+              />
+            )}
+          </div>
+          <div>
+            <Button variant="outline" onClick={() => setActive("reorder")}>
+              Lanjut: reorder &amp; gudang
+            </Button>
+          </div>
+        </section>
+      )}
+
       {current === "reorder" && step.status !== "locked" && (
         <section className="flex flex-col gap-6" aria-labelledby="step-reorder">
           <h2 id="step-reorder" className="text-lg font-medium">
-            4. Reorder &amp; biaya
+            5. Reorder &amp; gudang
           </h2>
           <div className="flex flex-col gap-3">
             <h3 className="font-medium">Rekomendasi reorder</h3>
@@ -330,23 +374,6 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
               <EmptyState message="Kapasitas gudang produk jadi belum bisa dicek." hint={warehouse.error.message} />
             ) : (
               warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} products={products ?? []} />
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <h3 className="font-medium">Biaya &amp; kinerja inventory</h3>
-            {cost.data && <CostSummaryCard summary={cost.data} />}
-            {cost.isError && <FormError message={cost.error.message} />}
-            {inventoryMetrics.data && inventoryMetrics.data.length > 0 ? (
-              <InventoryMetricsTable
-                metrics={inventoryMetrics.data}
-                materials={materials ?? []}
-                products={products ?? []}
-              />
-            ) : (
-              !inventoryMetrics.isPending && (
-                <EmptyState message="Metrik inventory belum tersedia." hint="Jalankan ulang perencanaan untuk menghitungnya." />
-              )
             )}
           </div>
         </section>

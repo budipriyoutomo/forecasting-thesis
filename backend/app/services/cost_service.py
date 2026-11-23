@@ -50,6 +50,9 @@ class CostSummary:
     eoq_method: str = DEFAULT_EOQ_METHOD  # Fase 11.4 — metode yang diminta master data
     shortage_cost: Decimal | None = None  # Fase 11.7 — dari inventory_metrics material (None = belum dihitung)
     baseline_shortage_cost: Decimal | None = None
+    # 23 Nov 2026 — rincian TIC baseline (pesan + simpan) untuk tab Evaluasi usulan inventory
+    baseline_ordering_cost: Decimal = Decimal(0)
+    baseline_holding_cost: Decimal = Decimal(0)
 
 
 def _system_stock_levels(rec) -> tuple[float, float]:
@@ -110,7 +113,8 @@ class CostService:
         ordering, holding, proposed_tic = aggregate_proposed(recs)
 
         method = await self._settings.eoq_method() if self._settings else DEFAULT_EOQ_METHOD
-        baseline_tic = await self._baseline_tic(run_id, cost, method, recs)
+        baseline_ordering, baseline_holding = await self._baseline_costs(run_id, cost, method, recs)
+        baseline_tic = _dec(float(baseline_ordering) + float(baseline_holding))
         savings = compute_savings_pct(float(baseline_tic), float(proposed_tic))
         purchase_cost, n_without_price = await self._purchase_cost(run_id)
 
@@ -119,6 +123,8 @@ class CostService:
             total_holding_cost=holding,
             total_inventory_cost=proposed_tic,
             baseline_inventory_cost=baseline_tic,
+            baseline_ordering_cost=baseline_ordering,
+            baseline_holding_cost=baseline_holding,
             savings_pct=savings,
             purchase_cost=purchase_cost,
             n_materials_without_price=n_without_price,
@@ -161,8 +167,8 @@ class CostService:
             total += Decimal(str(sum(series))) * Decimal(str(price))
         return _dec(total), missing
 
-    async def _baseline_tic(self, run_id: str, cost, method: str, recs=()) -> Decimal:
-        """TIC bila perusahaan pakai seri planning existing (planning → BOM → EOQ per material).
+    async def _baseline_costs(self, run_id: str, cost, method: str, recs=()) -> tuple[Decimal, Decimal]:
+        """(biaya pesan, biaya simpan) baseline — TIC = jumlah keduanya. TIC bila perusahaan pakai seri planning existing (planning → BOM → EOQ per material).
 
         Fase 11.4: metode EOQ per material dipilih dengan aturan yang SAMA seperti usulan
         (`choose_eoq`: klasik bila harga & i ada), supaya basis biaya (tahunan vs horizon)
@@ -194,14 +200,16 @@ class CostService:
         material_series = breakdown_requirements_series(product_planning, bom_lines)
         days = days_in_period(planning_dates)
         levels = {str(r.material_id): _system_stock_levels(r) for r in recs}
-        baseline = 0.0
+        ordering, holding = 0.0, 0.0
         for material_id, series in material_series.items():
             material = await self._materials.get_by_id(material_id) if self._materials else None
             price = getattr(material, "unit_price", None) if material is not None else None
             ss, buffer = levels.get(str(material_id), (0.0, 0.0))
             demand = eoq_requirement_series(series, ss, buffer)
-            baseline += choose_eoq(demand, days, method, price, cost.holding_rate_pct, cost).total_cost
-        return _dec(baseline)
+            eoq = choose_eoq(demand, days, method, price, cost.holding_rate_pct, cost)
+            ordering += eoq.ordering_cost
+            holding += eoq.holding_cost
+        return _dec(ordering), _dec(holding)
 
     async def _require_run(self, user_id: str, run_id: str):
         # CR v3.5 §3.4 Opsi A: run terlihat semua role (single-tenant) — tidak ada cek

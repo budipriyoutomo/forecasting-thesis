@@ -82,7 +82,7 @@ forecastiq/
 │   │   │   │   ├── cost-templates/     ← master template biaya (S, H, overhead, depresiasi aset)
 │   │   │   │   ├── forecast/           ← daftar run (CR v3.6 §1)
 │   │   │   │   ├── forecast/new/       ← wizard Forecast baru: data demand → (config/) produk & parameter → generate
-│   │   │   │   ├── forecast/runs/[id]/ ← detail run, stepper Forecast → Pilih metode → Perencanaan → Reorder & biaya (?step=)
+│   │   │   │   ├── forecast/runs/[id]/ ← detail run, stepper Forecast → Metode terbaik → Perencanaan → Evaluasi inventory → Reorder & gudang (?step=)
 │   │   │   │   ├── inventory/          ← stok ERP & pemakaian aktual (input)
 │   │   │   │   ├── material-arrivals/  ← kedatangan material hasil ROP per run (read-only, 20 Nov 2026)
 │   │   │   │   └── settings/
@@ -534,6 +534,7 @@ GET    /api/v1/dashboard/summary         # latest_run = run terbaru organisasi; 
 > - `products` menerima/mengembalikan `selling_price` (harga produk; `cost_price` dihapus 10 Nov 2026 — bila masih dikirim klien/CSV lama, diabaikan); `materials` menerima/mengembalikan `unit_price` (nullable, ≥ 0; juga kolom opsional di import CSV).
 > - `GET /boms` menambah field read-only `line_cost` (= `qty_per_unit × unit_price`, null bila material tanpa harga).
 > - `GET /forecast/runs/{run_id}/cost-summary` menambah `purchase_cost`, `n_materials_without_price`, dan `cost_source` (`template` / `env`) — additive, TIC tidak berubah.
+> - **23 Nov 2026:** `cost-summary` menambah `baseline_ordering_cost` & `baseline_holding_cost` (rincian TIC baseline; `baseline_inventory_cost` = jumlah keduanya) untuk langkah "4. Evaluasi usulan inventory" — additive.
 
 > **Pola `POST` sebelum `GET` untuk resource yang di-generate** (bukan sekadar CRUD): `reorder_recommendations` di-generate dari hasil forecast + BOM + `current_stock` request-time, jadi wajib ada `POST` yang menghitung & menyimpan, baru `GET` yang memfilter/menampilkan hasil tersimpan. Ikuti pola yang sama bila menambah resource turunan baru di masa depan — lihat `AGENTS.md` §11.
 

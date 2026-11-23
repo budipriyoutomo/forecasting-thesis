@@ -235,7 +235,7 @@ export default function DashboardPage() {
                     )}
                   </>
                 ) : (
-                  <EmptyState message="Buka langkah Reorder & biaya di detail run untuk mengecek kapasitas." />
+                  <EmptyState message="Buka langkah Reorder & gudang di detail run untuk mengecek kapasitas." />
                 )}
               </CardContent>
             </Card>

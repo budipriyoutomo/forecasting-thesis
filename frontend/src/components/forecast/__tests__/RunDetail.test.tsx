@@ -96,22 +96,33 @@ describe("RunDetail (CR v3.6 §1/§4)", () => {
     const nav = await screen.findByRole("navigation", { name: /langkah run/i });
     const current = within(nav).getByRole("button", { current: "step" });
     expect(current.textContent).toMatch(/metode terbaik.*1 produk menunggu/i);
-    expect(within(nav).getByRole("button", { name: /reorder & biaya/i }).textContent).toMatch(/terkunci/i);
+    expect(within(nav).getByRole("button", { name: /reorder & gudang/i }).textContent).toMatch(/terkunci/i);
+    expect(within(nav).getByRole("button", { name: /4\. evaluasi inventory/i }).textContent).toMatch(/terkunci/i);
   });
 
   it("langkah terkunci menampilkan alasan prasyarat", async () => {
     stub({ run: runOf([RESULT], 0) });
     renderDetail();
 
-    await userEvent.click(await screen.findByRole("button", { name: /4\. reorder & biaya/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /5\. reorder & gudang/i }));
     expect(screen.getByText(/jalankan perencanaan dulu/i)).toBeDefined();
   });
 
-  it("sudah ada proyeksi stok → langkah 4 terbuka default, reorder & kapasitas dimuat otomatis", async () => {
+  it("sudah ada proyeksi stok → langkah evaluasi inventory (4) setelah perencanaan memuat metrik & biaya", async () => {
     stub({ run: runOf([RESULT], 0), projection: [PROJ_ROW] });
     renderDetail();
 
-    expect(await screen.findByRole("heading", { name: /4\. reorder & biaya/i })).toBeDefined();
+    await userEvent.click(await screen.findByRole("button", { name: /4\. evaluasi inventory/i }));
+    expect(await screen.findByRole("heading", { name: /4\. evaluasi usulan inventory/i })).toBeDefined();
+    expect(api.metrics.inventory).toHaveBeenCalled();
+    expect(api.metrics.costSummary).toHaveBeenCalled();
+  });
+
+  it("sudah ada proyeksi stok → langkah 5 terbuka default, reorder & kapasitas dimuat otomatis", async () => {
+    stub({ run: runOf([RESULT], 0), projection: [PROJ_ROW] });
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: /5\. reorder & gudang/i })).toBeDefined();
     expect(api.warehouse.validateRun).toHaveBeenCalledWith("run1", "tok");
     expect(screen.queryByRole("button", { name: /cek kapasitas/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /^hitung reorder$/i })).toBeNull();

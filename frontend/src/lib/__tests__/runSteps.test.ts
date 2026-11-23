@@ -14,8 +14,10 @@ const run = (over: Partial<Parameters<typeof deriveRunSteps>[0]["run"]> = {}) =>
 describe("deriveRunSteps (CR v3.6 §4 — status dari data run, bukan state lokal)", () => {
   it("run selesai, semua metode dipilih, belum perencanaan → langkah 3 aktif", () => {
     const steps = deriveRunSteps({ run: run(), hasPlanning: false });
-    expect(steps.map((s) => s.status)).toEqual(["done", "done", "todo", "locked"]);
+    expect(steps.map((s) => s.status)).toEqual(["done", "done", "todo", "locked", "locked"]);
+    expect(steps[3].key).toBe("evaluation");
     expect(steps[3].lockedReason).toMatch(/jalankan perencanaan/i);
+    expect(steps[4].lockedReason).toMatch(/jalankan perencanaan/i);
     expect(defaultStep(steps)).toBe("planning");
   });
 
@@ -41,14 +43,15 @@ describe("deriveRunSteps (CR v3.6 §4 — status dari data run, bukan state loka
     expect(steps[2].status).toBe("locked");
   });
 
-  it("sudah perencanaan → semua selesai, default ke Reorder & biaya", () => {
+  it("sudah perencanaan → semua selesai, evaluasi setelah perencanaan, default ke Reorder & gudang", () => {
     const steps = deriveRunSteps({ run: run(), hasPlanning: true });
-    expect(steps.map((s) => s.status)).toEqual(["done", "done", "done", "done"]);
+    expect(steps.map((s) => s.key)).toEqual(["forecast", "select", "planning", "evaluation", "reorder"]);
+    expect(steps.map((s) => s.status)).toEqual(["done", "done", "done", "done", "done"]);
     expect(defaultStep(steps)).toBe("reorder");
   });
 
   it("run belum selesai → hanya langkah 1", () => {
     const steps = deriveRunSteps({ run: run({ status: "PROCESSING" }), hasPlanning: false });
-    expect(steps.map((s) => s.status)).toEqual(["todo", "locked", "locked", "locked"]);
+    expect(steps.map((s) => s.status)).toEqual(["todo", "locked", "locked", "locked", "locked"]);
   });
 });

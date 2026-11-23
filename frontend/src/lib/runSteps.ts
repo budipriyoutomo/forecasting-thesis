@@ -7,7 +7,8 @@
 // dilewati (perilaku Fase 11.15) dan langkah 2 tetap ditandai "perlu tindakan".
 import type { ForecastRunSummary } from "@/types/forecast";
 
-export type RunStepKey = "forecast" | "select" | "planning" | "reorder";
+// 23 Nov 2026: langkah "evaluation" (evaluasi usulan inventory) disisipkan setelah perencanaan.
+export type RunStepKey = "forecast" | "select" | "planning" | "evaluation" | "reorder";
 export type RunStepStatus = "done" | "todo" | "locked";
 
 export interface RunStep {
@@ -60,16 +61,25 @@ export function deriveRunSteps({ run, hasPlanning }: { run: RunCounts; hasPlanni
     };
   else planning = { key: "planning", label: "Perencanaan", status: hasPlanning ? "done" : "todo" };
 
-  const reorder: RunStep = hasPlanning
-    ? { key: "reorder", label: "Reorder & biaya", status: "done" }
+  const evaluation: RunStep = hasPlanning
+    ? { key: "evaluation", label: "Evaluasi inventory", status: "done" }
     : {
-        key: "reorder",
-        label: "Reorder & biaya",
+        key: "evaluation",
+        label: "Evaluasi inventory",
         status: "locked",
-        lockedReason: "Jalankan perencanaan dulu (langkah 3) untuk menghitung reorder & biaya.",
+        lockedReason: "Jalankan perencanaan dulu (langkah 3) untuk menghitung evaluasi usulan inventory.",
       };
 
-  return [forecast, select, planning, reorder];
+  const reorder: RunStep = hasPlanning
+    ? { key: "reorder", label: "Reorder & gudang", status: "done" }
+    : {
+        key: "reorder",
+        label: "Reorder & gudang",
+        status: "locked",
+        lockedReason: "Jalankan perencanaan dulu (langkah 3) untuk menghitung reorder & kapasitas gudang.",
+      };
+
+  return [forecast, select, planning, evaluation, reorder];
 }
 
 /** Langkah yang dibuka saat halaman dimuat: langkah pertama yang perlu tindakan, atau

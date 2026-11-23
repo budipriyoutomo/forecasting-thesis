@@ -278,3 +278,25 @@ async def test_cost_summary_shortage_cost_dari_metrik_material():
     )
     s = await svc.get_cost_summary(USER, "r1")
     assert float(s.shortage_cost) == 700000 and float(s.baseline_shortage_cost) == 2100000
+
+
+@pytest.mark.asyncio
+async def test_baseline_dirinci_biaya_pesan_dan_simpan():
+    """23 Nov 2026 — TIC baseline = biaya pesan + biaya simpan (dirinci untuk tab Evaluasi).
+    Planning [10,10,10], S=100, H=1 → EOQ dinamis: n=1 → 100 + (20+10+0)·1 = 130;
+    n=2 → 200 + ...; n=1 minimum. Pesan 100, simpan 30."""
+    svc = _service(
+        run=SimpleNamespace(id="r1", user_id=USER),
+        results=[SimpleNamespace(product_id="P1", status="COMPLETED", forecast_data=[])],
+        recs=[_rec("M1", 80, 0, 80)],
+        demand={"P1": [_demand_row("SKU1", f"2026-0{i}-01", 10) for i in (1, 2, 3)]},
+        boms={"P1": [SimpleNamespace(product_id="P1", material_id="M1", qty_per_unit=1)]},
+        products=[SimpleNamespace(id="P1", code="SKU1")],
+        S=100,
+        H=1,
+    )
+    out = await svc.get_cost_summary(USER, "r1")
+    assert out.baseline_ordering_cost == Decimal("100")
+    assert out.baseline_holding_cost == Decimal("30")
+    assert out.baseline_inventory_cost == out.baseline_ordering_cost + out.baseline_holding_cost
+

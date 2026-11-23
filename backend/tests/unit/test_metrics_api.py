@@ -88,6 +88,9 @@ async def test_cost_summary_ok(client):
     assert data["cost_template_name"] is None
     assert Decimal(data["purchase_cost"]) == Decimal("0")
     assert data["n_materials_without_price"] == 0
+    # 23 Nov 2026 — rincian TIC baseline untuk tab Evaluasi usulan inventory
+    assert Decimal(data["baseline_ordering_cost"]) == Decimal("100")
+    assert Decimal(data["baseline_holding_cost"]) == Decimal("0")
 
 
 @pytest.mark.asyncio

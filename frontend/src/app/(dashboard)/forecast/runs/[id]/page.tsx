@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { RunDetail } from "@/components/forecast/RunDetail";
 import type { RunStepKey } from "@/lib/runSteps";
 
-const STEPS: RunStepKey[] = ["forecast", "select", "planning", "reorder"];
+const STEPS: RunStepKey[] = ["forecast", "select", "planning", "evaluation", "reorder"];
 
 // CR v3.6 §1 — /forecast/runs/[id]: detail run yang bisa dibuka ulang. Baca untuk semua
 // role (CR v3.5 §3.2); aksi disembunyikan per izin di dalam RunDetail. `?step=` membuka

@@ -51,6 +51,8 @@ async def cost_summary(
             eoq_method=summary.eoq_method,
             shortage_cost=summary.shortage_cost,
             baseline_shortage_cost=summary.baseline_shortage_cost,
+            baseline_ordering_cost=summary.baseline_ordering_cost,
+            baseline_holding_cost=summary.baseline_holding_cost,
             savings_pct=summary.savings_pct,
         ).model_dump(mode="json"),
     }
