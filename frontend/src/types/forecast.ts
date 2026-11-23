@@ -149,3 +149,75 @@ export interface ForecastRunInput {
   /** UI tidak lagi mengirim (sistem memilih metode terbaik); dipertahankan untuk kompatibilitas API. */
   method?: string | null;
 }
+
+// ── CR v3.7 — GET /forecast/runs/{id}/method-comparison (format thesis per metode) ──
+// Semua angka (rata-rata, peringkat) dihitung backend; FE hanya menampilkan (AGENTS #20).
+
+export type MetricCriterion = "mad" | "mfe" | "mape";
+
+/** OK · FAILED (metode gagal / produk gagal) · NO_SERIES (run lama: metrik ada, deret tidak disimpan). */
+export type MethodRowStatus = "OK" | "FAILED" | "NO_SERIES";
+
+export interface MethodComparisonRow {
+  product_id: string;
+  status: MethodRowStatus;
+  /** periode (YYYY-MM-DD) → qty; {} bila tidak ada deret. */
+  forecast: Record<string, number>;
+  /** Σ deret horizon (kolom Total); null bila tidak ada deret. */
+  total: number | null;
+  mad: number | null;
+  mape: number | null;
+  mfe: number | null;
+}
+
+export interface MethodAverage {
+  mad: number | null;
+  mape: number | null;
+  /** Rata-rata BERTANDA. */
+  mfe: number | null;
+  /** Varian yang metodenya berhasil. */
+  n: number;
+  n_total: number;
+}
+
+export interface MethodComparisonMethod {
+  method: string;
+  label: string;
+  rows: MethodComparisonRow[];
+  average: MethodAverage;
+}
+
+/** Metode terbaik level run = seleksi GLOBAL yang dipakai run. */
+export interface RunSelection {
+  best_method: string;
+  criteria: MetricCriterion[];
+  /** "common" = ada metode yang dikeluarkan / peringkat atas irisan varian. */
+  ranking_basis: "all" | "common";
+  n_common: number;
+  n_completed: number;
+  excluded_methods: string[];
+  ranking: SelectionRankingRow[];
+  decided_by: MetricCriterion | null;
+  summary: string;
+  reasons: string[];
+}
+
+export interface ProductMethodRow {
+  product_id: string;
+  status: string;
+  /** Pilihan sistem (global / fallback), sebelum penggantian planner. */
+  system_method: string | null;
+  /** Metode berlaku (setelah penggantian planner). */
+  method_used: string | null;
+  is_overridden: boolean;
+}
+
+export interface MethodComparison {
+  run_id: string;
+  periods: string[];
+  /** Urutan prioritas = urutan kolom metrik view thesis (MAD · MAPE · MFE). */
+  criteria: MetricCriterion[];
+  methods: MethodComparisonMethod[];
+  run_selection: RunSelection | null;
+  product_methods: ProductMethodRow[];
+}

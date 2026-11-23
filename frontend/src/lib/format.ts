@@ -56,3 +56,18 @@ export function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
+
+const PERIOD_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/** CR v3.7 D5 — label kolom periode format thesis: "2026-12-01" → "Des-26" (id-ID).
+ * Diurai dari string (bukan `new Date`) supaya tidak bergeser zona waktu. */
+export function formatPeriodLabel(value: string | null | undefined): string {
+  if (!value) return EMPTY;
+  const m = PERIOD_RE.exec(value);
+  if (!m) return value;
+  const month = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)).toLocaleString("id-ID", {
+    month: "short",
+    timeZone: "UTC",
+  });
+  return `${month.replace(".", "")}-${m[1].slice(2)}`;
+}

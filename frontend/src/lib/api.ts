@@ -7,6 +7,7 @@ import type {
   ForecastRunInput,
   ForecastRunListItem,
   ForecastRunResponse,
+  MethodComparison,
   MethodSelectionInput,
   RunSelectionResult,
 } from "@/types/forecast";
@@ -474,6 +475,13 @@ export const api = {
 
     getRun: (runId: string, token: string): Promise<ApiResponse<ForecastRunResponse>> =>
       request<ForecastRunResponse>(`/api/v1/forecast/runs/${runId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }),
+
+    // CR v3.7 — hasil per metode format thesis (matriks, pengujian + Average, metode terbaik run).
+    getMethodComparison: (runId: string, token: string): Promise<ApiResponse<MethodComparison>> =>
+      request<MethodComparison>(`/api/v1/forecast/runs/${runId}/method-comparison`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }),

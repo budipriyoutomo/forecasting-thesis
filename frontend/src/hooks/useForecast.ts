@@ -9,6 +9,7 @@ import type {
   ForecastRunInput,
   ForecastRunListItem,
   ForecastRunResponse,
+  MethodComparison,
   MethodSelectionInput,
   RunSelectionResult,
 } from "@/types/forecast";
@@ -60,6 +61,24 @@ export function useForecastRun(runId: string | null, initialData?: ForecastRunRe
   });
 }
 
+// CR v3.7 — hasil per metode format thesis. Semua angka dari backend.
+export function methodComparisonKey(runId: string | null) {
+  return ["forecast-run", runId, "method-comparison"] as const;
+}
+
+export function useMethodComparison(runId: string | null) {
+  const token = getToken();
+  return useQuery<MethodComparison>({
+    queryKey: methodComparisonKey(runId),
+    enabled: Boolean(token && runId),
+    queryFn: async () => {
+      const res = await api.forecast.getMethodComparison(runId as string, token as string);
+      if (!res.success) throw new Error(res.error.message);
+      return res.data;
+    },
+  });
+}
+
 // Fase 11.15 — planner memilih metode satu produk / semua produk dalam run.
 export function useSelectForecastMethod(runId: string | null) {
   const qc = useQueryClient();
@@ -71,6 +90,8 @@ export function useSelectForecastMethod(runId: string | null) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["forecast-run", runId] });
+      // Eksplisit (juga tercakup prefix di atas): "metode dipakai" di view thesis bisa berubah.
+      qc.invalidateQueries({ queryKey: methodComparisonKey(runId) });
       qc.invalidateQueries({ queryKey: ["forecast-runs"] });
     },
   });
@@ -86,6 +107,8 @@ export function useSelectForecastMethodForRun(runId: string | null) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["forecast-run", runId] });
+      // Eksplisit (juga tercakup prefix di atas): "metode dipakai" di view thesis bisa berubah.
+      qc.invalidateQueries({ queryKey: methodComparisonKey(runId) });
       qc.invalidateQueries({ queryKey: ["forecast-runs"] });
     },
   });

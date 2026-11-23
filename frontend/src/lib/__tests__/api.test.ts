@@ -237,6 +237,16 @@ describe("api.forecast", () => {
     expect(JSON.parse(init?.body as string)).toEqual({ method: "xgboost", reason: "musiman" });
   });
 
+  it("getMethodComparison GET /forecast/runs/:id/method-comparison (CR v3.7)", async () => {
+    const spy = mockFetch({ success: true, data: { run_id: "r1", periods: [], methods: [] } });
+
+    await api.forecast.getMethodComparison("r1", "tok");
+
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/v1\/forecast\/runs\/r1\/method-comparison$/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+
   it("selectMethodForRun POST /forecast/runs/:id/selection", async () => {
     const spy = mockFetch({ success: true, data: { n_selected: 1, skipped_product_ids: [], results: [] } });
 

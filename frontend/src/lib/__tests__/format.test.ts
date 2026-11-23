@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, formatDateTime, formatMoney, formatNumber, formatPercent, formatQty } from "@/lib/format";
+import {
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatNumber,
+  formatPercent,
+  formatPeriodLabel,
+  formatQty,
+} from "@/lib/format";
 
 // Nilai Decimal datang dari backend sebagai string (AGENTS.md §4), jadi formatter
 // wajib menerima string apa adanya tanpa pemanggil perlu mengonversi lebih dulu.
@@ -87,5 +95,24 @@ describe("formatDateTime", () => {
   it("tanggal + jam id-ID; null → —", () => {
     expect(formatDateTime("2026-11-20T08:30:00Z")).toMatch(/2026/);
     expect(formatDateTime(null)).toBe("—");
+  });
+});
+
+// CR v3.7 D5 — label kolom periode format thesis, locale id-ID
+describe("formatPeriodLabel", () => {
+  it("MMM-yy bahasa Indonesia", () => {
+    expect(formatPeriodLabel("2026-01-01")).toBe("Jan-26");
+    expect(formatPeriodLabel("2026-05-01")).toBe("Mei-26");
+    expect(formatPeriodLabel("2026-08-01")).toBe("Agu-26");
+    expect(formatPeriodLabel("2026-12-01")).toBe("Des-26");
+  });
+
+  it("tidak bergeser zona waktu & menerima datetime ISO", () => {
+    expect(formatPeriodLabel("2027-01-01T00:00:00")).toBe("Jan-27");
+  });
+
+  it("nilai tidak valid → apa adanya; kosong → —", () => {
+    expect(formatPeriodLabel("bukan tanggal")).toBe("bukan tanggal");
+    expect(formatPeriodLabel("")).toBe("—");
   });
 });
