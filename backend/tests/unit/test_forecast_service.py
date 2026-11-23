@@ -210,3 +210,113 @@ def test_semua_metode_gagal_menyertakan_alasan(smooth_df, monkeypatch):
 def test_sukses_tanpa_alasan(smooth_df):
     record = run_forecast_for_product(smooth_df, horizon=3, requested_method="moving_average")
     assert record.status_reason is None
+
+
+# ── 23 Nov 2026 — metode terbaik GLOBAL (rata-rata seluruh produk), bukan per produk ──
+def _fake_engine(mad_by_level, fail_levels=()):
+    """Engine palsu: MAD ditentukan oleh level data (nilai pertama df) → per produk beda."""
+    from app.services.forecasting.types import EngineResult, ForecastPoint
+
+    def fn(df, horizon, options=None):
+        level = float(df["quantity"].iloc[0])
+        if level in fail_levels:
+            raise RuntimeError("gagal")
+        pts = [ForecastPoint(date=f"2026-0{i + 1}-01", value=level, lower=level, upper=level) for i in range(horizon)]
+        return EngineResult(forecast=pts, explanation="x", mad=mad_by_level[level], mfe=0.0, mse=1.0, mape=10.0)
+
+    return fn
+
+
+def _global_registry(monkeypatch, fail_a_at=()):
+    from app.services.forecasting import registry
+
+    monkeypatch.setattr(
+        registry,
+        "MODEL_REGISTRY",
+        {
+            "moving_average": _fake_engine({10.0: 1.0, 20.0: 9.0}, fail_levels=fail_a_at),  # rata2 5
+            "xgboost": _fake_engine({10.0: 3.0, 20.0: 3.0}),  # rata2 3
+        },
+    )
+
+
+def test_multi_produk_satu_metode_terbaik_untuk_semua(monkeypatch):
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    _global_registry(monkeypatch)
+    records = run_forecast_for_products(
+        [(_monthly([10.0] * 14), None), (_monthly([20.0] * 14), None)],
+        horizon=3,
+        enabled_methods={"moving_average", "xgboost"},
+    )
+    # p1 sendiri lebih baik dengan moving_average (MAD 1), tapi rata-rata global → xgboost.
+    assert [r.method_used for r in records] == ["xgboost", "xgboost"]
+    assert all(r.selection_mode == "auto" for r in records)
+    assert records[0].mad == 3.0  # metrik metode yang berlaku di produk itu
+    a = records[0].selection_analysis
+    assert a["scope"] == "global" and a["n_products"] == 2 and a["best_method"] == "xgboost"
+    # kandidat produk tetap membawa metrik produk itu, peringkat = peringkat global
+    ranks = {c["method"]: c["rank"] for c in records[0].candidates_evaluated}
+    assert ranks == {"xgboost": 1, "moving_average": 2}
+    assert records[0].candidates_evaluated[1]["mad"] == 1.0
+
+
+def test_multi_produk_metode_global_gagal_di_satu_produk_pakai_terbaik_produk(monkeypatch):
+    from app.services.forecasting import registry
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    monkeypatch.setattr(
+        registry,
+        "MODEL_REGISTRY",
+        {
+            "moving_average": _fake_engine({10.0: 5.0, 20.0: 5.0, 30.0: 5.0}),
+            "xgboost": _fake_engine({10.0: 1.0, 20.0: 1.0, 30.0: 1.0}, fail_levels=(30.0,)),
+            "random_forest": _fake_engine({10.0: 2.0, 20.0: 2.0, 30.0: 2.0}),
+        },
+    )
+    records = run_forecast_for_products(
+        [(_monthly([v] * 14), None) for v in (10.0, 20.0, 30.0)],
+        horizon=3,
+        enabled_methods={"moving_average", "xgboost", "random_forest"},
+    )
+    # xgboost gagal di p3 → tak punya cakupan penuh → global = random_forest (cakupan penuh)
+    assert [r.method_used for r in records] == ["random_forest"] * 3
+
+
+def test_multi_produk_produk_gagal_tidak_ikut_rata_rata(monkeypatch, too_short_df):
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    _global_registry(monkeypatch)
+    records = run_forecast_for_products(
+        [(_monthly([10.0] * 14), None), (too_short_df, None)],
+        horizon=3,
+        enabled_methods={"moving_average", "xgboost"},
+    )
+    assert records[1].status == "INSUFFICIENT_DATA"
+    assert records[0].method_used == "moving_average"  # hanya p1 yang dinilai
+    assert records[0].selection_analysis["n_products"] == 1
+
+
+def test_multi_produk_fallback_bila_metode_global_gagal_di_produk(monkeypatch):
+    from app.services.forecasting import registry
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    monkeypatch.setattr(
+        registry,
+        "MODEL_REGISTRY",
+        {
+            # cakupan sama (2 dari 3) → keduanya dibandingkan; moving_average terbaik
+            "moving_average": _fake_engine({10.0: 1.0, 20.0: 1.0, 30.0: 1.0}, fail_levels=(30.0,)),
+            "xgboost": _fake_engine({10.0: 2.0, 20.0: 2.0, 30.0: 2.0}, fail_levels=(10.0,)),
+        },
+    )
+    records = run_forecast_for_products(
+        [(_monthly([v] * 14), None) for v in (10.0, 20.0, 30.0)],
+        horizon=3,
+        enabled_methods={"moving_average", "xgboost"},
+    )
+    assert [r.method_used for r in records] == ["moving_average", "moving_average", "xgboost"]
+    a = records[2].selection_analysis
+    assert a["best_method"] == "moving_average"
+    assert a["fallback_reason"] and "Moving Average" in a["fallback_reason"]
+    assert records[0].selection_analysis.get("fallback_reason") is None

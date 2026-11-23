@@ -16,6 +16,12 @@ Aturan = URUTAN PRIORITAS pengujian (keputusan user 23 Nov 2026), fungsi murni &
   Metrik yang tidak dicentang dilewati (urutan tetap). Nilai tak terdefinisi (None/NaN/inf,
   mis. MAPE saat seluruh aktual uji nol) → kalah di metrik itu.
 Peringkat per metrik (`rank_<metrik>`, kompetisi 1, 1, 3) tetap dicatat sebagai informasi.
+
+CAKUPAN GLOBAL (23 Nov 2026, permintaan user): metode terbaik dipilih untuk KESELURUHAN produk
+di run, bukan per produk — `select_global_method` merata-ratakan MAD / MAPE / MFE (bertanda)
+tiap metode atas seluruh produk lalu menerapkan aturan prioritas yang sama. Hanya metode yang
+berhasil di semua produk yang dibandingkan (himpunan produk sama → adil); bila tak ada, metode
+dengan cakupan terbanyak. RECONCILIATION §"Metode Terbaik Global".
 """
 from __future__ import annotations
 
@@ -99,10 +105,17 @@ class SelectionOutcome:
     reasons: list[str] = field(default_factory=list)
     # Metrik yang memisahkan pemenang dari peringkat 2; None = satu kandidat / seri total.
     decided_by: str | None = None
+    # Cakupan global (23 Nov 2026): "global" = rata-rata seluruh produk di run.
+    scope: str = "product"
+    n_products: int = 1
+    excluded_methods: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Aman untuk JSONB (tanpa NaN/inf)."""
         return {
+            "scope": self.scope,
+            "n_products": self.n_products,
+            "excluded_methods": list(self.excluded_methods),
             "best_method": self.best_method,
             "criteria": list(self.criteria),
             "decided_by": self.decided_by,
@@ -146,7 +159,70 @@ def select_best_method(candidates: list[dict], metrics) -> SelectionOutcome:
     return SelectionOutcome(best["method"], criteria, rows, summary, reasons, decided_by)
 
 
-def _explain(best: dict, rows: list[dict], criteria: list[str], decided_by: str | None) -> tuple[str, list[str]]:
+def _mean(values) -> float | None:
+    vals = [v for v in (_finite(x) for x in values) if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
+def aggregate_candidates(per_product: list[list[dict]]) -> tuple[list[dict], int]:
+    """Rata-rata metrik tiap metode atas seluruh produk → (baris per metode, jumlah produk dinilai).
+
+    Hanya metode dengan cakupan terbanyak (idealnya semua produk) yang dibandingkan, dan
+    rata-ratanya dihitung pada irisan produk yang sama supaya perbandingan adil. Irisan kosong →
+    tiap metode dirata-rata dari produknya sendiri. Nilai tak terdefinisi dilewati (MAPE saat
+    aktual nol); seluruhnya tak terdefinisi → None. MFE dirata-rata bertanda (bias rata-rata).
+    """
+    products = [{c["method"]: c for c in cands} for cands in per_product if cands]
+    if not products:
+        return [], 0
+    coverage: dict[str, int] = {}
+    for p in products:
+        for m in p:
+            coverage[m] = coverage.get(m, 0) + 1
+    top = max(coverage.values())
+    eligible = sorted(m for m, n in coverage.items() if n == top)
+    common = [p for p in products if all(m in p for m in eligible)]
+    n = len(common)
+    rows = []
+    for m in eligible:
+        base = common or [p for p in products if m in p]
+        row = {"method": m, "n_products": len(base)}
+        for metric in ("mad", "mfe", "mse", "mape"):
+            row[metric] = _mean(p[m].get(metric) for p in base)
+        rows.append(row)
+    return rows, n or max(r["n_products"] for r in rows)
+
+
+def select_global_method(per_product: list[list[dict]], metrics) -> SelectionOutcome:
+    """Satu metode terbaik untuk seluruh produk — aturan prioritas atas metrik RATA-RATA."""
+    rows, n = aggregate_candidates(per_product)
+    if not rows:
+        raise ValueError("Tidak ada produk dengan kandidat untuk dipilih.")
+    all_methods = {c["method"] for cands in per_product for c in cands}
+    excluded = sorted(all_methods - {r["method"] for r in rows})
+    outcome = select_best_method(rows, metrics)
+    by = {r["method"]: r for r in rows}
+    for row in outcome.ranking:
+        row["n_products"] = by[row["method"]]["n_products"]
+    outcome.scope = "global"
+    outcome.n_products = n
+    outcome.excluded_methods = excluded
+    if n > 1:
+        best = outcome.ranking[0]
+        outcome.summary, outcome.reasons = _explain(
+            best, outcome.ranking, outcome.criteria, outcome.decided_by, n_products=n
+        )
+    if excluded:
+        outcome.reasons.append(
+            f"Tidak dibandingkan karena gagal/tidak berlaku di sebagian produk: "
+            f"{', '.join(method_label(m) for m in excluded)} — rata-ratanya tidak sebanding."
+        )
+    return outcome
+
+
+def _explain(
+    best: dict, rows: list[dict], criteria: list[str], decided_by: str | None, n_products: int = 1
+) -> tuple[str, list[str]]:
     name = method_label(best["method"])
     prio = _priority_text(criteria)
     if len(rows) == 1:
@@ -158,10 +234,16 @@ def _explain(best: dict, rows: list[dict], criteria: list[str], decided_by: str 
 
     runner = rows[1]
     runner_name = method_label(runner["method"])
-    first = _METRIC_LABELS[criteria[0]]
+    glob = n_products > 1
+    first = ("rata-rata " if glob else "") + _METRIC_LABELS[criteria[0]]
+    basis = (
+        f" untuk seluruh {n_products} produk, berdasarkan rata-rata hasil pengujian seluruh produk"
+        if glob
+        else ""
+    )
     summary = (
         f"{name} dipilih sebagai metode terbaik dari {len(rows)} metode yang diuji dengan holdout "
-        f"backtest. Penentuan memakai urutan prioritas pengujian: {prio} — metrik berikutnya hanya "
+        f"backtest{basis}. Penentuan memakai urutan prioritas pengujian: {prio} — metrik berikutnya hanya "
         "dipakai bila metrik sebelumnya seri. "
     )
     if decided_by is None:
@@ -182,14 +264,14 @@ def _explain(best: dict, rows: list[dict], criteria: list[str], decided_by: str 
             f"{_fmt(runner[decided_by], decided_by)}."
         )
 
-    reasons = [_metric_line(best, rows, m, criteria) for m in criteria]
+    reasons = [_metric_line(best, rows, m, criteria, glob) for m in criteria]
     reasons.append(_quality_line(best))
     reasons.append(f"Pembanding terdekat (peringkat 2): {runner_name}.")
     return summary, reasons
 
 
-def _metric_line(best: dict, rows: list[dict], metric: str, criteria: list[str]) -> str:
-    label = _METRIC_LABELS[metric]
+def _metric_line(best: dict, rows: list[dict], metric: str, criteria: list[str], glob: bool = False) -> str:
+    label = ("Rata-rata " if glob else "") + _METRIC_LABELS[metric]
     prio = criteria.index(metric) + 1
     value = _fmt(best[metric], metric)
     rank = best[f"rank_{metric}"]

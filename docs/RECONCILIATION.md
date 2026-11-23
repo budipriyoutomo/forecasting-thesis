@@ -1223,6 +1223,32 @@ AGENTS.md #20. Permintaan eksplisit user = diskusi yang disyaratkan; dicatat di 
 baru langsung `SELECTED`, sehingga perencanaan bisa dijalankan tanpa langkah memilih. `forecast_runs.ranking_metric`
 tetap NULL untuk run baru, karena kriteria disnapshot di `selection_analysis.criteria`.
 
+## Metode Terbaik Global — rata-rata seluruh produk (23 Nov 2026)
+
+**Permintaan user.** "Pemilihan metode forecast terbaik untuk keseluruhan data / produk bukan per produk,
+evaluasi pengujian peramalan pakai rata-rata seluruh produk." Mengubah §"Metode Terbaik Otomatis" (yang
+memilih per produk); aturan prioritas 1) MAD, 2) MAPE, 3) |MFE| **tidak berubah**, hanya cakupannya.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- **Rata-rata sederhana** (bobot sama per produk) dari MAD, MAPE, dan **MFE bertanda** tiap metode; |rata-rata MFE|
+  dipakai untuk peringkat (bias positif & negatif antarproduk bisa saling meniadakan — itu memang arti "rata-rata
+  bias"). Catatan: MAD berskala satuan produk, jadi produk ber-volume besar lebih berpengaruh pada rata-rata MAD;
+  ini konsekuensi langsung dari "rata-rata seluruh produk".
+- **Perbandingan adil**: hanya metode yang berhasil di semua produk yang dibandingkan, dirata-rata pada himpunan
+  produk yang sama (mis. LSTM yang hanya jalan di produk ber-histori panjang tidak dibandingkan dengan rata-rata
+  produk lain). Tidak ada yang berhasil di semua produk → cakupan terbanyak. Dikeluarkan → `excluded_methods`.
+- MAPE tak terdefinisi di suatu produk → dirata-rata dari produk yang terdefinisi.
+- Produk gagal (`INSUFFICIENT_DATA` / semua metode gagal) tidak ikut dirata-rata.
+- **Fallback per produk** bila metode global gagal di produk itu: pakai metode terbaik produk itu sendiri,
+  dicatat di `selection_analysis.fallback_reason`. Ini mode otomatis, jadi tidak melanggar larangan #14
+  (larangan itu khusus mode manual).
+- Disimpan tanpa migration: `selection_analysis` tiap hasil = analisis global (`scope: "global"`, `n_products`,
+  `excluded_methods`, `ranking[]` berisi rata-rata). `candidates_evaluated` tetap metrik produk itu, `rank` = peringkat
+  global. Run lama (tanpa `scope`) tetap tampil seperti sebelumnya.
+- UI: panel "Metode terbaik untuk seluruh produk" di atas tabel hasil run; detail produk memberi catatan bahwa
+  peringkat = peringkat rata-rata seluruh produk.
+- Override planner tidak berubah: tetap bisa per produk atau satu metode untuk semua produk.
+
 ## Tampilan Perhitungan Perencanaan Persediaan (23 Nov 2026)
 
 **Permintaan user.** Di `/forecast/runs/{id}` bagian Perencanaan Persediaan, tampilkan: 1) hasil MRP per bulan per

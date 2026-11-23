@@ -375,3 +375,20 @@ async def test_run_manual_tanpa_analisis_pemilihan(smooth_df):
     _, results = await svc.create_run(USER, ["p1"], horizon=7, method="moving_average")
 
     assert results[0].metrics.get("selection_analysis") is None
+
+
+@pytest.mark.asyncio
+async def test_run_auto_satu_metode_terbaik_global_untuk_semua_produk(smooth_df, erratic_df):
+    # 23 Nov 2026 — metode terbaik dipilih dari rata-rata pengujian seluruh produk.
+    svc = _service(
+        [_product("p1", "SKU-001"), _product("p2", "SKU-002")],
+        {"p1": _rows(smooth_df), "p2": _rows(erratic_df)},
+    )
+
+    _, results = await svc.create_run(USER, ["p1", "p2"], horizon=7)
+
+    assert results[0].method_used == results[1].method_used
+    analysis = results[0].metrics["selection_analysis"]
+    assert analysis["scope"] == "global"
+    assert analysis["n_products"] == 2
+    assert results[1].metrics["selection_analysis"]["best_method"] == analysis["best_method"]

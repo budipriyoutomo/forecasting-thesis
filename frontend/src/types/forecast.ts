@@ -36,10 +36,20 @@ export interface SelectionRankingRow {
   mad: number | null;
   mfe: number | null;
   mape: number | null;
+  /** Cakupan global: jumlah produk yang dirata-rata untuk metode ini. */
+  n_products?: number;
 }
 
 /** 23 Nov 2026 — kenapa sistem memilih metode terbaik (mode otomatis). */
 export interface SelectionAnalysis {
+  /** "global" = satu metode untuk seluruh produk dari RATA-RATA pengujian (23 Nov 2026); run lama tanpa field. */
+  scope?: "global" | "product";
+  /** Jumlah produk yang dirata-rata. */
+  n_products?: number;
+  /** Metode yang tidak dibandingkan karena gagal/tidak berlaku di sebagian produk. */
+  excluded_methods?: string[];
+  /** Diisi bila metode global gagal di produk ini → produk memakai metode terbaiknya sendiri. */
+  fallback_reason?: string | null;
   best_method: string;
   /** Urutan prioritas pengujian yang dipakai (snapshot Pengaturan Forecast saat run): MAD → MAPE → MFE. */
   criteria: ("mad" | "mfe" | "mape")[];

@@ -706,6 +706,10 @@ def run_forecast_for_product(df: pd.DataFrame, horizon: int, requested_method: s
     # disimpan (metrik + deret + penjelasan + peringkat) supaya planner bisa mengganti.
     candidates = [{"method": m, **metrics(r), "forecast": r.forecast, "explanation": ...}
                   for m, r in candidates_evaluated]
+    # Banyak produk (run_forecast_for_products): langkah di atas dijalankan untuk TIAP produk,
+    # lalu SATU metode dipilih dari RATA-RATA pengujian seluruh produk (§6.1b butir 6):
+    #   outcome = select_global_method([candidates_p1, candidates_p2, ...], selection_metrics)
+    # Metode global gagal di produk ini → terbaik produk ini sendiri (fallback_reason).
     outcome = select_best_method(candidates, selection_metrics)   # selection_metrics = display_metrics
     best = dict(candidates_evaluated)[outcome.best_method]
     return ForecastResultRecord(
@@ -741,6 +745,14 @@ memilih metode terbaik (§6.1b), jadi run baru langsung `SELECTED`; service ini 
 3. Seri di semua metrik → nama metode (stabil). `decided_by` = metrik yang memisahkan peringkat 1 dari 2 (null bila satu kandidat / seri total).
 4. Tiap kandidat di `candidates_evaluated` membawa `rank_<metrik>` dan `rank` (1 = terbaik), diurutkan menurut `rank`.
 5. **Analisis** (`selection_analysis`, disimpan di `forecast_results.metrics` JSONB — tanpa migration): `{best_method, criteria, decided_by, ranking[], summary, reasons[]}`. `summary` menjelaskan urutan prioritas & metrik penentu (nilai pemenang vs peringkat 2); `reasons` per metrik sesuai prioritas (nilai, peringkat, pembanding terdekat, arah bias MFE; bila metode lain unggul di metrik berprioritas rendah → dicatat "tidak mengubah keputusan"), interpretasi MAPE (Lewis) dan pembanding terdekat. `summary` juga ditempel di depan `explanation`. Mode manual / run lama → `null`.
+6. **Cakupan GLOBAL (23 Nov 2026, permintaan user)** — metode terbaik dipilih **sekali untuk seluruh produk di run**, bukan per produk. `forecast_service.run_forecast_for_products(items, ...)` menjalankan semua metode di tiap produk, lalu `select_global_method(per_product_candidates, metrics)` merata-ratakan **MAD, MAPE, dan MFE (bertanda)** tiap metode atas seluruh produk yang berhasil diuji dan menerapkan aturan 1–3 di atas pada rata-rata itu. Aturan tambahan:
+   - Hanya metode yang berhasil di **semua** produk yang dibandingkan, dan rata-ratanya dihitung pada himpunan produk yang sama (adil). Bila tidak ada metode yang berhasil di semua produk → metode dengan cakupan terbanyak, dirata-rata pada irisan produknya. Metode yang dikeluarkan dicatat di `excluded_methods`.
+   - MAPE tak terdefinisi di suatu produk → dirata-rata dari produk yang terdefinisi.
+   - Produk `INSUFFICIENT_DATA` / semua metode gagal tidak ikut dirata-rata.
+   - Metode global gagal di produk tertentu → produk itu memakai metode terbaiknya sendiri (aturan 1–3 pada metrik produknya) dan alasannya dicatat di `selection_analysis.fallback_reason`.
+   - `selection_analysis` tiap hasil = analisis global yang sama: `+ {scope: "global", n_products, excluded_methods}`; `ranking[]` berisi metrik **rata-rata** + `n_products`. `candidates_evaluated` tetap membawa metrik **produk itu**, tetapi `rank`/`rank_<metrik>` = peringkat global (metode yang dikeluarkan → `rank: null`).
+   - UI: panel "Metode terbaik untuk seluruh produk" (`GlobalSelectionPanel`) di atas tabel hasil run, berisi tabel rata-rata pengujian per metode.
+   - Satu produk (`run_forecast_for_product`) = kasus khusus dengan `n_products = 1` → hasilnya sama dengan pemilihan per produk.
 
 ### 6.2 Metrik Evaluasi (`evaluation.py`)
 

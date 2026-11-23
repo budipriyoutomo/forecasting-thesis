@@ -15,6 +15,9 @@ Alur (docs/ARCHITECTURE.md §6.1):
     beserta analisis alasannya (`selection_analysis`). Planner tetap bisa mengganti metode
     lewat override append-only (`forecast_selection_service`). Tak ada klasifikasi kuadran
     (larangan #12).
+  - Banyak produk (`run_forecast_for_products`): metode terbaik dipilih SEKALI untuk seluruh
+    produk dari rata-rata pengujian seluruh produk (23 Nov 2026, permintaan user) —
+    `selection.select_global_method`.
 """
 import logging
 from dataclasses import dataclass
@@ -25,7 +28,12 @@ from app.config import get_settings
 from app.services.forecasting import registry
 from app.services.forecasting.preprocessing import to_period_series
 from app.services.forecasting.evaluation import mape_interpretation
-from app.services.forecasting.selection import DEFAULT_CRITERIA, select_best_method
+from app.services.forecasting.selection import (
+    DEFAULT_CRITERIA,
+    method_label,
+    select_best_method,
+    select_global_method,
+)
 from app.services.forecasting.types import EngineOptions, EngineResult, ForecastPoint
 from app.utils.exceptions import UnsupportedForecastMethodError
 
@@ -92,23 +100,14 @@ def _with_mape_label(explanation: str | None, value) -> str:
     return f"{explanation} {label}".strip() if explanation else label
 
 
-def run_forecast_for_product(
-    df: pd.DataFrame,
-    horizon: int,
-    requested_method: str | None = None,
-    enabled_methods: set[str] | None = None,
-    options: EngineOptions | None = None,
-    selection_metrics=DEFAULT_CRITERIA,
-) -> ForecastResultRecord:
+def _precheck(df: pd.DataFrame, requested_method: str | None) -> ForecastResultRecord | None:
+    """INSUFFICIENT_DATA fail-fast (AGENTS §5 langkah 1); None = data cukup."""
     settings = get_settings()
-    enabled = registry.get_enabled_methods(enabled_methods)
-
     if df.empty or "date" not in df.columns or df["quantity"].dropna().empty:
         return ForecastResultRecord(
             status="INSUFFICIENT_DATA",
             status_reason="Belum ada histori demand (kolom actual) untuk produk ini.",
         )
-
     series = to_period_series(df)
     min_periods = settings.LSTM_MIN_PERIODS if requested_method == "lstm" else settings.BACKTEST_MIN_PERIODS
     if len(series) < min_periods:
@@ -117,52 +116,133 @@ def run_forecast_for_product(
             status_reason=f"Histori {len(series)} periode, minimal {min_periods} periode"
             + (" untuk LSTM." if requested_method == "lstm" else "."),
         )
+    return None
 
-    # ── MODE MANUAL ──────────────────────────────────────────────────────
-    if requested_method is not None:
-        if requested_method not in enabled:
-            raise UnsupportedForecastMethodError(
-                f"Metode '{requested_method}' tidak dikenal atau tidak aktif"
-            )
-        forecast_fn = registry.MODEL_REGISTRY[requested_method]
-        try:
-            result = forecast_fn(df, horizon, options=options)
-        except Exception:  # TIDAK fallback di mode manual (AGENTS.md §5/#14)
-            log.warning("Metode manual '%s' gagal", requested_method, exc_info=True)
-            return ForecastResultRecord(
-                status="MODEL_SELECTION_FAILED",
-                method_used=requested_method,
-                selection_mode="manual",
-                status_reason=f"Metode {requested_method} gagal dijalankan untuk data produk ini "
-                "(mode manual tidak dialihkan ke metode lain).",
-            )
-        return _completed(requested_method, "manual", result, [_candidate_row(requested_method, result)])
 
-    # ── MODE OTOMATIS: Comparative Selection ─────────────────────────────
-    evaluated: list[tuple[str, EngineResult]] = []
+def _run_manual(df, horizon, method, enabled, options) -> ForecastResultRecord:
+    if method not in enabled:
+        raise UnsupportedForecastMethodError(f"Metode '{method}' tidak dikenal atau tidak aktif")
+    forecast_fn = registry.MODEL_REGISTRY[method]
+    try:
+        result = forecast_fn(df, horizon, options=options)
+    except Exception:  # TIDAK fallback di mode manual (AGENTS.md §5/#14)
+        log.warning("Metode manual '%s' gagal", method, exc_info=True)
+        return ForecastResultRecord(
+            status="MODEL_SELECTION_FAILED",
+            method_used=method,
+            selection_mode="manual",
+            status_reason=f"Metode {method} gagal dijalankan untuk data produk ini "
+            "(mode manual tidak dialihkan ke metode lain).",
+        )
+    return _completed(method, "manual", result, [_candidate_row(method, result)])
+
+
+def _evaluate_all(df, horizon, enabled, options) -> dict[str, EngineResult]:
+    """Jalankan seluruh metode aktif; yang gagal dikecualikan (AGENTS §5 langkah 4)."""
+    evaluated: dict[str, EngineResult] = {}
     for method_name in sorted(enabled):  # sorted → ranking stabil saat seri
         forecast_fn = registry.MODEL_REGISTRY[method_name]
         try:
-            evaluated.append((method_name, forecast_fn(df, horizon, options=options)))
+            evaluated[method_name] = forecast_fn(df, horizon, options=options)
         except Exception:
             log.warning("Metode '%s' gagal saat backtest/fit, dikecualikan", method_name, exc_info=True)
+    return evaluated
 
-    if not evaluated:
-        return ForecastResultRecord(
-            status="MODEL_SELECTION_FAILED",
-            status_reason="Semua metode aktif gagal saat backtest/fit untuk data produk ini.",
-        )
 
-    candidates = [_candidate_row(name, r) for name, r in evaluated]
-    outcome = select_best_method(candidates, selection_metrics)
+def _apply_global(evaluated: dict[str, EngineResult], outcome, metrics) -> ForecastResultRecord:
+    """Hasil satu produk memakai metode terbaik GLOBAL; bila metode itu gagal di produk ini →
+    metode terbaik produk ini sendiri (dicatat di `selection_analysis.fallback_reason`)."""
+    candidates = [_candidate_row(name, r) for name, r in evaluated.items()]
     ranks = {row["method"]: row for row in outcome.ranking}
     for c in candidates:
-        row = ranks[c["method"]]
-        c.update({k: v for k, v in row.items() if k.startswith("rank")})
-    candidates.sort(key=lambda c: c["rank"])
+        row = ranks.get(c["method"])
+        c.update({k: v for k, v in row.items() if k.startswith("rank")} if row else {"rank": None})
+    candidates.sort(key=lambda c: (c["rank"] is None, c["rank"] or 0, c["method"]))
 
-    best = dict(evaluated)[outcome.best_method]
-    record = _completed(outcome.best_method, "auto", best, candidates)
-    record.explanation = f"{outcome.summary} {record.explanation}".strip()
-    record.selection_analysis = outcome.to_dict()
+    analysis = outcome.to_dict()
+    chosen = outcome.best_method
+    if chosen not in evaluated:
+        own = select_best_method(candidates, metrics)
+        chosen = own.best_method
+        analysis["fallback_reason"] = (
+            f"{method_label(outcome.best_method)} (terbaik untuk seluruh produk) gagal/tidak berlaku "
+            f"untuk produk ini, sehingga dipakai {method_label(chosen)} — metode terbaik hasil "
+            "pengujian produk ini sendiri."
+        )
+
+    record = _completed(chosen, "auto", evaluated[chosen], candidates)
+    lead = analysis.get("fallback_reason") or outcome.summary
+    record.explanation = f"{lead} {record.explanation}".strip()
+    record.selection_analysis = analysis
     return record
+
+
+def run_forecast_for_products(
+    items: list[tuple[pd.DataFrame, EngineOptions | None]],
+    horizon: int,
+    requested_method: str | None = None,
+    enabled_methods: set[str] | None = None,
+    selection_metrics=DEFAULT_CRITERIA,
+) -> list[ForecastResultRecord]:
+    """Forecast banyak produk sekaligus. Mode otomatis: SATU metode terbaik untuk seluruh produk,
+    dipilih dari RATA-RATA pengujian (MAD/MAPE/MFE) seluruh produk (23 Nov 2026, permintaan
+    user). Produk gagal (INSUFFICIENT_DATA / semua metode gagal) tidak ikut dirata-rata.
+    Urutan hasil = urutan `items`."""
+    enabled = registry.get_enabled_methods(enabled_methods)
+    if requested_method is not None and requested_method not in enabled:
+        raise UnsupportedForecastMethodError(
+            f"Metode '{requested_method}' tidak dikenal atau tidak aktif"
+        )
+
+    records: list[ForecastResultRecord | None] = []
+    evaluations: list[dict[str, EngineResult] | None] = []
+    for df, options in items:
+        failed = _precheck(df, requested_method)
+        if failed is not None:
+            records.append(failed)
+            evaluations.append(None)
+        elif requested_method is not None:
+            # ── MODE MANUAL ── langsung 1 metode, tanpa fallback
+            records.append(_run_manual(df, horizon, requested_method, enabled, options))
+            evaluations.append(None)
+        else:
+            evaluated = _evaluate_all(df, horizon, enabled, options)
+            if not evaluated:
+                records.append(
+                    ForecastResultRecord(
+                        status="MODEL_SELECTION_FAILED",
+                        status_reason="Semua metode aktif gagal saat backtest/fit untuk data produk ini.",
+                    )
+                )
+                evaluations.append(None)
+            else:
+                records.append(None)
+                evaluations.append(evaluated)
+
+    # ── MODE OTOMATIS: metode terbaik global dari rata-rata seluruh produk ──
+    pending = [e for e in evaluations if e is not None]
+    if pending:
+        per_product = [[_candidate_row(name, r) for name, r in e.items()] for e in pending]
+        outcome = select_global_method(per_product, selection_metrics)
+        for i, e in enumerate(evaluations):
+            if e is not None:
+                records[i] = _apply_global(e, outcome, selection_metrics)
+    return records  # type: ignore[return-value]
+
+
+def run_forecast_for_product(
+    df: pd.DataFrame,
+    horizon: int,
+    requested_method: str | None = None,
+    enabled_methods: set[str] | None = None,
+    options: EngineOptions | None = None,
+    selection_metrics=DEFAULT_CRITERIA,
+) -> ForecastResultRecord:
+    """Satu produk — kasus khusus `run_forecast_for_products` (rata-rata satu produk = produk itu)."""
+    return run_forecast_for_products(
+        [(df, options)],
+        horizon,
+        requested_method=requested_method,
+        enabled_methods=enabled_methods,
+        selection_metrics=selection_metrics,
+    )[0]

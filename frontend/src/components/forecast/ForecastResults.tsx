@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { GlobalSelectionPanel, globalAnalysis } from "@/components/forecast/GlobalSelectionPanel";
 import { ProductResultSheet } from "@/components/forecast/ProductResultSheet";
 import { ProductResultsTable } from "@/components/forecast/ProductResultsTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,7 +15,8 @@ import type { ForecastResult, ForecastRunResponse } from "@/types/forecast";
 import type { DisplayMetric } from "@/types/forecastSettings";
 import type { Product } from "@/types/product";
 
-// 23 Nov 2026 — mode otomatis menjalankan semua metode aktif dan sistem memilih yang terbaik;
+// 23 Nov 2026 — mode otomatis menjalankan semua metode aktif dan sistem memilih SATU metode terbaik
+// untuk seluruh produk dari rata-rata pengujian (panel GlobalSelectionPanel di atas tabel);
 // planner bisa mengganti per produk (onSelectMethod) atau satu metode untuk semua produk
 // (onSelectAll). Run Fase 11.15 yang belum dipilih tetap dilewati di perencanaan persediaan.
 // CR v3.6 §5 — tampilan: tabel ringkasan produk + Sheet detail per produk (bukan satu Card
@@ -50,9 +52,13 @@ export function ForecastResults({
   // menampilkan hasil terbaru.
   const [openId, setOpenId] = useState<string | null>(null);
   const open = results.find((r) => (r.id ?? r.product_id) === openId) ?? null;
+  // 23 Nov 2026 — satu metode terbaik untuk seluruh produk (rata-rata pengujian).
+  const global = globalAnalysis(results);
 
   return (
     <div className="flex flex-col gap-4">
+      {global && <GlobalSelectionPanel analysis={global} displayMetrics={displayMetrics} />}
+
       {nPending > 0 && (
         <Alert variant="warning">
           <AlertDescription>

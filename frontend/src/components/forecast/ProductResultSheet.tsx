@@ -127,6 +127,12 @@ export function ProductResultDetail({
                 onSelectMethod && r.selection_mode !== "manual" ? (method) => onSelectMethod(r, method) : undefined
               }
             />
+            {r.selection_analysis?.scope === "global" && (r.selection_analysis.n_products ?? 1) > 1 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Angka di tabel = hasil pengujian produk ini. Peringkat = peringkat rata-rata seluruh{" "}
+                {r.selection_analysis.n_products} produk, dasar pemilihan metode terbaik.
+              </p>
+            )}
             {r.selection_mode === "manual" && (
               <p className="text-sm text-muted-foreground">
                 Mode manual — metode dipilih sebelum run, tidak ada perbandingan.

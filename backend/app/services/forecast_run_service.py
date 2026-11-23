@@ -12,7 +12,8 @@ Metode manual tak dikenal ditolak di awal (400) sebelum run dibuat (§6.6).
 
 Metode aktif & opsi engine dibaca SEKALI per run dari master data Pengaturan Forecast
 (`settings`, Fase 11.2a). 23 Nov 2026: mode otomatis memilih metode terbaik dengan kriteria
-metrik pengujian (`display_metrics`); kriteria disnapshot di `metrics.selection_analysis`
+metrik pengujian (`display_metrics`) — SATU metode untuk seluruh produk di run, dari rata-rata
+pengujian seluruh produk (`selection_analysis.scope = "global"`); kriteria disnapshot di `metrics.selection_analysis`
 (`forecast_runs.ranking_metric` tetap riwayat run lama, run baru NULL).
 Variabel eksternal aktif (`external`, Fase 11.2b) disusun per produk → `options.exog`.
 """
@@ -109,9 +110,19 @@ class ForecastRunService:
         )
         await self._repo.add_run(run)
 
+        # 23 Nov 2026 — data seluruh produk dikumpulkan dulu, lalu diforecast SEKALIGUS supaya
+        # mode otomatis memilih SATU metode terbaik dari rata-rata pengujian seluruh produk.
+        prepared = [await self._prepare(product, options) for product in products]
+        records = forecast_service.run_forecast_for_products(
+            [(df, opts) for df, opts, _ in prepared],
+            horizon,
+            requested_method=method,
+            enabled_methods=enabled,
+            selection_metrics=criteria,
+        )
+
         results = []
-        for product in products:
-            record, history = await self._forecast_one(product, horizon, method, enabled, options, criteria)
+        for product, record, (_, _, history) in zip(products, records, prepared):
             results.append(
                 ForecastResult(
                     run_id=run.id,
@@ -142,15 +153,8 @@ class ForecastRunService:
         await self._repo.save_run(run)
         return run, results
 
-    async def _forecast_one(
-        self,
-        product,
-        horizon: int,
-        method: str | None,
-        enabled: set[str],
-        options: EngineOptions,
-        criteria: list[str] | None = None,
-    ):
+    async def _prepare(self, product, options: EngineOptions):
+        """(df histori, opsi engine + variabel eksternal produk, snapshot histori)."""
         rows = await self._demand.list_for_product(str(product.id), product.code)
         # Kolom eksplisit supaya df punya skema saat rows kosong (INSUFFICIENT_DATA,
         # bukan crash). `actual` = target/label ML → dipetakan ke kolom `quantity`.
@@ -161,17 +165,9 @@ class ForecastRunService:
         history = sorted(
             ({"date": str(r.period), "value": float(r.actual)} for r in rows), key=lambda h: h["date"]
         )
-        record = forecast_service.run_forecast_for_product(
-            df,
-            horizon,
-            requested_method=method,
-            enabled_methods=enabled,
-            options=replace(options, exog=await self._external.exog_for_product(product.id))
-            if self._external
-            else options,
-            selection_metrics=criteria,
-        )
-        return record, history
+        if self._external:
+            options = replace(options, exog=await self._external.exog_for_product(product.id))
+        return df, options, history
 
     async def get_run(self, user_id: str, run_id: str):
         run = await self._require_run(user_id, run_id)

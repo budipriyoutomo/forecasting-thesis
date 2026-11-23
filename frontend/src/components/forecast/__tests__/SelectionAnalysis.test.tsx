@@ -39,3 +39,23 @@ describe("SelectionAnalysis (23 Nov 2026 — metode terbaik otomatis)", () => {
     expect(container.innerHTML).toBe("");
   });
 });
+
+describe("SelectionAnalysis — cakupan global (23 Nov 2026)", () => {
+  it("fallback produk: tampilkan alasan, bukan 'diganti planner'", () => {
+    render(
+      <SelectionAnalysis
+        analysis={{ ...analysis, scope: "global", n_products: 3, fallback_reason: "XGBoost gagal untuk produk ini." }}
+        methodUsed="random_forest"
+      />,
+    );
+
+    expect(screen.getByText("XGBoost gagal untuk produk ini.")).toBeDefined();
+    expect(screen.queryByText(/diganti planner/i)).toBeNull();
+  });
+
+  it("menyebut bahwa pilihan berlaku untuk seluruh produk", () => {
+    render(<SelectionAnalysis analysis={{ ...analysis, scope: "global", n_products: 3 }} methodUsed="xgboost" />);
+
+    expect(screen.getByText(/dipilih dari rata-rata pengujian 3 produk/i)).toBeDefined();
+  });
+});
