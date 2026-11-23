@@ -157,6 +157,27 @@ describe("RunDetail (CR v3.6 §1/§4)", () => {
     expect(screen.getByRole("menuitem", { name: /reorder \(pdf\) — jalankan perencanaan dulu/i })).toBeDefined();
   });
 
+  it("navigasi bawah tiap langkah: Kembali ke langkah sebelumnya, Lanjut ke berikutnya", async () => {
+    stub({ run: runOf([RESULT], 0), projection: [PROJ_ROW] });
+    renderDetail();
+
+    // default langkah 5 (semua selesai) — tidak ada tombol Lanjut, ada Kembali ke langkah 4.
+    await screen.findByRole("heading", { name: /5\. reorder & gudang/i });
+    expect(screen.queryByRole("button", { name: /^lanjut/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /kembali: evaluasi inventory/i }));
+    expect(await screen.findByRole("heading", { name: /4\. evaluasi usulan inventory/i })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: /lanjut: reorder & gudang/i }));
+    expect(await screen.findByRole("heading", { name: /5\. reorder & gudang/i })).toBeDefined();
+  });
+
+  it("header memuat status run + link ke daftar run", async () => {
+    stub({ run: runOf([RESULT], 0) });
+    renderDetail();
+
+    const link = await screen.findByRole("link", { name: /daftar run/i });
+    expect(link.getAttribute("href")).toBe("/forecast");
+  });
+
   it("run tidak ada → pesan + link kembali", async () => {
     stub({ run: runOf([RESULT], 0) });
     vi.spyOn(api.forecast, "getRun").mockResolvedValue({

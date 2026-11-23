@@ -18,19 +18,19 @@ export function RunStepper({
 }) {
   return (
     <nav aria-label="Langkah run">
-      <ol className="grid gap-2 sm:grid-cols-4">
+      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {steps.map((step, i) => {
           const current = step.key === active;
           return (
-            <li key={step.key}>
+            <li key={step.key} className="min-w-0">
               <button
                 type="button"
                 aria-current={current ? "step" : undefined}
                 onClick={() => onChange(step.key)}
                 className={cn(
-                  "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50",
-                  current && "border-primary bg-muted/40",
-                  step.status === "locked" && "opacity-70",
+                  "flex h-full w-full items-start gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  current && "border-primary bg-primary/5 ring-1 ring-primary hover:bg-primary/10",
+                  step.status === "locked" && !current && "bg-muted/30 text-muted-foreground",
                 )}
               >
                 <span
@@ -38,7 +38,8 @@ export function RunStepper({
                   className={cn(
                     "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
                     step.status === "done" && "border-success bg-success text-success-foreground",
-                    step.status === "todo" && "border-primary text-primary",
+                    step.status === "todo" && "border-primary bg-primary text-primary-foreground",
+                    step.status === "locked" && "border-dashed text-muted-foreground",
                   )}
                 >
                   {step.status === "done" ? (
@@ -49,14 +50,21 @@ export function RunStepper({
                     i + 1
                   )}
                 </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-sm font-medium">
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-sm font-medium leading-tight">
                     {i + 1}. {step.label}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      step.status === "done" && "text-success",
+                      step.status === "todo" && "font-medium text-primary",
+                    )}
+                  >
                     {step.status === "done" ? "Selesai" : step.status === "todo" ? "Perlu tindakan" : "Terkunci"}
-                    {step.hint && ` · ${step.hint}`}
                   </span>
+                  {/* Baris sendiri: di kartu sempit (5 kolom @1280px) hint tidak patah menempel ke status. */}
+                  {step.hint && <span className="text-xs text-muted-foreground">{step.hint}</span>}
                 </span>
               </button>
             </li>

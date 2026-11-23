@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Play, Plus } from "lucide-react";
+import { ArrowLeft, Lock, MoreHorizontal, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -16,6 +16,7 @@ import { ForecastResults } from "@/components/forecast/ForecastResults";
 import { MethodSelectionDialog } from "@/components/forecast/MethodSelectionDialog";
 import { runLabel } from "@/components/forecast/RunPicker";
 import { RunStepper } from "@/components/forecast/RunStepper";
+import { StepSection } from "@/components/forecast/StepSection";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
 import { InventoryEvaluation } from "@/components/planning/InventoryEvaluation";
@@ -142,105 +143,131 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
     />
   );
 
+  const go = (key: RunStepKey) => {
+    setActive(key);
+    // Tombol navigasi ada di bawah konten — bawa user kembali ke stepper supaya langkah baru
+    // terbaca dari atas.
+    document.getElementById("run-steps")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+  const idx = steps.findIndex((s) => s.key === step.key);
+  const sectionProps = { index: idx, steps, onNavigate: go };
+  const prereq = step.status === "locked" ? steps.slice(0, idx).reverse().find((s) => s.status !== "locked") : undefined;
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Detail run"
-        description={
-          listItem
-            ? `${runLabel(listItem)} · horizon ${run.horizon} bulan · ${run.n_products} produk`
-            : `Run ${run.run_id.slice(0, 8)} · horizon ${run.horizon} bulan · ${run.n_products} produk`
-        }
-        actions={
-          <>
-            <ExportMenu
-              runId={runId}
-              hasPlanning={hasPlanning}
-              pending={exporter.isPending}
-              onExport={(input) => exporter.mutate(input)}
-            />
-            {canRun && (
-              <Button asChild>
-                <Link href="/forecast/new">
-                  <Plus />
-                  Forecast baru
-                </Link>
-              </Button>
-            )}
-          </>
-        }
-      />
+      <div className="flex flex-col gap-2">
+        <Button asChild variant="link" size="sm" className="h-auto w-fit px-0 text-muted-foreground">
+          <Link href="/forecast">
+            <ArrowLeft />
+            Daftar run
+          </Link>
+        </Button>
+        <PageHeader
+          title="Detail run"
+          description={
+            listItem
+              ? `${runLabel(listItem)} · horizon ${run.horizon} bulan · ${run.n_products} produk`
+              : `Run ${run.run_id.slice(0, 8)} · horizon ${run.horizon} bulan · ${run.n_products} produk`
+          }
+          actions={
+            <>
+              <ExportMenu
+                runId={runId}
+                hasPlanning={hasPlanning}
+                pending={exporter.isPending}
+                onExport={(input) => exporter.mutate(input)}
+              />
+              {canRun && (
+                <Button asChild>
+                  <Link href="/forecast/new">
+                    <Plus />
+                    Forecast baru
+                  </Link>
+                </Button>
+              )}
+            </>
+          }
+        />
+      </div>
       <FormError message={exporter.isError ? exporter.error.message : null} />
 
-      <RunStepper steps={steps} active={current} onChange={setActive} />
+      <div id="run-steps" className="scroll-mt-4">
+        <RunStepper steps={steps} active={current} onChange={setActive} />
+      </div>
 
       {step.status === "locked" && (
         <Alert variant="warning">
-          <AlertTitle>Langkah ini belum bisa dikerjakan</AlertTitle>
-          <AlertDescription>{step.lockedReason}</AlertDescription>
+          <Lock className="size-4" />
+          <AlertTitle>Langkah {idx + 1} belum bisa dikerjakan</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <span>{step.lockedReason}</span>
+            {prereq && (
+              <Button size="sm" variant="outline" onClick={() => go(prereq.key)}>
+                <ArrowLeft />
+                Buka langkah {steps.indexOf(prereq) + 1}: {prereq.label}
+              </Button>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
       {current === "forecast" && (
-        <section className="flex flex-col gap-4" aria-labelledby="step-forecast">
-          <h2 id="step-forecast" className="text-lg font-medium">
-            1. Forecast
-          </h2>
+        <StepSection
+          {...sectionProps}
+          title="Forecast"
+          description="Hasil forecast per produk dari seluruh metode aktif. Klik baris produk untuk melihat grafik, metrik pengujian, dan penjelasan."
+          nextLabel={pending > 0 ? `Lanjut: pilih metode untuk ${pending} produk` : undefined}
+        >
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Badge variant={status.variant}>{status.label}</Badge>
-            <span>
-              {run.n_completed} berhasil · {run.n_failed} gagal dari {run.n_products} produk
+            <span className="text-muted-foreground">
+              <span className="font-medium text-foreground">{run.n_completed}</span> berhasil ·{" "}
+              <span className={run.n_failed > 0 ? "font-medium text-destructive" : "font-medium text-foreground"}>
+                {run.n_failed}
+              </span>{" "}
+              gagal dari {run.n_products} produk
               {pending > 0 && ` · ${pending} menunggu pemilihan metode`}
             </span>
           </div>
           {resultsView(false)}
-          {pending > 0 && (
-            <div>
-              <Button onClick={() => setActive("select")}>Lanjut: pilih metode untuk {pending} produk</Button>
-            </div>
-          )}
-        </section>
+        </StepSection>
       )}
 
       {current === "select" && step.status !== "locked" && (
-        <section className="flex flex-col gap-4" aria-labelledby="step-select">
-          <h2 id="step-select" className="text-lg font-medium">
-            2. Metode terbaik
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Sistem memilih metode terbaik per produk dari pengujian peramalan (prioritas 1) MAD, 2) MAPE, 3) MFE) — buka Detail produk untuk
-            melihat analisis kenapa metode itu terbaik. Planner tetap bisa mengganti metode per produk, atau satu metode
-            untuk semua produk (alasan wajib).
-          </p>
+        <StepSection
+          {...sectionProps}
+          title="Metode terbaik"
+          description={
+            <>
+              Sistem memilih metode terbaik per produk dari pengujian peramalan (prioritas MAD → MAPE → MFE). Buka
+              detail produk untuk melihat analisis alasannya. Planner tetap bisa mengganti metode per produk atau satu
+              metode untuk semua produk (alasan wajib).
+            </>
+          }
+        >
           {!canSelect && (
             <Alert>
               <AlertDescription>Hanya PPIC/Admin yang dapat memilih metode. Anda melihat dalam mode baca.</AlertDescription>
             </Alert>
           )}
           {resultsView(canSelect)}
-          {pending === 0 && (
-            <div>
-              <Button onClick={() => setActive("planning")}>Lanjut: perencanaan</Button>
-            </div>
-          )}
-        </section>
+        </StepSection>
       )}
 
       {current === "planning" && step.status !== "locked" && (
-        <section className="flex flex-col gap-4" aria-labelledby="step-planning">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="step-planning" className="text-lg font-medium">
-                3. Perencanaan persediaan
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Satu tombol menjalankan MRP → safety & buffer stock → EOQ → ROP → kapasitas gudang per grup material →
-                simulasi stok → evaluasi inventory & biaya. Tiap tab di bawah menampilkan perhitungannya. Stok awal dari
-                snapshot ERP terakhir (menu Persediaan Material).
-              </p>
-            </div>
-            {canPlan && (
-              <div className="flex items-center gap-2">
+        <StepSection
+          {...sectionProps}
+          title="Perencanaan persediaan"
+          description={
+            <>
+              Satu tombol menjalankan MRP → safety &amp; buffer stock → EOQ → ROP → kapasitas gudang per grup material →
+              simulasi stok → evaluasi inventory &amp; biaya. Stok awal diambil dari snapshot ERP terakhir (menu
+              Persediaan Material).
+            </>
+          }
+          actions={
+            canPlan && (
+              <>
                 <Button disabled={planning.isPending} onClick={runPlanning}>
                   <Play />
                   {planning.isPending ? "Menjalankan…" : hasPlanning ? "Jalankan ulang perencanaan" : "Jalankan perencanaan"}
@@ -254,13 +281,14 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Hitung ulang sebagian</DropdownMenuLabel>
                     <DropdownMenuItem disabled={reorder.isPending} onSelect={() => reorder.mutate({ runId })}>
-                      Hitung ulang reorder saja (tanpa proyeksi & biaya)
+                      Hitung ulang reorder saja (tanpa proyeksi &amp; biaya)
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
-            )}
-          </div>
+              </>
+            )
+          }
+        >
           {pending > 0 && (
             <Alert variant="warning">
               <AlertDescription>
@@ -284,38 +312,26 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
           {projection.isPending ? (
             <TableSkeleton />
           ) : hasPlanning ? (
-            <>
-              <InventoryPlanBreakdown
-                projection={projection.data ?? []}
-                recommendations={reorderList.data ?? []}
-                materials={materials ?? []}
-              />
-              <div>
-                <Button variant="outline" onClick={() => setActive("evaluation")}>
-                  Lanjut: evaluasi usulan inventory
-                </Button>
-              </div>
-            </>
+            <InventoryPlanBreakdown
+              projection={projection.data ?? []}
+              recommendations={reorderList.data ?? []}
+              materials={materials ?? []}
+            />
           ) : (
             <EmptyState
               message="Perencanaan belum dijalankan untuk run ini."
-              hint={canPlan ? "Klik “Jalankan perencanaan”." : "Minta PPIC menjalankan perencanaan."}
+              hint={canPlan ? "Klik “Jalankan perencanaan” di kanan atas langkah ini." : "Minta PPIC menjalankan perencanaan."}
             />
           )}
-        </section>
+        </StepSection>
       )}
 
       {current === "evaluation" && step.status !== "locked" && (
-        <section className="flex flex-col gap-6" aria-labelledby="step-evaluation">
-          <div>
-            <h2 id="step-evaluation" className="text-lg font-medium">
-              4. Evaluasi usulan inventory
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Kinerja usulan ForecastIQ dibanding kondisi existing (planning perusahaan): fulfilment rate (service
-              level), stockout rate, inventory turnover, holding cost, ordering cost dan shortage cost.
-            </p>
-          </div>
+        <StepSection
+          {...sectionProps}
+          title="Evaluasi usulan inventory"
+          description="Kinerja usulan ForecastIQ dibanding kondisi existing (planning perusahaan): fulfilment rate (service level), stockout rate, inventory turnover, holding cost, ordering cost dan shortage cost."
+        >
           {cost.isError && <FormError message={cost.error.message} />}
           {inventoryMetrics.isPending ? (
             <TableSkeleton />
@@ -328,30 +344,28 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
               products={products ?? []}
             />
           )}
-          <div className="flex flex-col gap-3">
-            <h3 className="font-medium">Rincian biaya &amp; metrik per produk / material</h3>
-            {cost.data && <CostSummaryCard summary={cost.data} />}
-            {inventoryMetrics.data && inventoryMetrics.data.length > 0 && (
-              <InventoryMetricsTable
-                metrics={inventoryMetrics.data}
-                materials={materials ?? []}
-                products={products ?? []}
-              />
-            )}
-          </div>
-          <div>
-            <Button variant="outline" onClick={() => setActive("reorder")}>
-              Lanjut: reorder &amp; gudang
-            </Button>
-          </div>
-        </section>
+          {(cost.data || (inventoryMetrics.data?.length ?? 0) > 0) && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-medium">Rincian biaya &amp; metrik per produk / material</h3>
+              {cost.data && <CostSummaryCard summary={cost.data} />}
+              {inventoryMetrics.data && inventoryMetrics.data.length > 0 && (
+                <InventoryMetricsTable
+                  metrics={inventoryMetrics.data}
+                  materials={materials ?? []}
+                  products={products ?? []}
+                />
+              )}
+            </div>
+          )}
+        </StepSection>
       )}
 
       {current === "reorder" && step.status !== "locked" && (
-        <section className="flex flex-col gap-6" aria-labelledby="step-reorder">
-          <h2 id="step-reorder" className="text-lg font-medium">
-            5. Reorder &amp; gudang
-          </h2>
+        <StepSection
+          {...sectionProps}
+          title="Reorder & gudang"
+          description="Rekomendasi pemesanan material (EOQ & ROP) beserta cek kapasitas gudang produk jadi. Planner bisa mengubah qty rekomendasi dengan alasan."
+        >
           <div className="flex flex-col gap-3">
             <h3 className="font-medium">Rekomendasi reorder</h3>
             {reorderList.isPending ? (
@@ -376,7 +390,7 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
               warehouse.data && <WarehouseCapacityBadge validation={warehouse.data} products={products ?? []} />
             )}
           </div>
-        </section>
+        </StepSection>
       )}
 
       <MethodSelectionDialog
