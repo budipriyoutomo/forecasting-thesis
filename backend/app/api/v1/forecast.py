@@ -4,6 +4,7 @@ Endpoint forecast — /api/v1/forecast (Fase 4), docs/ARCHITECTURE.md §5/§6.8.
 POST /forecast/runs   → trigger run banyak produk jadi (mode otomatis / manual).
 GET  /forecast/runs   → daftar run (semua role), terbaru dulu (?limit=, maks 200) — ringkas + counts (CR v3.6 §1).
 GET  /forecast/runs/{id} → polling status + hasil.
+GET  /forecast/runs/{id}/method-comparison → hasil per metode format thesis (CR v3.7).
 GET  /forecast/results?product_id=... → riwayat hasil per produk.
 POST /forecast/results/{id}/selection → planner memilih metode untuk satu produk (Fase 11.15).
 POST /forecast/runs/{id}/selection    → pakai satu metode untuk semua produk di run.
@@ -34,6 +35,7 @@ from app.schemas.forecast import (
     ForecastRunListItem,
     ForecastRunRequest,
     ForecastRunSummary,
+    MethodComparisonOut,
     MethodSelectionRequest,
     RunSelectionOut,
 )
@@ -171,6 +173,18 @@ async def get_forecast_run(
         "success": True,
         "data": {"run": _summary(run, results), "results": [_result_out(r) for r in results]},
     }
+
+
+@router.get("/runs/{run_id}/method-comparison", response_model=None)
+async def get_method_comparison(
+    run_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    selection: ForecastSelectionService = Depends(get_forecast_selection_service),
+):
+    """CR v3.7 — per metode: matriks varian × periode, pengujian MAD·MAPE·MFE + Average,
+    dan metode terbaik level run (seleksi global). Semua role boleh baca (CR v3.5 §3.2)."""
+    out = await selection.get_method_comparison(current_user.user_id, run_id)
+    return {"success": True, "data": MethodComparisonOut(**out).model_dump()}
 
 
 @router.get("/runs/{run_id}/export")

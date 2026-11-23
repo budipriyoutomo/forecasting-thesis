@@ -100,3 +100,75 @@ class RunSelectionOut(BaseModel):
     n_selected: int
     skipped_product_ids: list[str]  # tidak punya metode itu / hasil gagal
     results: list[ForecastResultOut]
+
+
+# ── CR v3.7 — GET /forecast/runs/{id}/method-comparison (format thesis per metode) ──
+
+
+class MethodComparisonRow(BaseModel):
+    product_id: str
+    status: str  # OK / FAILED (metode gagal atau produk gagal) / NO_SERIES (run lama tanpa deret)
+    forecast: dict[str, float] = {}  # periode (YYYY-MM-DD) → qty
+    total: float | None = None  # Σ deret horizon (kolom Total); None bila tidak ada deret
+    mad: float | None = None
+    mape: float | None = None
+    mfe: float | None = None
+
+
+class MethodAverage(BaseModel):
+    mad: float | None = None
+    mape: float | None = None
+    mfe: float | None = None  # rata-rata BERTANDA
+    n: int  # varian yang metodenya berhasil
+    n_total: int
+
+
+class MethodComparisonMethod(BaseModel):
+    method: str
+    label: str
+    rows: list[MethodComparisonRow]
+    average: MethodAverage
+
+
+class RunRankingRow(BaseModel):
+    method: str
+    rank: int
+    rank_mad: int | None = None
+    rank_mape: int | None = None
+    rank_mfe: int | None = None
+    mad: float | None = None
+    mape: float | None = None
+    mfe: float | None = None
+    n_products: int | None = None
+
+
+class RunSelection(BaseModel):
+    """Metode terbaik level run = seleksi GLOBAL yang dipakai run (bukan dihitung ulang di FE)."""
+
+    best_method: str
+    criteria: list[str]
+    ranking_basis: str  # "all" | "common" (ada metode dikeluarkan / irisan varian)
+    n_common: int
+    n_completed: int
+    excluded_methods: list[str] = []
+    ranking: list[RunRankingRow]
+    decided_by: str | None = None
+    summary: str = ""
+    reasons: list[str] = []
+
+
+class ProductMethodRow(BaseModel):
+    product_id: str
+    status: str
+    system_method: str | None = None  # pilihan sistem (global / fallback)
+    method_used: str | None = None  # metode berlaku (setelah penggantian planner)
+    is_overridden: bool = False
+
+
+class MethodComparisonOut(BaseModel):
+    run_id: str
+    periods: list[str]
+    criteria: list[str]
+    methods: list[MethodComparisonMethod]
+    run_selection: RunSelection | None = None
+    product_methods: list[ProductMethodRow]

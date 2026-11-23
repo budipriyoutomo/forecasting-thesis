@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from app.services.forecast_run_service import forecast_summary
+from app.services.forecasting.method_comparison import build_method_comparison
+from app.services.forecasting.selection import DEFAULT_CRITERIA
 from app.utils.exceptions import (
     ForecastRunNotFoundError,
     OverrideReasonRequiredError,
@@ -71,6 +73,11 @@ class SelectedResult:
             self.selection_status = SELECTED
         else:
             self.selection_status = PENDING
+
+    @property
+    def system_method(self) -> str | None:
+        """Metode pilihan SISTEM (global / fallback / manual), sebelum penggantian planner."""
+        return self._result.method_used
 
     @property
     def selection_reason(self) -> str | None:
@@ -135,6 +142,23 @@ class ForecastSelectionService:
 
     def __getattr__(self, name):
         return getattr(self._repo, name)
+
+    # ── CR v3.7: perbandingan per metode (format thesis) ──
+
+    async def get_method_comparison(self, user_id: str, run_id: str) -> dict:
+        """Read-only, dihitung on-the-fly dari hasil tersimpan (tanpa DB/migrasi baru).
+        Kriteria = snapshot `selection_analysis.criteria` run; fallback DEFAULT_CRITERIA."""
+        await self._require_run(user_id, run_id)
+        results = await self.list_results(run_id)
+        criteria = next(
+            (
+                sa["criteria"]
+                for sa in ((r.metrics or {}).get("selection_analysis") for r in results)
+                if isinstance(sa, dict) and sa.get("criteria")
+            ),
+            DEFAULT_CRITERIA,
+        )
+        return {"run_id": str(run_id), **build_method_comparison(results, criteria)}
 
     # ── Pilihan planner ──
 
