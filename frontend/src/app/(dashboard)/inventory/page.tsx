@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { ImportButton } from "@/components/common/ImportButton";
@@ -13,6 +13,7 @@ import { UsageHistoryTable } from "@/components/inventory/UsageHistoryTable";
 import { WasteFactorTable } from "@/components/inventory/WasteFactorTable";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useBoms } from "@/hooks/useBoms";
 import {
   useImportSnapshots,
   useImportUsage,
@@ -24,7 +25,7 @@ import {
 import { useMaterials } from "@/hooks/useMaterials";
 import { useCan } from "@/hooks/usePermission";
 import { useProducts } from "@/hooks/useProducts";
-import { MATERIAL_USAGE_TEMPLATE, STOCK_SNAPSHOT_TEMPLATE } from "@/lib/templates";
+import { materialUsageTemplate, stockSnapshotTemplate } from "@/lib/templates";
 import type { Material } from "@/types/material";
 
 // Data input tahap 3–4 thesis (Fase 11.1/11.5): stok awal dari ERP dan pemakaian aktual (dasar
@@ -91,6 +92,14 @@ export default function InventoryPage() {
 
   const imported = { onSuccess: (r: { imported: number }) => toast.success(`${r.imported} baris diimpor`), onError: (e: Error) => toast.error(e.message) };
   const list = materials ?? [];
+  const { data: products } = useProducts();
+  const { data: boms } = useBoms();
+  // Contoh template memakai kode master data asli → template bisa langsung diunggah.
+  const stockTemplate = useMemo(() => stockSnapshotTemplate(materials ?? []), [materials]);
+  const usageTemplate = useMemo(
+    () => materialUsageTemplate({ materials: materials ?? [], products: products ?? [], boms: boms ?? [] }),
+    [materials, products, boms],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -113,7 +122,7 @@ export default function InventoryPage() {
               <ImportButton label="Import stok ERP" pending={importSnapshots.isPending} onFile={(f) => importSnapshots.mutate(f, imported)} />
             )}
           </div>
-          {canImport && <ImportTemplateCard template={STOCK_SNAPSHOT_TEMPLATE} />}
+          {canImport && <ImportTemplateCard template={stockTemplate} />}
           {latest.isPending ? <TableSkeleton /> : <LatestStockTable latest={latest.data ?? []} materials={list} />}
           <MaterialHistory title="Riwayat stok ERP" materials={list}>
             {(id) => <SnapshotHistory materialId={id} />}
@@ -133,7 +142,7 @@ export default function InventoryPage() {
               <ImportButton label="Import pemakaian" pending={importUsage.isPending} onFile={(f) => importUsage.mutate(f, imported)} />
             </div>
           )}
-          {canImport && <ImportTemplateCard template={MATERIAL_USAGE_TEMPLATE} />}
+          {canImport && <ImportTemplateCard template={usageTemplate} />}
           {waste.isPending ? <TableSkeleton /> : <WasteFactorTable factors={waste.data ?? []} materials={list} />}
           <MaterialHistory title="Riwayat pemakaian" materials={list}>
             {(id) => <UsageHistory materialId={id} />}

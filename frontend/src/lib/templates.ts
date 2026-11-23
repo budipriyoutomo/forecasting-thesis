@@ -139,7 +139,7 @@ export const STOCK_SNAPSHOT_TEMPLATE: ImportTemplateSpec = {
     {
       name: "uom",
       required: false,
-      description: "Satuan sesuai ERP — hanya informasi, tidak mengonversi qty.",
+      description: "Satuan sesuai ERP (maks. 20 karakter) — hanya informasi, tidak mengonversi qty.",
       example: "PCS",
     },
   ],
@@ -152,7 +152,7 @@ export const STOCK_SNAPSHOT_TEMPLATE: ImportTemplateSpec = {
     ...COMMON_NOTES,
     "Satu baris = satu material pada satu tanggal. Material + tanggal yang sama tidak boleh muncul dua kali dalam satu file.",
     "Material + tanggal yang sudah pernah diimpor akan ditimpa nilai baru.",
-    "Angka memakai titik untuk desimal (350.5) dan tanpa pemisah ribuan (1200, bukan 1.200).",
+    "Desimal boleh titik (350.5) atau koma (350,5). Jangan pakai pemisah ribuan: tulis 1200, bukan 1.200 (terbaca 1,2).",
     "Kode material yang belum terdaftar di master data membuat seluruh import ditolak.",
   ],
 };
@@ -213,8 +213,55 @@ export const MATERIAL_USAGE_TEMPLATE: ImportTemplateSpec = {
     ...COMMON_NOTES,
     "Setiap baris pilih SALAH SATU cara: (1) isi standard_usage, atau (2) kosongkan standard_usage lalu isi product_code + production_output — standar dihitung dari BOM.",
     "Cara (2) hanya berhasil bila BOM produk → material tersebut sudah terdaftar.",
-    "Material + produk + periode yang sama ditimpa nilai baru.",
-    "Angka memakai titik untuk desimal, tanpa pemisah ribuan, dan tidak boleh negatif.",
+    "Satu baris = satu material (+ produk) pada satu periode. Kombinasi yang sama tidak boleh muncul dua kali dalam satu file.",
+    "Material + produk + periode yang sudah pernah diimpor akan ditimpa nilai baru.",
+    "Desimal boleh titik (1260.5) atau koma (1260,5). Jangan pakai pemisah ribuan (1200, bukan 1.200), dan tidak boleh negatif.",
     "Satu baris bermasalah membuat seluruh file ditolak — pesan error menyebut nomor barisnya.",
   ],
 };
+
+// ── Contoh berbasis master data (23 Nov 2026) ──────────────────────────────────────
+// Contoh default memakai kode fiktif (MAT-001/SKU-001) sehingga template yang diunduh lalu
+// langsung diunggah pasti ditolak "Material tidak ditemukan". Bila master data tersedia,
+// baris contoh memakai kode asli — angkanya tetap fiktif. Tanpa master data → spec default.
+
+const REAL_SAMPLE_NOTE =
+  "Baris contoh sudah memakai kode asli dari master data Anda, tapi ANGKANYA FIKTIF — ganti dengan data sebenarnya sebelum diunggah (data material + tanggal yang sama akan ditimpa).";
+
+const withRealSamples = (spec: ImportTemplateSpec, sampleRows: ImportTemplateSpec["sampleRows"]): ImportTemplateSpec => ({
+  ...spec,
+  sampleRows,
+  notes: [...spec.notes, REAL_SAMPLE_NOTE],
+});
+
+type SampleMaterial = { id: string; code: string; unit?: string | null };
+
+export function stockSnapshotTemplate(materials: SampleMaterial[]): ImportTemplateSpec {
+  const [a, b] = materials;
+  if (!a) return STOCK_SNAPSHOT_TEMPLATE;
+  return withRealSamples(STOCK_SNAPSHOT_TEMPLATE, [
+    [a.code, "2026-10-31", 1200, a.unit || null],
+    ...(b ? [[b.code, "2026-10-31", 350.5, b.unit || null]] : []),
+    [a.code, "2026-11-30", 980, a.unit || null],
+  ]);
+}
+
+export function materialUsageTemplate(master: {
+  materials: SampleMaterial[];
+  products: { id: string; code: string }[];
+  boms: { product_id: string; material_id: string }[];
+}): ImportTemplateSpec {
+  const { materials, products } = master;
+  if (materials.length === 0) return MATERIAL_USAGE_TEMPLATE;
+  const byId = new Map(materials.map((m) => [m.id, m]));
+  const productById = new Map(products.map((p) => [p.id, p]));
+  // Cara 2 hanya berhasil bila BOM produk → material memang ada.
+  const bom = master.boms.find((l) => byId.has(l.material_id) && productById.has(l.product_id));
+  const direct = materials.find((m) => m.id !== bom?.material_id) ?? materials[0];
+
+  const rows: ImportTemplateSpec["sampleRows"] = [[direct.code, "2026-10-01", 1260, 1200, null, null]];
+  if (bom) {
+    rows.push([byId.get(bom.material_id)!.code, "2026-10-01", 530, null, productById.get(bom.product_id)!.code, 1000]);
+  }
+  return withRealSamples(MATERIAL_USAGE_TEMPLATE, rows);
+}

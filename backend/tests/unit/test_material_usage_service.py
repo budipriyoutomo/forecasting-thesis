@@ -105,6 +105,8 @@ async def test_import_standar_langsung_dan_dari_output_x_bom():
             "BTL-WHITE,2026-01-01,1,10\nBTL-WHITE,2026-01-01,2,10\n",
             "Baris 3.*duplikat.*baris 2",
         ),
+        ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,05/10/2026,1,10\n", "YYYY-MM-DD"),
+        ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,Oct-2026,1,10\n", "YYYY-MM-DD"),
     ],
 )
 @pytest.mark.asyncio
@@ -113,6 +115,13 @@ async def test_import_tidak_valid(body, match):
     with pytest.raises(UploadInvalidFormatError, match=match):
         await svc.import_usage("u.csv", body.encode())
     assert repo.rows == []
+
+
+@pytest.mark.asyncio
+async def test_import_lewati_baris_kosong():
+    svc, repo = _svc()
+    body = "material_code,period,actual_usage,standard_usage\n,,,\nBTL-WHITE,2026-01-01,10,10\n,,,\n"
+    assert await svc.import_usage("u.csv", body.encode()) == {"imported": 1}
 
 
 @pytest.mark.asyncio
@@ -127,3 +136,18 @@ async def test_waste_factor_agregat_per_material():
 
     assert factors["m2"] == pytest.approx(2040 / 2000)  # Σ aktual ÷ Σ standar, bukan rata-rata rasio
     assert factors["m1"] is None  # standar 0 → tak terdefinisi
+
+
+@pytest.mark.asyncio
+async def test_import_desimal_koma_excel_indonesia():
+    svc, repo = _svc()
+    body = (
+        "material_code;period;actual_usage;standard_usage;product_code;production_output\n"
+        "BTL-WHITE;2026-01-01;1030,5;1000,25;;\n"
+        "CAP-WHITE;2026-01-01;2100;;KBYPL 200;1000,5\n"
+    )
+    assert await svc.import_usage("u.csv", body.encode()) == {"imported": 2}
+    btl = next(r for r in repo.rows if r.material_id == "m2")
+    cap = next(r for r in repo.rows if r.material_id == "m1")
+    assert float(btl.actual_usage) == 1030.5 and float(btl.standard_usage) == 1000.25
+    assert float(cap.production_output) == 1000.5 and float(cap.standard_usage) == 2001  # × BOM 2

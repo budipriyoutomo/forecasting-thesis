@@ -6,6 +6,7 @@ kedatangan material, dan pemakaian aktual. Gagal baca / kosong → UPLOAD_INVALI
 """
 import io
 import re
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
@@ -24,6 +25,9 @@ def read_table(filename: str, content: bytes) -> pd.DataFrame:
             df = pd.read_excel(io.BytesIO(content))
         elif name.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig")
+            # Excel locale Indonesia menyimpan "CSV" berpemisah ';' → terbaca satu kolom.
+            if len(df.columns) == 1 and ";" in str(df.columns[0]):
+                df = pd.read_csv(io.BytesIO(content), encoding="utf-8-sig", sep=";")
         else:
             raise UploadInvalidFormatError("Format file harus .csv atau .xlsx.")
     except UploadInvalidFormatError:
@@ -31,7 +35,36 @@ def read_table(filename: str, content: bytes) -> pd.DataFrame:
     except Exception as exc:
         raise UploadInvalidFormatError(f"Gagal membaca file: {exc}") from exc
     df.columns = [str(c).strip().lower() for c in df.columns]
+    # Baris kosong di ekor (sisa format Excel / ",,," saat simpan CSV) dibuang. Hanya ekor,
+    # supaya nomor baris di pesan error tetap = nomor baris di file.
+    filled = df.notna().any(axis=1)
+    if not filled.all():
+        last = filled[filled].index.max()
+        df = df.iloc[0:0] if pd.isna(last) else df.loc[:last]
     return df
+
+
+def is_blank_row(record: dict) -> bool:
+    """Semua sel kosong — baris pemisah di tengah file, dilewati importer."""
+    return all(cell(v) == "" for v in record.values())
+
+
+def parse_iso_date(raw) -> date | None:
+    """Tanggal sel upload: hanya YYYY-MM-DD (sesuai template) atau sel tanggal Excel.
+
+    Kosong → None. Format lain (05/10/2026, Oct-2026) → ValueError — dulu diam-diam
+    dibaca pandas sebagai bulan/hari (05/10 → 10 Mei) sehingga data tersimpan salah.
+    """
+    if isinstance(raw, pd.Timestamp):
+        return None if pd.isna(raw) else raw.date()
+    if isinstance(raw, date):
+        return raw
+    text = cell(raw)
+    if text == "":
+        return None
+    if not re.match(r"^\d{4}-\d{2}-\d{2}([ T]00:00:00)?$", text):
+        raise ValueError(f"'{text}' bukan format YYYY-MM-DD.")
+    return date.fromisoformat(text[:10])
 
 
 def require_columns(df: pd.DataFrame, required: set[str]) -> None:

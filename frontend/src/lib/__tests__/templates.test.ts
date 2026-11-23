@@ -8,6 +8,8 @@ import {
   STOCK_SNAPSHOT_TEMPLATE,
   buildDemandTemplateCsv,
   buildTemplateCsv,
+  materialUsageTemplate,
+  stockSnapshotTemplate,
   type ImportTemplateSpec,
 } from "@/lib/templates";
 
@@ -113,6 +115,59 @@ describe("MATERIAL_USAGE_TEMPLATE", () => {
     viaBom.forEach((r) => {
       expect(col(r, "product_code")).not.toBe("");
       expect(col(r, "production_output")).not.toBe("");
+    });
+  });
+});
+
+// 23 Nov 2026 — contoh template memakai kode asli master data, supaya template yang diunduh
+// lalu langsung diunggah tidak ditolak "Material 'MAT-001' tidak ditemukan".
+describe("template dengan kode master data", () => {
+  const mat = (id: string, code: string, unit = "PCS") => ({ id, code, unit });
+  const keyOf = (r: string[], idx: number[]) => idx.map((i) => r[i]).join("|");
+
+  it("stok ERP: kode material asli + satuan master, tanpa duplikat material+tanggal", () => {
+    const spec = stockSnapshotTemplate([mat("m1", "CUP-PP-200"), mat("m2", "LID-FOIL-200", "KG")]);
+    const [, ...rows] = parse(spec);
+
+    expect(rows.map((r) => r[0])).toEqual(["CUP-PP-200", "LID-FOIL-200", "CUP-PP-200"]);
+    expect(rows[1][3]).toBe("KG");
+    expect(new Set(rows.map((r) => keyOf(r, [0, 1]))).size).toBe(rows.length);
+  });
+
+  it("stok ERP: satu material saja tetap tanpa duplikat", () => {
+    const rows = parse(stockSnapshotTemplate([mat("m1", "CUP-PP-200")])).slice(1);
+    expect(new Set(rows.map((r) => keyOf(r, [0, 1]))).size).toBe(rows.length);
+    expect(rows.every((r) => r[0] === "CUP-PP-200")).toBe(true);
+  });
+
+  it("tanpa master data → kembali ke contoh default", () => {
+    expect(stockSnapshotTemplate([])).toBe(STOCK_SNAPSHOT_TEMPLATE);
+    expect(materialUsageTemplate({ materials: [], products: [], boms: [] })).toBe(MATERIAL_USAGE_TEMPLATE);
+  });
+
+  it("pemakaian: cara BOM memakai pasangan produk → material yang benar-benar ada di BOM", () => {
+    const spec = materialUsageTemplate({
+      materials: [mat("m1", "CUP-PP-200"), mat("m2", "LID-FOIL-200")],
+      products: [{ id: "p1", code: "KBYPL 200" }],
+      boms: [{ product_id: "p1", material_id: "m2" }],
+    });
+    const [header, ...rows] = parse(spec);
+    const col = (r: string[], n: string) => r[header.indexOf(n)];
+    const viaBom = rows.filter((r) => col(r, "standard_usage") === "");
+
+    expect(viaBom).toHaveLength(1);
+    expect(col(viaBom[0], "material_code")).toBe("LID-FOIL-200");
+    expect(col(viaBom[0], "product_code")).toBe("KBYPL 200");
+    expect(rows.some((r) => col(r, "standard_usage") !== "" && col(r, "material_code") === "CUP-PP-200")).toBe(true);
+  });
+
+  it("pemakaian tanpa BOM: hanya cara standar langsung (cara BOM pasti ditolak)", () => {
+    const spec = materialUsageTemplate({ materials: [mat("m1", "CUP-PP-200")], products: [], boms: [] });
+    const [header, ...rows] = parse(spec);
+    expect(rows.length).toBeGreaterThan(0);
+    rows.forEach((r) => {
+      expect(r[header.indexOf("standard_usage")]).not.toBe("");
+      expect(r[header.indexOf("product_code")]).toBe("");
     });
   });
 });

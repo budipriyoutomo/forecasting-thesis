@@ -11,14 +11,12 @@ Faktor waste = Σ aktual ÷ Σ standar seluruh periode tersimpan (agregat, bukan
 rasio — periode bervolume kecil tidak mendominasi). Standar 0 → None.
 """
 from collections.abc import Callable
-from decimal import Decimal, InvalidOperation
-
-import pandas as pd
+from decimal import Decimal
 
 from app.models.material_usage import MaterialUsage
 from app.services.bom_service import compute_standard_usage, compute_waste_factor
 from app.utils.exceptions import UploadInvalidFormatError
-from app.utils.tabular import cell, read_table, require_columns
+from app.utils.tabular import cell, is_blank_row, parse_decimal_id, parse_iso_date, read_table, require_columns
 
 # Kolom Numeric(18, 4) → bagian bulat maksimal 14 digit; lebih dari itu ditolak DB (500).
 _MAX_VALUE = Decimal(10) ** 14
@@ -42,7 +40,9 @@ class MaterialUsageService:
     async def import_usage(self, filename: str, content: bytes) -> dict:
         df = read_table(filename, content)
         require_columns(df, {"material_code", "period", "actual_usage"})
-        if df.empty:
+        # Nomor baris file (header = 1) dihitung sebelum baris kosong di tengah dilewati.
+        records = [(i, r) for i, r in enumerate(df.to_dict("records"), start=2) if not is_blank_row(r)]
+        if not records:
             raise UploadInvalidFormatError("File tidak berisi baris data.")
 
         cache: dict[tuple[str, str], object] = {}
@@ -53,15 +53,12 @@ class MaterialUsageService:
             return cache[(kind, code)]
 
         def number(raw, name: str, line: int) -> Decimal | None:
-            text = cell(raw)
-            if text == "":
-                return None
             try:
-                value = Decimal(text)
-            except InvalidOperation as exc:
+                value = parse_decimal_id(raw)  # desimal titik atau koma (CSV Excel Indonesia)
+            except ValueError as exc:
                 raise UploadInvalidFormatError(f"Baris {line}: '{name}' bukan angka valid.") from exc
-            if not value.is_finite():
-                raise UploadInvalidFormatError(f"Baris {line}: '{name}' bukan angka valid.")
+            if value is None:
+                return None
             if value < 0:
                 raise UploadInvalidFormatError(f"Baris {line}: '{name}' tidak boleh negatif.")
             if value >= _MAX_VALUE:
@@ -71,18 +68,21 @@ class MaterialUsageService:
         seen: dict[tuple, int] = {}
 
         rows = []
-        for i, raw in enumerate(df.to_dict("records"), start=2):
+        for i, raw in records:
             code = cell(raw.get("material_code"))
+            if code == "":
+                raise UploadInvalidFormatError(f"Baris {i}: 'material_code' wajib diisi.")
             material = await lookup("material", self._materials, code)
             if material is None:
                 raise UploadInvalidFormatError(f"Baris {i}: Material '{code}' tidak ditemukan.")
             try:
-                parsed = pd.to_datetime(cell(raw.get("period")))
-            except (ValueError, TypeError) as exc:
-                raise UploadInvalidFormatError(f"Baris {i}: 'period' bukan tanggal valid.") from exc
-            if pd.isna(parsed):  # sel kosong → NaT, bukan exception
+                period = parse_iso_date(raw.get("period"))
+            except ValueError as exc:
+                raise UploadInvalidFormatError(
+                    f"Baris {i}: 'period' bukan tanggal valid (format YYYY-MM-DD)."
+                ) from exc
+            if period is None:
                 raise UploadInvalidFormatError(f"Baris {i}: 'period' wajib diisi (format YYYY-MM-DD).")
-            period = parsed.date()
 
             actual = number(raw.get("actual_usage"), "actual_usage", i)
             if actual is None:
