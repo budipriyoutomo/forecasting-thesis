@@ -3,6 +3,7 @@
 import { MetricHeader } from "@/components/forecast/MetricHeader";
 import { MetricValue } from "@/components/forecast/MetricValue";
 import { NUM, STICKY } from "@/components/forecast/method-view/MethodForecastMatrix";
+import { CopyTableButton } from "@/components/forecast/method-view/CopyTableButton";
 import { MissingValue } from "@/components/forecast/method-view/MissingValue";
 import {
   Table,
@@ -14,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { METRIC_INFO, formatMetric } from "@/lib/metrics";
 import type { MethodComparisonMethod, MetricCriterion } from "@/types/forecast";
 
 // CR v3.7 (b) — pengujian peramalan satu metode: varian × metrik (urutan = `criteria` backend,
@@ -28,8 +30,16 @@ export function MethodMetricsTable({
   variantLabel: (productId: string) => string;
 }) {
   const { average } = method;
+  const tsv = () => [
+    ["Varian", ...criteria.map((m) => METRIC_INFO[m].label)],
+    ...method.rows.map((r) => [variantLabel(r.product_id), ...criteria.map((m) => formatMetric(r[m], m))]),
+    ["Average", ...criteria.map((m) => formatMetric(average[m], m))],
+  ];
   return (
     <TooltipProvider delayDuration={150}>
+      <div className="flex justify-end">
+        <CopyTableButton label={`pengujian peramalan ${method.label}`} rows={tsv} />
+      </div>
       <div className="overflow-x-auto rounded-md border">
         <Table aria-label={`Pengujian peramalan ${method.label}`}>
           <TableHeader>

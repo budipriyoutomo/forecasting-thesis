@@ -1,5 +1,6 @@
 "use client";
 
+import { CopyTableButton } from "@/components/forecast/method-view/CopyTableButton";
 import { MissingValue } from "@/components/forecast/method-view/MissingValue";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,8 +21,16 @@ export function MethodForecastMatrix({
   periods: string[];
   variantLabel: (productId: string) => string;
 }) {
+  const qty = (v: number | null | undefined) => (v != null ? formatNumber(v, 0) : "—");
+  const tsv = () => [
+    ["Varian", ...periods.map(formatPeriodLabel), "Total"],
+    ...method.rows.map((r) => [variantLabel(r.product_id), ...periods.map((d) => qty(r.forecast[d])), qty(r.total)]),
+  ];
   return (
     <TooltipProvider delayDuration={150}>
+      <div className="flex justify-end">
+        <CopyTableButton label={`hasil ramalan ${method.label}`} rows={tsv} />
+      </div>
       <div className="overflow-x-auto rounded-md border">
         <Table aria-label={`Hasil ramalan ${method.label}`}>
           <TableHeader>
