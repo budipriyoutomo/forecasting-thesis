@@ -17,6 +17,7 @@ import { MethodSelectionDialog } from "@/components/forecast/MethodSelectionDial
 import { runLabel } from "@/components/forecast/RunPicker";
 import { RunStepper } from "@/components/forecast/RunStepper";
 import { StepSection } from "@/components/forecast/StepSection";
+import { MethodComparisonView } from "@/components/forecast/method-view/MethodComparisonView";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
 import { InventoryEvaluation } from "@/components/planning/InventoryEvaluation";
@@ -32,6 +33,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WarehouseCapacityBadge } from "@/components/warehouse/WarehouseCapacityBadge";
 import { useExport } from "@/hooks/useExport";
 import {
@@ -52,6 +54,17 @@ import { type RunStepKey, defaultStep, deriveRunSteps } from "@/lib/runSteps";
 import { runStatus } from "@/lib/status";
 import type { ReorderRecommendation } from "@/types/reorder";
 
+/** CR v3.7 — tampilan langkah 1: per metode (format thesis, default) | per produk (lama). */
+export type ForecastView = "method" | "product";
+export const FORECAST_VIEWS: ForecastView[] = ["method", "product"];
+
+/** `?view=` disinkronkan tanpa navigasi ulang (param lain, mis. `?step=`, dipertahankan). */
+function syncViewParam(view: ForecastView) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", view);
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 // CR v3.6 §1/§4 — detail satu forecast run, bisa dibuka ulang (refresh/pindah menu) karena
 // seluruhnya dirender dari query (useForecastRun, proyeksi, reorder, biaya), BUKAN dari state
 // mutation. Alur = stepper: Forecast → Metode terbaik → Perencanaan → Evaluasi inventory → Reorder & gudang
@@ -59,7 +72,15 @@ import type { ReorderRecommendation } from "@/types/reorder";
 // 23 Nov 2026: langkah 2 = metode terbaik pilihan sistem (bisa diganti planner); run Fase 11.15
 // yang masih PENDING_SELECTION tetap harus dipilih manual.
 // Semua role bisa membaca (CR v3.5 §3.2); tombol aksi disembunyikan lewat useCan.
-export function RunDetail({ runId, initialStep }: { runId: string; initialStep?: RunStepKey }) {
+export function RunDetail({
+  runId,
+  initialStep,
+  initialView,
+}: {
+  runId: string;
+  initialStep?: RunStepKey;
+  initialView?: ForecastView;
+}) {
   const runQuery = useForecastRun(runId);
   const runs = useForecastRuns();
   const { data: products } = useProducts();
@@ -86,6 +107,12 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
   const [overriding, setOverriding] = useState<{ rec: ReorderRecommendation; label: string } | null>(null);
   // Tautan dashboard bisa membuka langkah tertentu (?step=reorder); default = langkah yang perlu tindakan.
   const [active, setActive] = useState<RunStepKey | null>(initialStep ?? null);
+  const [view, setView] = useState<ForecastView>(initialView ?? "method");
+  const changeView = (value: string) => {
+    const next = value as ForecastView;
+    setView(next);
+    syncViewParam(next);
+  };
 
   if (runQuery.isPending) return <TableSkeleton />;
   if (runQuery.isError || !runQuery.data)
@@ -215,7 +242,7 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
         <StepSection
           {...sectionProps}
           title="Forecast"
-          description="Hasil forecast per produk dari seluruh metode aktif. Klik baris produk untuk melihat grafik, metrik pengujian, dan penjelasan."
+          description="Hasil forecast seluruh metode aktif per varian dan pengujian peramalannya, diakhiri analisis metode terbaik. Tampilan per produk: klik baris produk untuk melihat grafik, metrik pengujian, dan penjelasan."
           nextLabel={pending > 0 ? `Lanjut: pilih metode untuk ${pending} produk` : undefined}
         >
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -229,7 +256,18 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
               {pending > 0 && ` · ${pending} menunggu pemilihan metode`}
             </span>
           </div>
-          {resultsView(false)}
+          <Tabs value={view} onValueChange={changeView}>
+            <TabsList>
+              <TabsTrigger value="method">Per metode (format thesis)</TabsTrigger>
+              <TabsTrigger value="product">Per produk</TabsTrigger>
+            </TabsList>
+            <TabsContent value="method" className="mt-4">
+              <MethodComparisonView runId={runId} products={products ?? []} />
+            </TabsContent>
+            <TabsContent value="product" className="mt-4">
+              {resultsView(false)}
+            </TabsContent>
+          </Tabs>
         </StepSection>
       )}
 

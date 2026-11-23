@@ -34,14 +34,25 @@ function runOf(results: ForecastResult[], nPending: number): ForecastRunResponse
   };
 }
 
-function renderDetail() {
+function renderDetail(props: Partial<Parameters<typeof RunDetail>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <RunDetail runId="run1" />
+      <RunDetail runId="run1" {...props} />
     </QueryClientProvider>,
   );
 }
+
+const COMPARISON = {
+  run_id: "run1", periods: ["2026-12-01"], criteria: ["mad", "mape", "mfe"],
+  methods: [{
+    method: "moving_average", label: "Moving Average",
+    rows: [{ product_id: "p1", status: "OK", forecast: { "2026-12-01": 100 }, total: 100, mad: 1, mape: 8, mfe: 0 }],
+    average: { mad: 1, mape: 8, mfe: 0, n: 1, n_total: 1 },
+  }],
+  run_selection: null,
+  product_methods: [],
+};
 
 function stub({ run, projection = [] as unknown[], recs = [] as unknown[] }: { run: ForecastRunResponse; projection?: unknown[]; recs?: unknown[] }) {
   const getRun = vi.spyOn(api.forecast, "getRun").mockResolvedValue({ success: true, data: run } as never);
@@ -55,6 +66,7 @@ function stub({ run, projection = [] as unknown[], recs = [] as unknown[] }: { r
     ],
   } as never);
   vi.spyOn(api.materials, "list").mockResolvedValue({ success: true, data: [] } as never);
+  vi.spyOn(api.forecast, "getMethodComparison").mockResolvedValue({ success: true, data: COMPARISON } as never);
   vi.spyOn(api.forecastSettings, "get").mockResolvedValue({
     success: true, data: { display_metrics: ["mad", "mfe", "mape"], service_level_pct: 95 },
   } as never);
@@ -187,5 +199,37 @@ describe("RunDetail (CR v3.6 §1/§4)", () => {
 
     expect(await screen.findByText("Run tidak ditemukan.")).toBeDefined();
     expect(screen.getByRole("link", { name: /kembali ke daftar run/i }).getAttribute("href")).toBe("/forecast");
+  });
+
+  // CR v3.7 §4.3 — langkah 1: view per metode (format thesis) default, per produk via toggle.
+  it("langkah Forecast: tab default 'Per metode (format thesis)'", async () => {
+    stub({ run: runOf([RESULT], 0) });
+    renderDetail({ initialStep: "forecast" });
+
+    const tab = await screen.findByRole("tab", { name: /per metode \(format thesis\)/i });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByText(/1\. metode moving average/i)).toBeDefined();
+    expect(api.forecast.getMethodComparison).toHaveBeenCalledWith("run1", "tok");
+  });
+
+  it("?view=product membuka tabel per produk lama", async () => {
+    stub({ run: runOf([RESULT], 0) });
+    renderDetail({ initialStep: "forecast", initialView: "product" });
+
+    const tab = await screen.findByRole("tab", { name: /per produk/i });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByText("SKU-1")).toBeDefined();
+    expect(screen.queryByText(/1\. metode moving average/i)).toBeNull();
+  });
+
+  it("ganti tab → ?view= di URL ikut berubah (step & param lain dipertahankan)", async () => {
+    window.history.replaceState(null, "", "/forecast/runs/run1?step=forecast");
+    stub({ run: runOf([RESULT], 0) });
+    renderDetail({ initialStep: "forecast" });
+
+    await userEvent.click(await screen.findByRole("tab", { name: /per produk/i }));
+    expect(window.location.search).toBe("?step=forecast&view=product");
+    await userEvent.click(screen.getByRole("tab", { name: /per metode/i }));
+    expect(window.location.search).toBe("?step=forecast&view=method");
   });
 });
