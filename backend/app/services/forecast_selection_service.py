@@ -25,8 +25,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from app.services.forecast_run_service import forecast_summary
-from app.services.forecasting.method_comparison import build_method_comparison
-from app.services.forecasting.selection import DEFAULT_CRITERIA
+from app.services.forecasting.method_comparison import build_method_comparison, run_criteria
 from app.utils.exceptions import (
     ForecastRunNotFoundError,
     OverrideReasonRequiredError,
@@ -150,15 +149,7 @@ class ForecastSelectionService:
         Kriteria = snapshot `selection_analysis.criteria` run; fallback DEFAULT_CRITERIA."""
         await self._require_run(user_id, run_id)
         results = await self.list_results(run_id)
-        criteria = next(
-            (
-                sa["criteria"]
-                for sa in ((r.metrics or {}).get("selection_analysis") for r in results)
-                if isinstance(sa, dict) and sa.get("criteria")
-            ),
-            DEFAULT_CRITERIA,
-        )
-        return {"run_id": str(run_id), **build_method_comparison(results, criteria)}
+        return {"run_id": str(run_id), **build_method_comparison(results, run_criteria(results))}
 
     # ── Pilihan planner ──
 

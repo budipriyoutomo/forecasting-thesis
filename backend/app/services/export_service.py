@@ -1,7 +1,8 @@
 """
 ExportService — export hasil forecast & reorder ke Excel/PDF (Fase 8).
 
-Fungsi builder MURNI (bytes, mudah dites): `build_forecast_xlsx`,
+Fungsi builder MURNI (bytes, mudah dites): `build_forecast_xlsx` (+ sheet "Format Thesis",
+CR v3.7 §5 — dari `build_method_comparison`, tanpa hitungan baru),
 `build_reorder_xlsx`, `build_reorder_pdf`, serta (Fase 11.6/11.7) proyeksi stok &
 metrik inventory `build_stock_projection_{xlsx,pdf}`, `build_metrics_{xlsx,pdf}` —
 kolom target pakai KODE material/produk (fallback id) untuk lampiran thesis. `ExportService` mengorkestrasi:
@@ -15,6 +16,8 @@ from datetime import datetime, timezone
 from fpdf import FPDF
 from openpyxl import Workbook
 
+from app.services.forecasting.method_comparison import build_method_comparison, run_criteria
+from app.services.forecasting.selection import method_label
 from app.utils.exceptions import ForecastRunNotFoundError
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -25,7 +28,97 @@ def _num(value):
     return float(value) if value is not None else None
 
 
-def build_forecast_xlsx(results) -> bytes:
+_MONTHS_ID = ("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
+_METRIC_HEAD = {"mad": "MAD", "mape": "MAPE", "mfe": "MFE"}
+_DASH = "—"
+
+
+def _period_label(date: str) -> str:
+    """"2026-12-01" → "Des-26" (sama dengan FE `formatPeriodLabel`, CR v3.7 D5)."""
+    try:
+        return f"{_MONTHS_ID[int(date[5:7]) - 1]}-{date[2:4]}"
+    except (ValueError, IndexError):
+        return date
+
+
+def _qty(value):
+    return round(value) if value is not None else _DASH
+
+
+def _metric(value):
+    return value if value is not None else _DASH
+
+
+def _write_thesis_sheet(ws, comparison: dict, labels: dict) -> None:
+    """Sheet "Format Thesis": per metode (a) hasil ramalan, (b) pengujian + Average; lalu
+    analisis metode terbaik. Semua angka dari `comparison` (tidak dihitung ulang)."""
+    def label(pid) -> str:
+        return labels.get(str(pid)) or str(pid)[:8]
+
+    periods, criteria = comparison["periods"], comparison["criteria"]
+    heads = [_METRIC_HEAD[m] for m in criteria]
+    for i, m in enumerate(comparison["methods"], start=1):
+        ws.append([f"{i}. Metode {m['label']}"])
+        ws.append(["a. Hasil ramalan (forecasting)"])
+        ws.append(["Varian", *map(_period_label, periods), "Total"])
+        for row in m["rows"]:
+            ws.append([label(row["product_id"]), *(_qty(row["forecast"].get(d)) for d in periods), _qty(row["total"])])
+        ws.append([])
+        ws.append(["b. Pengujian peramalan"])
+        ws.append(["Varian", *heads])
+        for row in m["rows"]:
+            ws.append([label(row["product_id"]), *(_metric(row[c]) for c in criteria)])
+        avg = m["average"]
+        note = [f"n = {avg['n']} dari {avg['n_total']} varian"] if avg["n"] < avg["n_total"] else []
+        ws.append(["Average", *(_metric(avg[c]) for c in criteria), *note])
+        ws.append([])
+        ws.append([])
+
+    sel = comparison["run_selection"]
+    ws.append([f"{len(comparison['methods']) + 1}. Analisis pemilihan metode terbaik"])
+    if sel is None:
+        ws.append(["Belum ada metode yang berhasil diuji di run ini."])
+        return
+    ws.append(["Peringkat", "Metode", *(f"Avg {h}" for h in heads), "Varian"])
+    for r in sel["ranking"]:
+        ws.append([r["rank"], method_label(r["method"]), *(_metric(r.get(c)) for c in criteria), r.get("n_products")])
+    ws.append([])
+    ws.append([f"Kesimpulan: {method_label(sel['best_method'])} adalah metode terbaik untuk seluruh varian"])
+    ws.append([sel["summary"]])
+    for reason in sel["reasons"]:
+        ws.append([f"• {reason}"])
+    prio = ", ".join(f"{i}) {_METRIC_HEAD[m]}" for i, m in enumerate(sel["criteria"], start=1))
+    decided = f" · penentu: {_METRIC_HEAD[sel['decided_by']]}" if sel["decided_by"] else ""
+    ws.append([f"Urutan prioritas: {prio}{decided}."])
+    if sel["ranking_basis"] == "common":
+        excluded = ", ".join(method_label(m) for m in sel["excluded_methods"])
+        ws.append(
+            [
+                f"Peringkat dihitung atas {sel['n_common']} dari {sel['n_completed']} varian yang berhasil."
+                + (f" Tidak dibandingkan karena gagal di sebagian varian: {excluded}." if excluded else "")
+            ]
+        )
+    ws.append([])
+    ws.append(["Varian", "Pilihan sistem", "Metode dipakai"])
+    for p in comparison["product_methods"]:
+        if p["status"] != "COMPLETED":
+            ws.append([label(p["product_id"]), p["status"]])
+            continue
+        used = method_label(p["method_used"]) if p["method_used"] else _DASH
+        if p["is_overridden"] and p["method_used"] != p["system_method"]:
+            used += " (diganti planner)"
+        ws.append([label(p["product_id"]), method_label(p["system_method"]) if p["system_method"] else _DASH, used])
+    ws.append([])
+    ws.append(
+        [
+            "Catatan metodologis: rata-rata MAD lintas varian mencampur skala volume yang berbeda, sehingga varian "
+            "bervolume besar lebih berpengaruh. MAPE (bebas skala) lebih adil untuk membandingkan lintas varian; "
+            "urutan prioritas pengujian tetap MAD → MAPE → MFE."
+        ]
+    )
+
+
+def build_forecast_xlsx(results, comparison: dict | None = None, labels: dict | None = None) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Forecast"
@@ -47,6 +140,8 @@ def build_forecast_xlsx(results) -> bytes:
                 r.explanation,
             ]
         )
+    if comparison is not None:
+        _write_thesis_sheet(wb.create_sheet("Format Thesis"), comparison, labels or {})
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -264,7 +359,8 @@ class ExportService:
     async def export_forecast(self, user_id: str, run_id: str):
         run = await self._require_run(user_id, run_id)
         results = await self._forecast.list_results(run_id)
-        content = build_forecast_xlsx(results)
+        comparison = build_method_comparison(results, run_criteria(results))
+        content = build_forecast_xlsx(results, comparison, await self._labels())
         filename = f"forecast_{run_id}.xlsx"
         self._archive(user_id, run_id, filename, content)
         return content, filename, XLSX_MIME

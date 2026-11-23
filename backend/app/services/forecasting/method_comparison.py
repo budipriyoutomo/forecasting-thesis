@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.services.forecasting.selection import (
+    DEFAULT_CRITERIA,
     PRIORITY,
     _finite,
     _mean,
@@ -41,7 +42,17 @@ _RANK_KEYS = ("method", "rank", "rank_mad", "rank_mape", "rank_mfe", "mad", "map
 
 
 def _completed(result) -> bool:
-    return getattr(result, "status", None) == "COMPLETED" and bool(result.candidates_evaluated)
+    return getattr(result, "status", None) == "COMPLETED" and bool(getattr(result, "candidates_evaluated", None))
+
+
+def _analysis(result) -> dict | None:
+    sa = (getattr(result, "metrics", None) or {}).get("selection_analysis")
+    return sa if isinstance(sa, dict) else None
+
+
+def run_criteria(results) -> Sequence[str]:
+    """Snapshot urutan prioritas run (`selection_analysis.criteria`); fallback DEFAULT_CRITERIA."""
+    return next((sa["criteria"] for sa in map(_analysis, results) if sa and sa.get("criteria")), DEFAULT_CRITERIA)
 
 
 def _ordered_methods(results) -> list[str]:
@@ -76,14 +87,7 @@ def _run_selection(results, criteria: Sequence[str]) -> dict | None:
     done = [r for r in results if _completed(r)]
     if not done:
         return None
-    stored = next(
-        (
-            sa
-            for sa in ((r.metrics or {}).get("selection_analysis") for r in done)
-            if isinstance(sa, dict) and sa.get("scope") == "global"
-        ),
-        None,
-    )
+    stored = next((sa for sa in map(_analysis, done) if sa and sa.get("scope") == "global"), None)
     analysis = stored or select_global_method([r.candidates_evaluated for r in done], criteria).to_dict()
     excluded = list(analysis.get("excluded_methods") or [])
     n_common = int(analysis.get("n_products") or 0)
