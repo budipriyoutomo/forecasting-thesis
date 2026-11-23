@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 # Python 3.11 (bukan 3.14 seperti venv dev) — versi yang dipakai CI, dan satu-satunya

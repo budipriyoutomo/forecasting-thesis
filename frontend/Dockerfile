@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # ---------- deps ----------
 FROM node:22-slim AS deps
 WORKDIR /app

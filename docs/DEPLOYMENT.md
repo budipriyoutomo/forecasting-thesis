@@ -544,6 +544,20 @@ make prod-logs s=backend
 - Diuji ke IDCloudHost 23 Nov 2026: `put_object`, `copy_object` (temp → permanent), `delete_object`
   berhasil dengan `S3_ADDRESSING_STYLE` `auto` maupun `path`.
 
+### 8.5a Build gagal: `registry-1.docker.io ... network is unreachable`
+
+VPS tidak bisa menjangkau Docker Hub (sering: DNS memberi alamat IPv6 padahal VPS tak punya rute IPv6,
+dan IPv4 ikut gagal/timeout). Sejak 23 Nov 2026 Dockerfile tidak lagi memakai `# syntax=docker/dockerfile:1`
+(selalu menarik image parser dari Docker Hub); base image `node:22-slim` / `python:3.11-slim` yang sudah
+ada di VPS dipakai tanpa pull. Diagnosa:
+```bash
+curl -4 -sI https://registry-1.docker.io/v2/ | head -1   # IPv4: harus "HTTP/... 401"
+curl -6 -sI https://registry-1.docker.io/v2/ | head -1   # IPv6: gagal = tak ada rute IPv6
+docker image ls | grep -E "node|python"                  # base image sudah ada?
+```
+IPv4 jalan → ulangi build. IPv4 juga gagal → masalah jaringan/firewall provider VPS, atau pasang
+registry mirror di `/etc/docker/daemon.json` (`"registry-mirrors": [...]`) lalu `systemctl restart docker`.
+
 ### 8.6 Perubahan `NEXT_PUBLIC_*` tidak berpengaruh
 
 Bukan bug. Nilainya sudah dipanggang ke dalam bundel JavaScript saat build. Jalankan
