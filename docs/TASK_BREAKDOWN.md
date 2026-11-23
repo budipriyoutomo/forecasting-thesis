@@ -217,6 +217,7 @@ Checklist rinci: `docs/TODO-v3.md`. Keputusan: `RECONCILIATION.md` §"Rekonsilia
 - [x] 11.14 UI override planner — ✅ qty override reorder ditampilkan + dipakai proyeksi
 - [x] 11.16 Satu harga produk — ✅ 10 Nov 2026: HPP (`products.cost_price`) dihapus (migration `e8f9a0b1c2d3`); `selling_price` jadi satu-satunya harga, label UI "Harga produk"; ringkasan biaya BOM membandingkan biaya material vs harga produk; `cost_price` dari klien/CSV lama diabaikan
 - [x] 11.15 Tanpa metode pemenang — ✅ 10 Nov 2026: mode otomatis tanpa pemenang/peringkat, deret tiap kandidat disimpan, planner memilih metode per produk/massal (override append-only, `forecast_selection_service`, hilir dilewati bila belum dipilih), `display_metrics` checkbox (migration `d7e8f9a0b1c2`). 861 test backend (cov 95%) + 257 test frontend hijau, build bersih
+- [x] 11.15b Metode terbaik otomatis — ✅ 23 Nov 2026 (membalik 11.15): pemilih metode dihapus dari Forecast baru; mode otomatis memilih metode terbaik (`forecasting/selection.py`, urutan prioritas 1) MAD, 2) MAPE, 3) MFE) + `selection_analysis` (alasan) di `metrics` JSONB; kolom Peringkat + badge "terbaik" + panel "Kenapa X terbaik?"; planner tetap bisa mengganti (override). 1408 test backend (juga di Python 3.11) + 564 test frontend hijau, build bersih
 
 ---
 
@@ -278,6 +279,14 @@ Keputusan: `RECONCILIATION.md` §"User Management — CR v3.7".
 - [x] BE: `UserService` + `GET/POST /users`, `PUT /users/{id}` dengan izin `user.manage` (admin); pengaman `USER_SELF_LOCKOUT`; email lowercase & lookup tidak peka huruf besar
 - [x] FE: halaman `/users` (tabel, ubah role inline, nonaktifkan/aktifkan, dialog tambah user), grup sidebar "Administrasi" — menu ber-`permission` disembunyikan untuk role tanpa izin
 - [ ] Post-MVP: buat akun Supabase langsung dari UI (Admin API + `SUPABASE_SERVICE_ROLE_KEY`) & cek `is_active`/role per request (sekarang berlaku saat login berikutnya)
+
+## 18. Tampilan Perhitungan Perencanaan Persediaan — ✅ SELESAI (23 Nov 2026), belum di-commit
+
+Keputusan: `RECONCILIATION.md` §"Tampilan Perhitungan Perencanaan Persediaan".
+
+- [x] BE: input perhitungan SS/ROP/EOQ disimpan di `reorder_recommendations` (migration `a7c3e9d2b415`) + diekspos `ReorderRecommendationOut` (`tests/unit/test_reorder_calc_inputs.py`)
+- [x] FE: `InventoryPlanBreakdown` (7 tab: MRP, SS & buffer, total kebutuhan, EOQ & kebijakan, ROP, kapasitas per grup, simulasi stok) di langkah 3 `RunDetail`; `ReorderDetail` menampilkan input perhitungan
+- [x] Keputusan user: qty pembelian default = kelipatan EOQ (migration `b8d4f0e3c526`) & EOQ dari total kebutuhan MRP + SS + B (`eoq_requirement_series`, `tests/unit/test_eoq_total_requirement.py`)
 
 ---
 

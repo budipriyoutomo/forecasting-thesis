@@ -1179,3 +1179,81 @@ channel) tapi dilaporkan sebagai warning. `n_rows` = baris yang benar-benar ters
 Template stok/pemakaian memakai kode material/produk/BOM asli dari master data (angka tetap fiktif,
 ada peringatan) sehingga bisa langsung diunggah; template demand tidak lagi menjanjikan `.xlsx`
 (endpoint demand CSV saja).
+
+
+## Metode Terbaik Otomatis — membalik Fase 11.15 (23 Nov 2026)
+
+**Permintaan user.** "Pada forecast/run tidak ada pilih metode, lakukan forecast dengan semua metode yang
+ada kemudian sistem akan mengambil yang terbaik berdasarkan metode pengujian, dan berikan analisisnya kenapa
+metode itu yang baik." Ini membalik keputusan Fase 11.15 (sistem tidak memilih pemenang) dan larangan
+AGENTS.md #20. Permintaan eksplisit user = diskusi yang disyaratkan; dicatat di sini.
+
+**Keputusan user:**
+1. Halaman Forecast baru **tidak punya pemilih metode** — run selalu menjalankan seluruh metode aktif.
+2. Sistem **memilih metode terbaik** berdasarkan pengujian peramalan dan **menjelaskan alasannya**.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- **Kriteria = metrik pengujian aktif** (`forecast_settings.display_metrics`, default MAD, MFE, MAPE). Tidak
+  ada kolom/setting baru. Admin yang menghapus centang suatu metrik juga mengeluarkannya dari penilaian.
+- **Aturan: urutan prioritas pengujian — keputusan user (koreksi 23 Nov 2026):** 1) MAD, 2) MAPE, 3) MFE.
+  MAD terkecil menang. MAPE hanya menentukan bila MAD seri, dan |MFE| hanya bila MAD & MAPE seri. Seri
+  dibandingkan pada presisi simpan (6 desimal). Seri total → nama metode. Metrik yang tidak dicentang
+  dilewati, urutannya tetap. Nilai tak terdefinisi → kalah di metrik itu. Fungsi murni ada di
+  `forecasting/selection.py`. Versi awal hari yang sama memakai *jumlah peringkat* (bobot sama) dan diganti
+  atas permintaan user. Konsekuensi: pada data nyata seri MAD jarang terjadi, jadi praktis **MAD yang
+  memutuskan**. MAPE & MFE tetap ditampilkan dan dijelaskan di analisis, termasuk catatan bila metode
+  lain lebih baik di metrik berprioritas rendah. `selection_analysis.decided_by` mencatat metrik yang
+  memisahkan peringkat 1 dari peringkat 2.
+- **Analisis disimpan** di `forecast_results.metrics.selection_analysis` (JSONB, tanpa migration):
+  `{best_method, criteria (urutan prioritas), decided_by, ranking[], summary, reasons[]}`, diekspos `ForecastResultOut.selection_analysis`.
+  Teks dibuat backend supaya export/run lama tetap bisa dijelaskan apa adanya. `summary` juga ditempel di
+  depan `explanation`.
+- Kandidat kembali membawa `rank_<metrik>` (informasi) dan `rank` (posisi akhir) dan diurutkan menurut peringkat (Fase 11.15
+  menghapus kolom ini). UI: kolom "Peringkat" + badge "terbaik", panel "Kenapa X terbaik?" di tab Ringkasan,
+  label sumber "otomatis · terbaik dari pengujian", langkah stepper "Metode terbaik".
+- **Override planner tetap ada** (AGENTS §5 non-negotiable). Mekanisme Fase 11.15 (`forecast_selection_service`,
+  alasan wajib, append-only) kini dipakai untuk **mengganti** pilihan sistem. Bila diganti, analisis sistem
+  tetap tampil dengan catatan "diganti planner".
+- **Mode manual di API dipertahankan** (`method` di `POST /forecast/runs`) demi kompatibilitas klien/skrip. Hanya
+  UI yang menghapusnya (`MethodSelector` & `useEnabledMethods` dihapus; `GET /forecast/methods` tetap ada).
+- Bug ikut diperbaiki: mengganti metode dulu mengganti seluruh `metrics` dengan ringkasan deret baru, sehingga
+  `history` & `status_reason` (CR v3.6) hilang dari hasil yang diganti. Kini ringkasan digabung ke `metrics` lama.
+
+**Konsekuensi (disadari):** run Fase 11.15 (10–22 Nov) tetap `PENDING_SELECTION` dan alurnya tidak berubah. Run
+baru langsung `SELECTED`, sehingga perencanaan bisa dijalankan tanpa langkah memilih. `forecast_runs.ranking_metric`
+tetap NULL untuk run baru, karena kriteria disnapshot di `selection_analysis.criteria`.
+
+## Tampilan Perhitungan Perencanaan Persediaan (23 Nov 2026)
+
+**Permintaan user.** Di `/forecast/runs/{id}` bagian Perencanaan Persediaan, tampilkan: 1) hasil MRP per bulan per
+material, 2) perhitungan safety stock & buffer stock, 3) total kebutuhan = MRP + SS + buffer, 4) perhitungan EOQ dari
+kebutuhan & MOQ serta kebijakan inventory lainnya, 5) perhitungan ROP, 6) cek kapasitas & utilisasi gudang per grup
+material memakai jadwal kedatangan dari ROP dan qty pembelian dari EOQ, 7) simulasi stok in/out tanpa utilisasi.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- **Tidak ada rumus baru / rumus tidak diubah.** Supaya perhitungan bisa ditampilkan tanpa frontend merumuskan ulang
+  (AGENTS §11), `reorder_service` kini **menyimpan input yang dipakainya** di `reorder_recommendations`
+  (`mu_period`, `sigma_period`, `period_days`, `lead_time_days_used`, `z_value`, `service_level_pct_used`,
+  `eoq_raw_qty`, `ordering_cost_per_order`, `holding_cost_per_unit`; migration `a7c3e9d2b415`, nullable). Frontend
+  hanya menurunkan nilai tampilan (σ harian = σ ÷ √hari, μ harian, μ × L, Σ) — SS/B/EOQ/ROP/qty/utilisasi tetap angka backend.
+- **MRP** = `stock_projections.usage_qty` skenario `proposed` (forecast × BOM per periode), bukan endpoint baru.
+- **Total kebutuhan** = Σ MRP horizon + SS + B per material (SS & B adalah level stok, bukan kebutuhan per bulan).
+- ~~EOQ tetap dihitung dari deret MRP~~ → **diganti keputusan user (lihat di bawah).**
+- **Kapasitas per grup**: Σ stok/kedatangan/pemakaian anggota grup per periode; utilisasi & flag dari backend (sudah per
+  grup sejak 19 Nov 2026). Qty kedatangan mengikuti `forecast_settings.order_qty_policy`; UI memberi peringatan bila
+  kebijakan bukan kelipatan EOQ.
+- Simulasi stok = `StockProjectionTable` mode `simulation` (kolom utilisasi disembunyikan, dua skenario tetap ada).
+
+**Keputusan user (23 Nov 2026, lanjutan — menjawab dua pertanyaan assistant dengan "ya"):**
+1. **Kebijakan qty pesan default = kelipatan EOQ** (`DEFAULT_ORDER_QTY_POLICY = "eoq"`, model/API/form ikut).
+   Migration `b8d4f0e3c526` mengganti server default dan men-set baris `forecast_settings` yang ada ke `eoq` (atas
+   persetujuan eksplisit user; admin tetap bisa memilih order-up-to). Rekomendasi tersimpan tidak diubah — berlaku
+   saat perencanaan dijalankan ulang. Baris reorder sebelum v3.3 (kolom kebijakan NULL) tetap dibaca sebagai
+   `order_up_to` (`LEGACY_ORDER_QTY_POLICY`), karena begitulah ia dihitung.
+2. **EOQ dihitung dari total kebutuhan = MRP + SS + B.** Keputusan teknis (assistant, bisa dikoreksi): SS + B adalah
+   level stok, jadi **dibagi rata ke tiap periode horizon** (`eoq_requirement_series`) supaya Σ deret = total kebutuhan
+   di tab 3. Berlaku untuk EOQ klasik (A = rata-rata × 12) dan dinamis. SS & B yang dipakai = nilai berlaku setelah
+   adjust kapasitas (EOQ kini dihitung setelah SS/B). SS/ROP tetap dari μ/σ MRP. **Baseline TIC** ikut ditambah SS & B
+   **sistem** (sebelum adjust) dari rekomendasi run yang sama, supaya perbandingan TIC tetap simetris.
+   Konsekuensi: A, EOQ, dan TIC naik dibanding sebelumnya. Penghematan (%) bisa bergeser karena kedua sisi ikut naik.
+

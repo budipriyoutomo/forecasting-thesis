@@ -23,9 +23,10 @@ import { metricColumns } from "@/lib/metrics";
 import type { ForecastCandidate } from "@/types/forecast";
 import type { DisplayMetric } from "@/types/forecastSettings";
 
-// Fase 11.15 — perbandingan metode TANPA pemenang & tanpa peringkat: semua metode tampil
-// berdampingan (urutan dari backend, tidak diurutkan menurut metrik), kolom metrik sesuai
-// checkbox Pengaturan Forecast. Planner memilih metode yang dipakai lewat tombol "Pilih".
+// Perbandingan metode — urutan dari backend (tidak diurutkan ulang di sini), kolom metrik sesuai
+// checkbox Pengaturan Forecast. 23 Nov 2026: run baru membawa peringkat (`rank`, 1 = metode
+// terbaik pilihan sistem, prioritas MAD → MAPE → MFE) → kolom "Peringkat" + badge "terbaik"; run Fase 11.15 tanpa rank
+// tampil seperti dulu. Planner tetap bisa mengganti metode lewat tombol "Pilih".
 // Pengujian peramalan: kolom MAD, MFE, MAPE sesuai checkbox (keputusan user 21 Nov 2026);
 // tiap header punya tooltip definisi; sel MAPE membawa label skala Lewis (bukan peringkat).
 export function CandidatesTable({
@@ -45,6 +46,7 @@ export function CandidatesTable({
   // Mode manual: satu kandidat & tak ada yang bisa dipilih — tabel jadi misleading.
   if (candidates.length < 2 && !onSelect) return null;
   const columns = metricColumns(displayMetrics);
+  const ranked = candidates.some((c) => typeof c.rank === "number");
 
   return (
     <Collapsible className="rounded-lg border" defaultOpen={defaultOpen ?? !selectedMethod}>
@@ -57,6 +59,7 @@ export function CandidatesTable({
           <Table>
             <TableHeader>
               <TableRow>
+                {ranked && <TableHead>Peringkat</TableHead>}
                 <TableHead>Metode</TableHead>
                 {columns.map((m) => (
                   <TableHead key={m}>
@@ -72,8 +75,14 @@ export function CandidatesTable({
                 const selectable = Boolean(onSelect && c.forecast && c.forecast.length > 0);
                 return (
                   <TableRow key={c.method}>
+                    {ranked && <TableCell className="tabular-nums">{c.rank ?? "—"}</TableCell>}
                     <TableCell>
                       <span className={used ? "font-semibold" : undefined}>{c.method}</span>
+                      {c.rank === 1 && (
+                        <Badge variant="success" className="ml-2">
+                          terbaik
+                        </Badge>
+                      )}
                       {used && (
                         <Badge variant="secondary" className="ml-2">
                           dipakai

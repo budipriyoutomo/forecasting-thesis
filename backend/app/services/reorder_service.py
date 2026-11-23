@@ -15,10 +15,10 @@ Fase 11.9 (v3.3) — SUMBER TUNGGAL titik pesan & qty pesan. Tabel Reorder dan P
 Stok (`stock_projection_service`) sama-sama memakai `compute_rop` / `compute_order_qty`
 (via `OrderPolicy`), dikonfigurasi lewat Pengaturan Forecast:
   rop_formula       standard (μ·L + SS) | with_buffer (μ·L + SS + B, default)
-  order_qty_policy  order_up_to (max(MOQ, ceil(S − current)), default)
-                    | eoq (n × EOQ, n ≥ 1 terkecil s.d. current + n·EOQ ≥ ROP;
-                           EOQ ≤ 0 → fallback order_up_to)
-Default = perilaku Reorder sebelum v3.3. Rumus final thesis menunggu docx (TODO-v3 ⛔).
+  order_qty_policy  eoq (n × EOQ, n ≥ 1 terkecil s.d. current + n·EOQ ≥ ROP;
+                           EOQ ≤ 0 → fallback order_up_to) — default sejak 23 Nov 2026
+                    | order_up_to (max(MOQ, ceil(S − current)))
+EOQ dihitung dari total kebutuhan = MRP + SS + B (`eoq_requirement_series`, 23 Nov 2026).
 
 Fase 11.17 — adjust kapasitas gudang (`capacity_adjustment_service`): SS/Buffer yang berlaku
 untuk (run, material) menimpa nilai sistem SEBELUM `compute_reorder`, sehingga ROP & S ikut
@@ -228,6 +228,20 @@ def choose_eoq(series, days: float, method: str, unit_price, holding_rate_pct, c
     return EoqChoice("dynamic", status, float(dyn.eoq_qty), ordering, holding, float(dyn.total_cost), a)
 
 
+def eoq_requirement_series(series, safety_stock, buffer) -> list[float]:
+    """Deret kebutuhan untuk EOQ = MRP + SS + B (23 Nov 2026, keputusan user).
+
+    SS + B (level stok, bukan aliran per periode) dibagi rata ke tiap periode horizon,
+    sehingga Σ deret = total kebutuhan material (Σ MRP + SS + B). Dipakai EOQ klasik
+    (A = rata-rata × periode/tahun) maupun dinamis, usulan maupun baseline.
+    """
+    values = [float(v) for v in series]
+    if not values:
+        return []
+    extra = (float(safety_stock or 0) + float(buffer or 0)) / len(values)
+    return [v + extra for v in values]
+
+
 def compute_tic(ordering_cost_total: float, holding_cost_total: float) -> Decimal:
     """Total Inventory Cost = Ordering Cost + Holding Cost."""
     return _dec(float(ordering_cost_total) + float(holding_cost_total))
@@ -244,7 +258,9 @@ def compute_savings_pct(tic_actual: float, tic_proposed: float) -> Decimal:
 ROP_FORMULAS = ("standard", "with_buffer")
 ORDER_QTY_POLICIES = ("eoq", "order_up_to")
 DEFAULT_ROP_FORMULA = "with_buffer"
-DEFAULT_ORDER_QTY_POLICY = "order_up_to"
+# 23 Nov 2026 (keputusan user): default kelipatan EOQ — qty pembelian = hasil EOQ.
+DEFAULT_ORDER_QTY_POLICY = "eoq"
+LEGACY_ORDER_QTY_POLICY = "order_up_to"  # kebijakan baris reorder sebelum v3.3 (kolom NULL)
 
 
 def compute_rop(mu_daily: float, lead_time_days: float, ss: float, buffer: float, formula: str) -> float:
@@ -315,7 +331,8 @@ def order_policy_from_rec(rec) -> OrderPolicy:
         ss, buffer = float(rec.safety_stock or 0), float(getattr(rec, "buffer_stock", 0) or 0)
         s_level = 2 * rop - ss - buffer
     return OrderPolicy(
-        policy=getattr(rec, "order_qty_policy_used", None) or DEFAULT_ORDER_QTY_POLICY,
+        # Baris sebelum v3.3 dihitung dengan order-up-to — bukan default baru (23 Nov 2026).
+        policy=getattr(rec, "order_qty_policy_used", None) or LEGACY_ORDER_QTY_POLICY,
         reorder_point=rop,
         order_up_to=float(s_level),
         eoq_qty=float(rec.eoq_qty or 0),
@@ -463,13 +480,6 @@ class ReorderService:
                 stock_qty, stock_source = float(current_stock.get(material_id, 0)), "request"
             waste_factor = waste.get(str(material_id))
             buffer = compute_buffer_qty(waste_factor, mu_p)
-            # EOQ dihitung DULU — kebijakan `eoq` memakainya sebagai qty pesan (Fase 11.9).
-            price = getattr(material, "unit_price", None)
-            eoq = choose_eoq(series, period_days, eoq_method, price, cost.holding_rate_pct, cost)
-            raw_qty = math.ceil(round(eoq.eoq_qty, 6)) if eoq.method == "classic" else eoq.eoq_qty
-            eoq_qty = round_to_moq(raw_qty, float(material.moq))
-            ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
-
             manual_ss = float(material.manual_safety_stock) if material.manual_safety_stock is not None else None
             system_ss = compute_safety_stock(z, sigma, material.lead_time_days, manual_ss)
             ss, buffer_used = system_ss, buffer
@@ -485,6 +495,16 @@ class ReorderService:
                     buffer_used = float(adj.buffer_stock)
             sigma_lt = sigma * math.sqrt(float(material.lead_time_days))
             alpha = effective_service_level(ss, sigma_lt)
+
+            # EOQ (23 Nov 2026, keputusan user) dari TOTAL KEBUTUHAN = MRP + SS + B yang berlaku
+            # (setelah adjust kapasitas), dihitung sebelum compute_reorder — kebijakan `eoq`
+            # memakainya sebagai qty pesan (Fase 11.9).
+            price = getattr(material, "unit_price", None)
+            eoq_series = eoq_requirement_series(series, ss, buffer_used)
+            eoq = choose_eoq(eoq_series, period_days, eoq_method, price, cost.holding_rate_pct, cost)
+            raw_qty = math.ceil(round(eoq.eoq_qty, 6)) if eoq.method == "classic" else eoq.eoq_qty
+            eoq_qty = round_to_moq(raw_qty, float(material.moq))
+            ordering_total, holding_total = eoq.ordering_cost, eoq.holding_cost
 
             comp = compute_reorder(
                 mu=mu,
@@ -529,6 +549,15 @@ class ReorderService:
                     buffer_stock_system=_dec(buffer) if adj is not None else None,
                     service_level_effective=_dec(alpha) if alpha is not None else None,
                     adjustment_source=adj.source if adj is not None else None,
+                    mu_period=_dec(mu_p),
+                    sigma_period=_dec(sigma_p),
+                    period_days=_dec(period_days),
+                    lead_time_days_used=_dec(material.lead_time_days),
+                    z_value=_dec(z),
+                    service_level_pct_used=_dec(service_level),
+                    eoq_raw_qty=_dec(eoq.eoq_qty),
+                    ordering_cost_per_order=_dec(cost.ordering_cost),
+                    holding_cost_per_unit=_dec(cost.holding_cost),
                 )
             )
         return recommendations

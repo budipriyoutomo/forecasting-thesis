@@ -9,6 +9,7 @@ import { FeatureImportance } from "@/components/forecast/FeatureImportance";
 import { ForecastChart } from "@/components/forecast/ForecastChart";
 import { ForecastQtyTable } from "@/components/forecast/ForecastQtyTable";
 import { MetricValue } from "@/components/forecast/MetricValue";
+import { SelectionAnalysis } from "@/components/forecast/SelectionAnalysis";
 import {
   FAILURE_FIX,
   forecastTotals,
@@ -108,7 +109,8 @@ export function ProductResultDetail({
             <TabsTrigger value="numbers">Angka</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="flex flex-col gap-4">
-            <ExplanationBox explanation={r.explanation} />
+            <SelectionAnalysis analysis={r.selection_analysis} methodUsed={r.method_used} />
+            {!r.selection_analysis && <ExplanationBox explanation={r.explanation} />}
             {pending ? (
               <p className="text-sm text-muted-foreground">Grafik tampil setelah metode dipilih.</p>
             ) : (

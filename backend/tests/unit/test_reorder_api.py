@@ -111,7 +111,7 @@ async def test_generate_menyertakan_kebijakan_pesan(client, auth_headers):
     )
     row = res.json()["data"][0]
     assert row["rop_formula_used"] == "with_buffer"
-    assert row["order_qty_policy_used"] == "order_up_to"
+    assert row["order_qty_policy_used"] == "eoq"  # default sejak 23 Nov 2026
     assert float(row["order_up_to_level"]) > float(row["reorder_point"])
 
 

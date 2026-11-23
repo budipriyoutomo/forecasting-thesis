@@ -14,9 +14,9 @@ import type { ForecastResult, ForecastRunResponse } from "@/types/forecast";
 import type { DisplayMetric } from "@/types/forecastSettings";
 import type { Product } from "@/types/product";
 
-// Fase 11.15 — tidak ada metode pemenang. Mode otomatis menjalankan semua metode aktif;
-// planner memilih metode per produk (onSelectMethod) atau satu metode untuk semua produk
-// (onSelectAll). Produk yang belum dipilih dilewati di perencanaan persediaan.
+// 23 Nov 2026 — mode otomatis menjalankan semua metode aktif dan sistem memilih yang terbaik;
+// planner bisa mengganti per produk (onSelectMethod) atau satu metode untuk semua produk
+// (onSelectAll). Run Fase 11.15 yang belum dipilih tetap dilewati di perencanaan persediaan.
 // CR v3.6 §5 — tampilan: tabel ringkasan produk + Sheet detail per produk (bukan satu Card
 // panjang per produk). Logika pemilihan metode tidak berubah.
 export function ForecastResults({
@@ -56,8 +56,8 @@ export function ForecastResults({
       {nPending > 0 && (
         <Alert variant="warning">
           <AlertDescription>
-            {nPending} produk menunggu pemilihan metode. Sistem tidak memilih metode otomatis — bandingkan metrik
-            tiap metode lalu pilih. Produk yang belum dipilih dilewati di perencanaan persediaan.
+            {nPending} produk menunggu pemilihan metode (run dibuat sebelum pemilihan otomatis) — bandingkan
+            metrik tiap metode lalu pilih. Produk yang belum dipilih dilewati di perencanaan persediaan.
           </AlertDescription>
         </Alert>
       )}

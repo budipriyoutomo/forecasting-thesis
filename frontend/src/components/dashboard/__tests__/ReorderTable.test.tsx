@@ -230,6 +230,8 @@ describe("ReorderDetail — semua field ReorderRecommendation tampil (CR v3.6 §
     safety_stock_system: "48", buffer_stock_system: "9", service_level_effective: "88.5",
     adjustment_source: "custom", ordering_cost: "120000", holding_cost: "30000", total_inventory_cost: "150000",
     unit_price_used: "2500", holding_rate_used: "20",
+    mu_period: "310", sigma_period: "42.5", period_days: "31", lead_time_days_used: "7", z_value: "1.6449",
+    service_level_pct_used: "95", eoq_raw_qty: "377.3", ordering_cost_per_order: "250000", holding_cost_per_unit: "15",
   };
 
   // Label/nilai yang mewakili tiap field — bila field baru ditambah ke tipe, tambahkan di sini.
@@ -264,6 +266,15 @@ describe("ReorderDetail — semua field ReorderRecommendation tampil (CR v3.6 §
     total_inventory_cost: /150\.000/,
     unit_price_used: /2\.500/,
     holding_rate_used: /^20%$/,
+    mu_period: /^310$/,
+    sigma_period: /^42,5$/,
+    period_days: /^31 hari$/,
+    lead_time_days_used: /^7 hari$/,
+    z_value: /^1,6449$/,
+    service_level_pct_used: /^95%$/,
+    eoq_raw_qty: /^377,3$/,
+    ordering_cost_per_order: /250\.000/,
+    holding_cost_per_unit: /^Rp 15$/,
   };
 
   it.each(Object.entries(EXPECTED))("%s", async (_field, pattern) => {

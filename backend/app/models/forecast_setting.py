@@ -6,8 +6,9 @@ Keputusan #6, RECONCILIATION §"Rekonsiliasi v3.2".
 metode forecast sebagai master data — bukan env — supaya admin bisa mengubahnya dari
 UI. Belum ada baris → default di kode (semua metrik tampil, seluruh metode aktif).
 
-Fase 11.15 (10 Nov 2026): `ranking_metric` (metrik penentu pemenang) dihapus — sistem tidak
-lagi memilih pemenang. `display_metrics` = metrik yang DITAMPILKAN di hasil forecast.
+Fase 11.15 (10 Nov 2026): `ranking_metric` (metrik penentu pemenang) dihapus. `display_metrics`
+= metrik yang DITAMPILKAN di hasil forecast — sejak 23 Nov 2026 juga KRITERIA pemilihan metode
+terbaik otomatis (`services/forecasting/selection.py`).
 """
 import uuid
 from datetime import datetime
@@ -54,7 +55,7 @@ class ForecastSetting(Base):
     eoq_method: Mapped[str] = mapped_column(String(10), nullable=False, default="classic")
     # Fase 11.9 (v3.3) — sumber tunggal titik & qty pesan untuk Reorder + Proyeksi Stok.
     rop_formula: Mapped[str] = mapped_column(String(20), nullable=False, default="with_buffer")
-    order_qty_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="order_up_to")
+    order_qty_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="eoq")
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

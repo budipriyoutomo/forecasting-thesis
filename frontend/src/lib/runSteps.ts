@@ -37,16 +37,16 @@ export function deriveRunSteps({ run, hasPlanning }: { run: RunCounts; hasPlanni
   };
 
   let select: RunStep;
-  if (!completed) select = { key: "select", label: "Pilih metode", status: "locked", lockedReason: "Tunggu run selesai." };
+  if (!completed) select = { key: "select", label: "Metode terbaik", status: "locked", lockedReason: "Tunggu run selesai." };
   else if (run.n_completed === 0)
     select = {
       key: "select",
-      label: "Pilih metode",
+      label: "Metode terbaik",
       status: "locked",
       lockedReason: "Tidak ada produk yang berhasil di-forecast — perbaiki data demand lalu buat run baru.",
     };
-  else if (pending > 0) select = { key: "select", label: "Pilih metode", status: "todo", hint: `${pending} produk menunggu` };
-  else select = { key: "select", label: "Pilih metode", status: "done", hint: `${selected} produk dipilih` };
+  else if (pending > 0) select = { key: "select", label: "Metode terbaik", status: "todo", hint: `${pending} produk menunggu` };
+  else select = { key: "select", label: "Metode terbaik", status: "done", hint: `${selected} produk punya metode` };
 
   let planning: RunStep;
   if (select.status === "locked")

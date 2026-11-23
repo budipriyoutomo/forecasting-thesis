@@ -8,8 +8,9 @@ GET  /forecast/results?product_id=... → riwayat hasil per produk.
 POST /forecast/results/{id}/selection → planner memilih metode untuk satu produk (Fase 11.15).
 POST /forecast/runs/{id}/selection    → pakai satu metode untuk semua produk di run.
 
-Fase 11.15: mode otomatis tidak memilih pemenang. Hasil dibaca lewat
-ForecastSelectionService supaya `method_used`/`forecast` = metode yang berlaku.
+23 Nov 2026: mode otomatis memilih metode terbaik (+ `selection_analysis`); planner tetap
+bisa mengganti lewat /selection. Hasil dibaca lewat ForecastSelectionService supaya
+`method_used`/`forecast` = metode yang berlaku.
 
 Semua orkestrasi lewat ForecastRunService (yang memanggil forecast_service
 sebagai satu-satunya entry point engine — AGENTS.md §5). Endpoint TIDAK
@@ -89,6 +90,7 @@ def _result_model(result) -> ForecastResultOut:
         hyperparameters=getattr(result, "hyperparameters", None),
         history=metrics.get("history") or [],
         status_reason=metrics.get("status_reason"),
+        selection_analysis=metrics.get("selection_analysis"),
     )
 
 

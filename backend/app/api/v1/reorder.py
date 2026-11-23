@@ -26,6 +26,12 @@ from app.services.reorder_service import ReorderService
 
 router = APIRouter(prefix="/reorder", tags=["reorder"])
 
+# 23 Nov 2026 — input perhitungan SS/ROP/EOQ (lihat ReorderRecommendationOut)
+CALC_INPUT_FIELDS = (
+    "mu_period", "sigma_period", "period_days", "lead_time_days_used", "z_value",
+    "service_level_pct_used", "eoq_raw_qty", "ordering_cost_per_order", "holding_cost_per_unit",
+)
+
 
 def _out(rec, override=None) -> dict:
     """`override` = (qty, Override) yang berlaku untuk material ini, atau None."""
@@ -59,6 +65,7 @@ def _out(rec, override=None) -> dict:
         buffer_stock_system=getattr(rec, "buffer_stock_system", None),
         service_level_effective=getattr(rec, "service_level_effective", None),
         adjustment_source=getattr(rec, "adjustment_source", None),
+        **{f: getattr(rec, f, None) for f in CALC_INPUT_FIELDS},
         override_qty=Decimal(str(ov_qty)) if ov_qty is not None else None,
         override_reason=getattr(ov, "reason", None),
         override_at=ov.created_at.isoformat() if getattr(ov, "created_at", None) else None,

@@ -16,7 +16,7 @@ const SCENARIOS: { value: ProjectionScenario; label: string }[] = [
   { value: "baseline", label: "Existing (planning)" },
 ];
 
-function Utilization({ pct }: { pct: number | null }) {
+export function Utilization({ pct }: { pct: number | null }) {
   if (pct == null) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="flex items-center gap-2">
@@ -34,7 +34,17 @@ function Utilization({ pct }: { pct: number | null }) {
 // Tahap 3 thesis (Fase 11.6): stok awal + kedatangan − pemakaian = stok akhir. Kedatangan =
 // pesanan hasil ROP, tiba di periode yang sama (input kedatangan manual dihapus 20 Nov 2026);
 // utilisasi gudang material per periode. Satu tabel per material; tab memilih skenario.
-export function StockProjectionTable({ rows, materials = [] }: { rows: StockProjectionRow[]; materials?: Material[] }) {
+// `simulation` (23 Nov 2026) = simulasi stok in/out saja: kolom utilisasi gudang disembunyikan
+// (utilisasi tampil per grup di tab Kapasitas gudang).
+export function StockProjectionTable({
+  rows,
+  materials = [],
+  simulation = false,
+}: {
+  rows: StockProjectionRow[];
+  materials?: Material[];
+  simulation?: boolean;
+}) {
   const [scenario, setScenario] = useState<ProjectionScenario>("proposed");
   const hasBaseline = rows.some((r) => r.scenario === "baseline");
   const byMaterial = new Map<string, StockProjectionRow[]>();
@@ -79,7 +89,7 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
             {exceedsOnePeriod(leadTime.get(materialId)) && (
               <LeadTimeWarning leadTimeDays={leadTime.get(materialId) as number} />
             )}
-            {groupOf.get(materialId) && (
+            {!simulation && groupOf.get(materialId) && (
               <span className="font-normal text-muted-foreground">
                 · grup {groupOf.get(materialId)} (utilisasi = total stok grup)
               </span>
@@ -91,12 +101,25 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
                 <TableRow>
                   <TableHead>Periode</TableHead>
                   <TableHead>Stok awal</TableHead>
-                  <TableHead>Pemakaian</TableHead>
-                  <TableHead>Kedatangan (ROP)</TableHead>
+                  {simulation ? (
+                    <>
+                      <TableHead>Masuk (kedatangan)</TableHead>
+                      <TableHead>Keluar (pemakaian)</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead>Pemakaian</TableHead>
+                      <TableHead>Kedatangan (ROP)</TableHead>
+                    </>
+                  )}
                   <TableHead>Stok akhir</TableHead>
                   <TableHead>Kekurangan</TableHead>
-                  <TableHead>Utilisasi awal</TableHead>
-                  <TableHead>Utilisasi akhir</TableHead>
+                  {!simulation && (
+                    <>
+                      <TableHead>Utilisasi awal</TableHead>
+                      <TableHead>Utilisasi akhir</TableHead>
+                    </>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -104,8 +127,17 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
                   <TableRow key={r.period}>
                     <TableCell>{formatDate(r.period)}</TableCell>
                     <TableCell className="tabular-nums">{formatNumber(r.opening_qty)}</TableCell>
-                    <TableCell className="tabular-nums">{formatNumber(r.usage_qty)}</TableCell>
-                    <TableCell className="tabular-nums">{formatNumber(r.order_qty)}</TableCell>
+                    {simulation ? (
+                      <>
+                        <TableCell className="tabular-nums">{formatNumber(r.order_qty)}</TableCell>
+                        <TableCell className="tabular-nums">{formatNumber(r.usage_qty)}</TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="tabular-nums">{formatNumber(r.usage_qty)}</TableCell>
+                        <TableCell className="tabular-nums">{formatNumber(r.order_qty)}</TableCell>
+                      </>
+                    )}
                     <TableCell className="tabular-nums">{formatNumber(r.ending_qty)}</TableCell>
                     <TableCell className="tabular-nums">
                       {r.shortage_qty > 0 ? (
@@ -114,15 +146,19 @@ export function StockProjectionTable({ rows, materials = [] }: { rows: StockProj
                         "—"
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Utilization pct={r.utilization_opening_pct} />
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex flex-wrap items-center gap-2">
-                        <Utilization pct={r.utilization_ending_pct} />
-                        {r.is_within_capacity === false && <Badge variant="destructive">Melebihi kapasitas</Badge>}
-                      </span>
-                    </TableCell>
+                    {!simulation && (
+                      <>
+                        <TableCell>
+                          <Utilization pct={r.utilization_opening_pct} />
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <Utilization pct={r.utilization_ending_pct} />
+                            {r.is_within_capacity === false && <Badge variant="destructive">Melebihi kapasitas</Badge>}
+                          </span>
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

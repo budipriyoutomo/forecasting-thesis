@@ -6,7 +6,8 @@ export interface ForecastPoint {
   upper: number;
 }
 
-// Satu metode yang dijalankan di mode otomatis (Fase 11.15: tanpa pemenang & tanpa peringkat).
+// Satu metode yang dijalankan di mode otomatis. Sejak 23 Nov 2026 membawa peringkat pengujian
+// (rank 1 = metode terbaik pilihan sistem); run Fase 11.15 tidak punya rank.
 // Mode manual mengisi satu entri saja: metode yang dipaksa user.
 export interface ForecastCandidate {
   method: string;
@@ -18,6 +19,35 @@ export interface ForecastCandidate {
   /** Deret forecast metode ini — absen di run sebelum Fase 11.15 (metode tak bisa diganti). */
   forecast?: ForecastPoint[];
   explanation?: string | null;
+  /** Peringkat akhir (1 = terbaik, prioritas MAD → MAPE → MFE). Absen di run sebelum 23 Nov 2026. */
+  rank?: number;
+  rank_mad?: number;
+  rank_mfe?: number;
+  rank_mape?: number;
+}
+
+/** Baris peringkat di analisis pemilihan (nilai metrik sudah dibersihkan dari NaN/inf → null). */
+export interface SelectionRankingRow {
+  method: string;
+  rank: number;
+  rank_mad?: number;
+  rank_mfe?: number;
+  rank_mape?: number;
+  mad: number | null;
+  mfe: number | null;
+  mape: number | null;
+}
+
+/** 23 Nov 2026 — kenapa sistem memilih metode terbaik (mode otomatis). */
+export interface SelectionAnalysis {
+  best_method: string;
+  /** Urutan prioritas pengujian yang dipakai (snapshot Pengaturan Forecast saat run): MAD → MAPE → MFE. */
+  criteria: ("mad" | "mfe" | "mape")[];
+  /** Metrik yang memisahkan metode terbaik dari peringkat 2; null = satu kandidat / seri total. */
+  decided_by?: "mad" | "mfe" | "mape" | null;
+  ranking: SelectionRankingRow[];
+  summary: string;
+  reasons: string[];
 }
 
 export type SelectionStatus = "SELECTED" | "PENDING_SELECTION";
@@ -48,6 +78,8 @@ export interface ForecastResult {
   history?: HistoryPoint[];
   /** CR v3.6 §7.2 — alasan gagal bahasa natural; null bila sukses / run lama. */
   status_reason?: string | null;
+  /** 23 Nov 2026 — analisis pemilihan metode terbaik; null untuk mode manual / run lama / gagal. */
+  selection_analysis?: SelectionAnalysis | null;
 }
 
 export interface HistoryPoint {
@@ -63,7 +95,7 @@ export interface ForecastRunSummary {
   n_products: number;
   n_completed: number;
   n_failed: number;
-  /** Fase 11.15 — produk yang metodenya belum dipilih planner (dilewati di perencanaan). */
+  /** Produk yang metodenya belum dipilih (hanya run Fase 11.15; run baru dipilih otomatis). */
   n_pending_selection?: number;
 }
 
@@ -104,5 +136,6 @@ export interface ForecastRunInput {
   product_ids: string[];
   horizon: number;
   horizon_unit?: string;
+  /** UI tidak lagi mengirim (sistem memilih metode terbaik); dipertahankan untuk kompatibilitas API. */
   method?: string | null;
 }

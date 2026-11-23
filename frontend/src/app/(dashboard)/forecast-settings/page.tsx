@@ -18,7 +18,7 @@ export default function ForecastSettingsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Pengaturan"
-        description="Metode forecasting yang aktif dan metrik yang ditampilkan di hasil forecast. Sistem tidak memilih metode pemenang — planner memilih metode per produk setelah membandingkan metriknya."
+        description="Metode forecasting yang aktif dan metrik yang ditampilkan di hasil forecast. Sistem memilih metode terbaik per produk berdasarkan metrik pengujian ini; planner tetap bisa menggantinya."
       />
 
       {isError && (

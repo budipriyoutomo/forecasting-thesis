@@ -205,7 +205,11 @@ async def test_generate_tanpa_template_aktif_fallback_env():
         cost_templates=FakeCostTemplateRepo(None),
     )
     r = (await svc.generate_for_run(USER, "r1", current_stock={"M1": 0}))[0]
-    expected = compute_eoq([10, 12, 11, 9], settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE)
+    # EOQ dari total kebutuhan = MRP + SS + B (23 Nov 2026)
+    from app.services.reorder_service import eoq_requirement_series
+
+    demand = eoq_requirement_series([10, 12, 11, 9], float(r.safety_stock), float(r.buffer_stock))
+    expected = compute_eoq(demand, settings.DEFAULT_ORDERING_COST, settings.DEFAULT_HOLDING_COST_RATE)
     assert float(r.total_inventory_cost) == pytest.approx(float(expected.total_cost))
 
 
@@ -331,11 +335,13 @@ async def test_eoq_klasik_dipakai_bila_harga_dan_rate_ada():
     recs = {str(r.material_id): r for r in await svc.generate_for_run(USER, "r1", current_stock={"M1": 0, "M2": 0})}
 
     m1 = recs["M1"]
-    q = math.sqrt(2 * 12_000 * 250_000 / (0.20 * 1_500))
+    # 23 Nov 2026: A dari total kebutuhan = (Σ MRP 3.000 + SS + B) ÷ 3 × 12
+    a = (3000 + float(m1.safety_stock) + float(m1.buffer_stock)) / 3 * 12
+    q = math.sqrt(2 * a * 250_000 / (0.20 * 1_500))
     assert m1.eoq_method == "classic" and m1.item_status == "COMPLETED"
-    assert float(m1.annual_demand) == pytest.approx(12_000)
+    assert float(m1.annual_demand) == pytest.approx(a, abs=1e-3)
     assert float(m1.unit_price_used) == 1500 and float(m1.holding_rate_used) == pytest.approx(20)
-    assert float(m1.total_inventory_cost) == pytest.approx(2 * 12_000 / q * 250_000, rel=1e-4)
+    assert float(m1.total_inventory_cost) == pytest.approx(2 * a / q * 250_000, rel=1e-4)
     assert float(m1.eoq_qty) == math.ceil(q)  # MOQ 0 → dibulatkan ke atas ke unit utuh
 
     m2 = recs["M2"]  # tanpa harga → EOQ dinamis, status per item (run tidak gagal)
@@ -436,8 +442,15 @@ async def _one(settings, moq=0, usage=None, stock=0):
 
 
 @pytest.mark.asyncio
-async def test_default_tanpa_settings_audit_with_buffer_order_up_to():
+async def test_default_tanpa_settings_audit_with_buffer_eoq():
+    # 23 Nov 2026: default kebijakan qty pesan = kelipatan EOQ
     r = await _one(None)
+    assert r.rop_formula_used == "with_buffer" and r.order_qty_policy_used == "eoq"
+
+
+@pytest.mark.asyncio
+async def test_policy_order_up_to_dari_master_data():
+    r = await _one(FakePlanningSettings(policy="order_up_to"))
     assert r.rop_formula_used == "with_buffer" and r.order_qty_policy_used == "order_up_to"
     # S = ROP + μ·L = 2·ROP − SS − B
     s_level = 2 * float(r.reorder_point) - float(r.safety_stock) - float(r.buffer_stock)

@@ -1,5 +1,5 @@
 """
-Orkestrasi Forecasting — mode otomatis (semua metode, tanpa pemenang) + mode manual.
+Orkestrasi Forecasting — mode otomatis (semua metode → terbaik dipilih) + mode manual.
 
 SATU-SATUNYA entry point engine — endpoint TIDAK BOLEH memanggil registry/engine
 langsung (AGENTS.md §5).
@@ -9,10 +9,12 @@ Alur (docs/ARCHITECTURE.md §6.1):
     Gagal → error langsung, TIDAK fallback (user memilih sadar — AGENTS.md §5/#14).
     Metode itu langsung berlaku untuk produk ini.
   - `requested_method` None  → MODE OTOMATIS: jalankan SELURUH metode aktif, simpan
-    MAD/MFE/MSE/MAPE + deret forecast + penjelasan tiap metode di `candidates_evaluated`.
-    Sistem TIDAK memilih pemenang dan tidak memberi peringkat (Fase 11.15, keputusan user
-    10 Nov 2026) — planner memilih metode per produk (override append-only, lihat
-    `forecast_selection_service`). Tak ada klasifikasi kuadran (larangan #12).
+    MAD/MFE/MSE/MAPE + deret forecast + penjelasan + peringkat tiap metode di
+    `candidates_evaluated`, lalu sistem MEMILIH metode terbaik berdasarkan pengujian peramalan
+    (`selection.select_best_method`, 23 Nov 2026 — membalik Fase 11.15 atas permintaan user)
+    beserta analisis alasannya (`selection_analysis`). Planner tetap bisa mengganti metode
+    lewat override append-only (`forecast_selection_service`). Tak ada klasifikasi kuadran
+    (larangan #12).
 """
 import logging
 from dataclasses import dataclass
@@ -23,6 +25,7 @@ from app.config import get_settings
 from app.services.forecasting import registry
 from app.services.forecasting.preprocessing import to_period_series
 from app.services.forecasting.evaluation import mape_interpretation
+from app.services.forecasting.selection import DEFAULT_CRITERIA, select_best_method
 from app.services.forecasting.types import EngineOptions, EngineResult, ForecastPoint
 from app.utils.exceptions import UnsupportedForecastMethodError
 
@@ -45,6 +48,8 @@ class ForecastResultRecord:
     hyperparameters: dict | None = None  # α ES / hasil grid search / outlier di-cap
     # CR v3.6 §7.2 — alasan bahasa natural bila status gagal (None = sukses)
     status_reason: str | None = None
+    # 23 Nov 2026 — analisis kenapa metode terpilih terbaik (mode otomatis); None = manual/gagal
+    selection_analysis: dict | None = None
 
 
 def _candidate_row(method: str, r: EngineResult) -> dict:
@@ -58,7 +63,7 @@ def _candidate_row(method: str, r: EngineResult) -> dict:
         "feature_importance": r.feature_importance,
         "hyperparameters": r.hyperparameters,
         # Fase 11.15 — deret & penjelasan tiap kandidat disimpan agar planner bisa memilih
-        # metode SETELAH run (mode otomatis tidak lagi memilih pemenang).
+        # metode SETELAH run (mengganti metode terbaik pilihan sistem).
         "forecast": [p.__dict__ for p in r.forecast] if r.forecast else [],
         "explanation": _with_mape_label(r.explanation, r.mape),
     }
@@ -93,6 +98,7 @@ def run_forecast_for_product(
     requested_method: str | None = None,
     enabled_methods: set[str] | None = None,
     options: EngineOptions | None = None,
+    selection_metrics=DEFAULT_CRITERIA,
 ) -> ForecastResultRecord:
     settings = get_settings()
     enabled = registry.get_enabled_methods(enabled_methods)
@@ -148,13 +154,15 @@ def run_forecast_for_product(
         )
 
     candidates = [_candidate_row(name, r) for name, r in evaluated]
-    return ForecastResultRecord(
-        status="COMPLETED",
-        selection_mode="auto",
-        candidates_evaluated=candidates,
-        explanation=(
-            f"{len(candidates)} metode dijalankan: {', '.join(c['method'] for c in candidates)}. "
-            "Sistem tidak memilih metode otomatis — pilih metode yang dipakai untuk produk ini "
-            "setelah membandingkan metrik dan grafik tiap metode."
-        ),
-    )
+    outcome = select_best_method(candidates, selection_metrics)
+    ranks = {row["method"]: row for row in outcome.ranking}
+    for c in candidates:
+        row = ranks[c["method"]]
+        c.update({k: v for k, v in row.items() if k.startswith("rank")})
+    candidates.sort(key=lambda c: c["rank"])
+
+    best = dict(evaluated)[outcome.best_method]
+    record = _completed(outcome.best_method, "auto", best, candidates)
+    record.explanation = f"{outcome.summary} {record.explanation}".strip()
+    record.selection_analysis = outcome.to_dict()
+    return record

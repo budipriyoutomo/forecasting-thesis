@@ -1,5 +1,5 @@
 """
-Test orkestrasi forecast_service — mode otomatis (semua metode, tanpa pemenang, Fase 11.15) vs manual
+Test orkestrasi forecast_service — mode otomatis (semua metode → terbaik dipilih dari pengujian, 23 Nov 2026) vs manual
 (AGENTS.md §5, docs/ARCHITECTURE.md §6.1). Tidak ada lagi klasifikasi kuadran.
 """
 import pytest
@@ -10,21 +10,23 @@ from app.utils.exceptions import UnsupportedForecastMethodError
 _ACTIVE = {"moving_average", "exponential_smoothing", "random_forest", "xgboost"}
 
 
-def test_auto_mode_menjalankan_semua_metode_tanpa_pemenang(smooth_df):
-    """Fase 11.15: mode otomatis TIDAK memilih metode — planner yang memilih per produk."""
+def test_auto_mode_memilih_metode_terbaik(smooth_df):
+    """23 Nov 2026 (membalik Fase 11.15): mode otomatis memilih metode terbaik dari pengujian."""
     record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
 
     assert record.status == "COMPLETED"
     assert record.selection_mode == "auto"
-    assert record.method_used is None
-    assert record.forecast is None
-    assert record.mad is None and record.mape is None
     # candidates_evaluated menyimpan SEMUA kandidat yang berhasil (lstm auto-excluded, TF absen)
     assert {c["method"] for c in record.candidates_evaluated} == _ACTIVE
+    assert record.method_used in _ACTIVE
+    assert len(record.forecast) == 7
+    best = next(c for c in record.candidates_evaluated if c["method"] == record.method_used)
+    assert record.mad == best["mad"] and record.mape == best["mape"]
+    assert best["rank"] == 1
 
 
 def test_auto_mode_kandidat_membawa_deret_forecast_dan_penjelasan(smooth_df):
-    """Deret forecast tiap kandidat disimpan supaya planner bisa memilih metode setelah run."""
+    """Deret forecast tiap kandidat tetap disimpan supaya planner bisa mengganti metode."""
     record = run_forecast_for_product(smooth_df, horizon=7)
 
     for c in record.candidates_evaluated:
@@ -35,19 +37,38 @@ def test_auto_mode_kandidat_membawa_deret_forecast_dan_penjelasan(smooth_df):
             assert c[key] is not None
 
 
-def test_auto_mode_tanpa_peringkat(smooth_df):
+def test_auto_mode_kandidat_membawa_peringkat(smooth_df):
     record = run_forecast_for_product(smooth_df, horizon=7)
 
+    ranks = sorted(c["rank"] for c in record.candidates_evaluated)
+    assert ranks == list(range(1, len(_ACTIVE) + 1))
     for c in record.candidates_evaluated:
-        assert not any(k.startswith("rank_") for k in c)
+        assert {"rank_mad", "rank_mfe", "rank_mape"} <= set(c)
+        assert "rank_total" not in c  # prioritas MAD → MAPE → MFE, bukan jumlah peringkat
 
 
-def test_auto_mode_explanation_meminta_planner_memilih(smooth_df):
+def test_auto_mode_menyertakan_analisis_pemilihan(smooth_df):
     record = run_forecast_for_product(smooth_df, horizon=7)
 
-    exp = record.explanation.lower()
-    assert "pilih" in exp
-    assert "menang" not in exp and "terbaik" not in exp
+    analysis = record.selection_analysis
+    assert analysis["best_method"] == record.method_used
+    assert analysis["criteria"] == ["mad", "mape", "mfe"]  # urutan prioritas (23 Nov 2026)
+    assert analysis["reasons"]
+    assert "terbaik" in record.explanation.lower()
+
+
+def test_auto_mode_default_memilih_mad_terkecil(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7)
+
+    assert record.mad == min(c["mad"] for c in record.candidates_evaluated)
+
+
+def test_auto_mode_kriteria_mengikuti_metrik_pengujian(smooth_df):
+    record = run_forecast_for_product(smooth_df, horizon=7, selection_metrics=["mape"])
+
+    assert record.selection_analysis["criteria"] == ["mape"]
+    best_mape = min(c["mape"] for c in record.candidates_evaluated)
+    assert record.mape == best_mape
 
 
 def test_manual_mode_memaksa_metode(smooth_df):

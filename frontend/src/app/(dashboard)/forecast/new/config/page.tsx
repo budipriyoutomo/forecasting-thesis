@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Info, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { FormError } from "@/components/common/FormError";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PermissionGate } from "@/components/common/PermissionGate";
-import { MethodSelector } from "@/components/config/MethodSelector";
 import { NewForecastSteps } from "@/components/forecast/NewForecastSteps";
 import { ProductPicker } from "@/components/forecast/ProductPicker";
 import { Button } from "@/components/ui/button";
@@ -23,6 +22,8 @@ import { useProductDemandCoverage, useProducts } from "@/hooks/useProducts";
 // CR v3.6 §1/§4: halaman ini HANYA langkah "Produk & parameter → Generate" di wizard Forecast
 // baru. Hasil tidak lagi dirender di sini (dulu hilang saat refresh) — setelah run dibuat,
 // planner diarahkan ke /forecast/runs/{id}.
+// 23 Nov 2026: tidak ada pilihan metode — run selalu mode otomatis (semua metode aktif), sistem
+// memilih metode terbaik per produk dari pengujian peramalan + menjelaskan alasannya.
 export default function ForecastConfigPage() {
   return (
     <PermissionGate
@@ -44,11 +45,10 @@ function ForecastConfigContent() {
   const [selected, setSelected] = useState<string[]>([]);
   // Data demand bulanan: horizon = jumlah bulan. 12 = default kolom Kelengkapan variabel eksternal (CR v3.4).
   const [horizon, setHorizon] = useState(12);
-  const [method, setMethod] = useState("");
 
   const onGenerate = () =>
     run.mutate(
-      { product_ids: selected, horizon, method: method === "" ? null : method },
+      { product_ids: selected, horizon },
       { onSuccess: (data) => router.push(`/forecast/runs/${data.run.run_id}`) },
     );
 
@@ -56,7 +56,7 @@ function ForecastConfigContent() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Forecast baru"
-        description="Pilih produk, horizon, dan metode. Mode otomatis menjalankan seluruh metode aktif berdampingan — planner memilih metode per produk setelah run."
+        description="Pilih produk dan horizon. Sistem menjalankan seluruh metode aktif lalu memilih metode terbaik per produk berdasarkan pengujian peramalan."
         actions={
           <Button variant="outline" asChild>
             <Link href="/forecast/new">Kembali ke data demand</Link>
@@ -88,7 +88,13 @@ function ForecastConfigContent() {
             <CardDescription>Berlaku untuk seluruh produk yang dipilih.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <MethodSelector value={method} onChange={setMethod} />
+            <div className="flex gap-2 rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <p>
+                Semua metode aktif dijalankan dan diuji (holdout backtest). Sistem memilih metode terbaik dengan
+                urutan prioritas 1) MAD, 2) MAPE, 3) MFE dan menjelaskan alasannya — metode tetap bisa diganti setelah run.
+              </p>
+            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="horizon">Horizon (bulan)</Label>

@@ -37,4 +37,15 @@ export interface ReorderRecommendation {
   total_inventory_cost?: string | null; // TIC = pesan + simpan
   unit_price_used?: string | null; // C, harga material saat hitung
   holding_rate_used?: string | null; // i (%) tahunan; hanya EOQ klasik
+  // 23 Nov 2026 — input perhitungan SS/ROP/EOQ yang dipakai backend (null = rekomendasi lama;
+  // jalankan ulang perencanaan). Hanya untuk MENAMPILKAN perhitungan — rumus tetap di backend.
+  mu_period?: string | null; // μ kebutuhan per periode (MRP)
+  sigma_period?: string | null; // σ kebutuhan per periode (ddof 1)
+  period_days?: string | null; // hari per periode (bulanan ≈ 30/31)
+  lead_time_days_used?: string | null; // L (hari)
+  z_value?: string | null; // Z = Φ⁻¹(service level)
+  service_level_pct_used?: string | null; // target service level (%)
+  eoq_raw_qty?: string | null; // EOQ hasil rumus sebelum pembulatan MOQ
+  ordering_cost_per_order?: string | null; // S, biaya pesan per pesanan (Rp)
+  holding_cost_per_unit?: string | null; // H, biaya simpan per unit per periode (EOQ dinamis)
 }

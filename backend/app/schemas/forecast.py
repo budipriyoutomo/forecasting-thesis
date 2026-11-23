@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field
 class ForecastRunRequest(BaseModel):
     """POST /api/v1/forecast/runs — banyak PRODUK jadi sekaligus (§6.6).
 
-    `method` None/absen → mode otomatis (Comparative Selection).
-    `method` diisi → mode manual (dipaksa ke seluruh produk di run ini).
+    `method` None/absen → mode otomatis: semua metode aktif dijalankan, sistem memilih yang
+    terbaik dari pengujian peramalan (23 Nov 2026). UI tidak lagi menawarkan pilihan metode.
+    `method` diisi → mode manual (dipertahankan untuk kompatibilitas API).
     """
 
     product_ids: list[str] = Field(min_length=1)
@@ -65,6 +66,9 @@ class ForecastResultOut(BaseModel):
     # Dibaca dari `metrics` JSONB; run sebelum v3.6 → [] / None.
     history: list[HistoryPointOut] = []
     status_reason: str | None = None
+    # 23 Nov 2026 — analisis kenapa sistem memilih metode terbaik (mode otomatis):
+    # {best_method, criteria, ranking[], summary, reasons[]}. None = manual / run lama / gagal.
+    selection_analysis: dict | None = None
 
 
 class ForecastRunListItem(BaseModel):

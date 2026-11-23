@@ -13,20 +13,6 @@ import type {
   RunSelectionResult,
 } from "@/types/forecast";
 
-// Metode aktif untuk MethodSelector (§6.8).
-export function useEnabledMethods() {
-  const token = getToken();
-  return useQuery<string[]>({
-    queryKey: ["forecast-methods"],
-    enabled: Boolean(token),
-    queryFn: async () => {
-      const res = await api.forecast.methods(token as string);
-      if (!res.success) throw new Error(res.error.message);
-      return res.data.methods;
-    },
-  });
-}
-
 // Daftar run (semua role), terbaru dulu — halaman /forecast & RunPicker (CR v3.6 §1).
 export function useForecastRuns() {
   const token = getToken();

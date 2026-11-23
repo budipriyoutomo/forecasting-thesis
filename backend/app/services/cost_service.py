@@ -21,7 +21,13 @@ from types import SimpleNamespace
 from app.config import get_settings
 from app.services.bom_service import BomLine, breakdown_requirements_series
 from app.services.cost_template_service import load_cost_params
-from app.services.reorder_service import DEFAULT_EOQ_METHOD, choose_eoq, compute_savings_pct, days_in_period
+from app.services.reorder_service import (
+    DEFAULT_EOQ_METHOD,
+    choose_eoq,
+    compute_savings_pct,
+    days_in_period,
+    eoq_requirement_series,
+)
 from app.utils.exceptions import ForecastRunNotFoundError
 
 
@@ -44,6 +50,17 @@ class CostSummary:
     eoq_method: str = DEFAULT_EOQ_METHOD  # Fase 11.4 — metode yang diminta master data
     shortage_cost: Decimal | None = None  # Fase 11.7 — dari inventory_metrics material (None = belum dihitung)
     baseline_shortage_cost: Decimal | None = None
+
+
+def _system_stock_levels(rec) -> tuple[float, float]:
+    """(SS, B) sistem sebelum adjust kapasitas (Fase 11.17); kolom kosong → nilai berlaku / 0."""
+    ss = getattr(rec, "safety_stock_system", None)
+    if ss is None:
+        ss = getattr(rec, "safety_stock", None)
+    buffer = getattr(rec, "buffer_stock_system", None)
+    if buffer is None:
+        buffer = getattr(rec, "buffer_stock", None)
+    return float(ss or 0), float(buffer or 0)
 
 
 def aggregate_proposed(recs) -> tuple[Decimal, Decimal, Decimal]:
@@ -93,7 +110,7 @@ class CostService:
         ordering, holding, proposed_tic = aggregate_proposed(recs)
 
         method = await self._settings.eoq_method() if self._settings else DEFAULT_EOQ_METHOD
-        baseline_tic = await self._baseline_tic(run_id, cost, method)
+        baseline_tic = await self._baseline_tic(run_id, cost, method, recs)
         savings = compute_savings_pct(float(baseline_tic), float(proposed_tic))
         purchase_cost, n_without_price = await self._purchase_cost(run_id)
 
@@ -144,12 +161,14 @@ class CostService:
             total += Decimal(str(sum(series))) * Decimal(str(price))
         return _dec(total), missing
 
-    async def _baseline_tic(self, run_id: str, cost, method: str) -> Decimal:
+    async def _baseline_tic(self, run_id: str, cost, method: str, recs=()) -> Decimal:
         """TIC bila perusahaan pakai seri planning existing (planning → BOM → EOQ per material).
 
         Fase 11.4: metode EOQ per material dipilih dengan aturan yang SAMA seperti usulan
         (`choose_eoq`: klasik bila harga & i ada), supaya basis biaya (tahunan vs horizon)
         kedua sisi setara.
+        23 Nov 2026: kebutuhan EOQ = MRP + SS + B (`eoq_requirement_series`), sama dengan usulan.
+        Baseline memakai SS & B SISTEM (sebelum adjust kapasitas) dari rekomendasi run ini.
         """
         product_planning: dict[str, list[float]] = {}
         bom_lines: list[BomLine] = []
@@ -174,11 +193,14 @@ class CostService:
 
         material_series = breakdown_requirements_series(product_planning, bom_lines)
         days = days_in_period(planning_dates)
+        levels = {str(r.material_id): _system_stock_levels(r) for r in recs}
         baseline = 0.0
         for material_id, series in material_series.items():
             material = await self._materials.get_by_id(material_id) if self._materials else None
             price = getattr(material, "unit_price", None) if material is not None else None
-            baseline += choose_eoq(series, days, method, price, cost.holding_rate_pct, cost).total_cost
+            ss, buffer = levels.get(str(material_id), (0.0, 0.0))
+            demand = eoq_requirement_series(series, ss, buffer)
+            baseline += choose_eoq(demand, days, method, price, cost.holding_rate_pct, cost).total_cost
         return _dec(baseline)
 
     async def _require_run(self, user_id: str, run_id: str):

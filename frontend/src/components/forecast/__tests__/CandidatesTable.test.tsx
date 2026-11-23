@@ -19,7 +19,7 @@ async function buka() {
   await userEvent.click(screen.getByRole("button", { name: /perbandingan metode/i }));
 }
 
-describe("CandidatesTable (Fase 11.15 — tanpa pemenang)", () => {
+describe("CandidatesTable (Fase 11.15 — run lama tanpa peringkat)", () => {
   it("menyembunyikan detail sampai dibuka bila metode sudah dipilih", () => {
     render(<CandidatesTable candidates={candidates} selectedMethod="xgboost" displayMetrics={[...ALL]} />);
 
@@ -121,5 +121,33 @@ describe("CandidatesTable — hanya MAD, MFE, MAPE + tooltip (21 Nov 2026)", () 
     }
     await userEvent.hover(screen.getByRole("button", { name: "Definisi MFE" }));
     expect((await screen.findAllByText(/bias/i)).length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("CandidatesTable — peringkat metode terbaik (23 Nov 2026)", () => {
+  const ranked: ForecastCandidate[] = [
+    { ...candidates[1], rank: 1 },
+    { ...candidates[2], rank: 2 },
+    { ...candidates[0], rank: 3 },
+  ];
+
+  it("kolom Peringkat + badge terbaik pada peringkat 1", async () => {
+    render(<CandidatesTable candidates={ranked} selectedMethod="xgboost" displayMetrics={["mad"]} />);
+    await buka();
+
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Peringkat", "Metode", "MAD"]);
+    const first = screen.getAllByRole("row")[1];
+    expect(within(first).getByText("terbaik")).toBeDefined();
+    expect(within(first).getAllByRole("cell")[0].textContent).toBe("1");
+  });
+
+  it("badge terbaik tetap di peringkat 1 walau planner memakai metode lain", async () => {
+    render(<CandidatesTable candidates={ranked} selectedMethod="moving_average" displayMetrics={["mad"]} />);
+    await buka();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByText("terbaik")).toBeDefined();
+    expect(within(rows[2]).getByText("dipakai")).toBeDefined();
   });
 });

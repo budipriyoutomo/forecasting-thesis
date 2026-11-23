@@ -4,8 +4,8 @@ ForecastSettingsService (Fase 11.2a, 29 Oktober 2026) — master data Pengaturan
 Pengaturan dibaca dari sini, BUKAN env (Keputusan #6, docs/REVISI_V2.md §6.1). Belum ada
 baris → default, tidak dipersist sampai admin menyimpan. Validasi nilai di schema (Literal).
 
-Fase 11.15: `display_metrics` = metrik yang ditampilkan di hasil forecast (checkbox). Tidak
-ada lagi metrik penentu pemenang — planner memilih metode per produk.
+Fase 11.15: `display_metrics` = metrik yang ditampilkan di hasil forecast (checkbox). Sejak
+23 Nov 2026 juga kriteria pemilihan metode terbaik otomatis (planner tetap bisa mengganti).
 
 Daftar metode aktif (`enabled_methods`, pengganti env FORECAST_ENGINES_ENABLED): None =
 seluruh metode di registry. Nama di luar registry → UNSUPPORTED_FORECAST_METHOD.
@@ -37,7 +37,7 @@ _DEFAULTS = {
     "service_level_pct": 95.0,  # Fase 11.4 — target service level (%), menggantikan env SERVICE_LEVEL_PCT
     "eoq_method": "classic",  # classic √(2AS/iC) thesis | dynamic
     "rop_formula": "with_buffer",  # standard (μ·L + SS) | with_buffer (μ·L + SS + B)
-    "order_qty_policy": "order_up_to",  # order_up_to (S − stok) | eoq (n × EOQ)
+    "order_qty_policy": "eoq",  # eoq (n × EOQ, default 23 Nov 2026) | order_up_to (S − stok)
 }
 
 

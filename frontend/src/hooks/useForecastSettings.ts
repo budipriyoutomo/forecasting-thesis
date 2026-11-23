@@ -31,8 +31,6 @@ export function useUpdateForecastSettings() {
     },
     onSuccess: (data) => {
       qc.setQueryData(KEY, data);
-      // Daftar MethodSelector ikut berubah bila metode aktif diubah.
-      qc.invalidateQueries({ queryKey: ["forecast-methods"] });
     },
   });
 }

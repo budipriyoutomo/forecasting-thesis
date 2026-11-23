@@ -195,15 +195,17 @@ async def test_put_perencanaan_invalid_422(client, body):
 async def test_get_dan_put_kebijakan_reorder(client):
     repo = _override()
     data = (await client.get(BASE, headers=_headers("viewer"))).json()["data"]
-    assert data["rop_formula"] == "with_buffer" and data["order_qty_policy"] == "order_up_to"
+    # 23 Nov 2026: default kebijakan qty pesan = kelipatan EOQ
+    assert data["rop_formula"] == "with_buffer" and data["order_qty_policy"] == "eoq"
 
     res = await client.put(
-        BASE, json={"rop_formula": "standard", "order_qty_policy": "eoq"},
+        BASE, json={"rop_formula": "standard", "order_qty_policy": "order_up_to"},
         headers=_headers("admin"),
     )
     assert res.status_code == 200
-    assert res.json()["data"]["rop_formula"] == "standard" and res.json()["data"]["order_qty_policy"] == "eoq"
-    assert repo.row.order_qty_policy == "eoq"
+    assert res.json()["data"]["rop_formula"] == "standard"
+    assert res.json()["data"]["order_qty_policy"] == "order_up_to"
+    assert repo.row.order_qty_policy == "order_up_to"
 
 
 @pytest.mark.asyncio

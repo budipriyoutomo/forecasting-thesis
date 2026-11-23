@@ -1,4 +1,4 @@
-// Label ramah untuk kode metode engine — dipakai MethodSelector & Pengaturan Forecast.
+// Label ramah untuk kode metode engine — dipakai hasil forecast & Pengaturan Forecast.
 export const METHOD_LABELS: Record<string, string> = {
   moving_average: "Moving Average",
   exponential_smoothing: "Exponential Smoothing",

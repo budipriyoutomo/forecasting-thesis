@@ -106,6 +106,23 @@ export function ReorderDetail({ rec, unit }: { rec: ReorderRecommendation; unit?
       </section>
 
       <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-medium">Input perhitungan</h3>
+        <dl className="grid gap-2 sm:grid-cols-2">
+          <Item label="μ kebutuhan / periode">{q(rec.mu_period)}</Item>
+          <Item label="σ kebutuhan / periode">{q(rec.sigma_period)}</Item>
+          <Item label="Hari per periode">{rec.period_days != null ? `${formatNumber(rec.period_days)} hari` : "—"}</Item>
+          <Item label="Lead time (L)">
+            {rec.lead_time_days_used != null ? `${formatNumber(rec.lead_time_days_used)} hari` : "—"}
+          </Item>
+          <Item label="Faktor Z">{formatNumber(rec.z_value ?? null, 4)}</Item>
+          <Item label="Target service level">{formatPercent(rec.service_level_pct_used ?? null)}</Item>
+          <Item label="EOQ hitung (sebelum MOQ)">{q(rec.eoq_raw_qty)}</Item>
+          <Item label="Biaya pesan per pesanan (S)">{formatMoney(rec.ordering_cost_per_order ?? null)}</Item>
+          <Item label="Biaya simpan per unit (H)">{formatMoney(rec.holding_cost_per_unit ?? null, 2)}</Item>
+        </dl>
+      </section>
+
+      <section className="flex flex-col gap-2">
         <h3 className="text-sm font-medium">Stok & override</h3>
         <dl className="grid gap-2 sm:grid-cols-2">
           <Item label="Stok dipakai">

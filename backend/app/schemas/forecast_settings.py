@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, StrictInt
 
 from app.services.forecasting.types import MAX_MA_WINDOW
 
-DisplayMetric = Literal["mad", "mfe", "mape"]  # tampilan pengujian peramalan (21 Nov 2026), bukan penentu pemenang
+DisplayMetric = Literal["mad", "mfe", "mape"]  # pengujian peramalan (21 Nov 2026) = tampilan + kriteria metode terbaik (23 Nov 2026)
 AlphaMetric = Literal["mad", "mape"]
 EoqMethod = Literal["classic", "dynamic"]
 RopFormula = Literal["standard", "with_buffer"]

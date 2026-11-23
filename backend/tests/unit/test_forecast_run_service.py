@@ -104,9 +104,10 @@ async def test_auto_data_dense_menghasilkan_forecast(request, fixture_name):
     assert len(results) == 1
     assert results[0].status == "COMPLETED", f"{fixture_name} harusnya menghasilkan forecast"
     assert results[0].selection_mode == "auto"
-    # Fase 11.15 — tanpa pemenang: metode & deret menunggu dipilih planner
-    assert results[0].method_used is None
-    assert results[0].forecast_data is None
+    # 23 Nov 2026 — sistem memilih metode terbaik; deret metode itu langsung berlaku
+    assert results[0].method_used is not None
+    assert len(results[0].forecast_data) == 7
+    assert results[0].metrics["selection_analysis"]["best_method"] == results[0].method_used
     assert str(results[0].product_id) == "p1"
     assert all(len(c["forecast"]) == 7 for c in results[0].candidates_evaluated)
 
@@ -217,6 +218,9 @@ class FakeRankingSettings:
 
     async def enabled_methods(self):
         return self.methods
+
+    async def display_metrics(self):
+        return getattr(self, "metrics", ["mad", "mfe", "mape"])
 
     async def engine_options(self):
         from app.services.forecasting.types import EngineOptions
@@ -344,3 +348,30 @@ async def test_hasil_gagal_menyimpan_alasan(too_short_df):
 
     assert "minimal" in results[0].metrics["status_reason"]
     assert len(results[0].metrics["history"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_run_auto_kriteria_terbaik_dari_metrik_pengujian_master_data(smooth_df):
+    settings = FakeRankingSettings(["moving_average", "exponential_smoothing", "xgboost"])
+    settings.metrics = ["mad"]
+    svc = ForecastRunService(
+        forecast_repo=FakeForecastRepo(),
+        products=FakeProductRepo([_product("p1", "SKU-001")]),
+        demand=FakeDemandRepo({"p1": _rows(smooth_df)}),
+        settings=settings,
+    )
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=7)
+
+    analysis = results[0].metrics["selection_analysis"]
+    assert analysis["criteria"] == ["mad"]
+    assert float(results[0].mad) == min(c["mad"] for c in results[0].candidates_evaluated)
+
+
+@pytest.mark.asyncio
+async def test_run_manual_tanpa_analisis_pemilihan(smooth_df):
+    svc = _service([_product("p1", "SKU-001")], {"p1": _rows(smooth_df)})
+
+    _, results = await svc.create_run(USER, ["p1"], horizon=7, method="moving_average")
+
+    assert results[0].metrics.get("selection_analysis") is None

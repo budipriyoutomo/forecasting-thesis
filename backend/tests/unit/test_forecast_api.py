@@ -92,12 +92,16 @@ async def test_create_run_auto_mode(client, auth_headers, smooth_df):
     assert result["selection_mode"] == "auto"
     assert result["product_id"] == "p1"
     assert result["id"]
-    # Fase 11.15 — tanpa pemenang: menunggu planner memilih
-    assert result["selection_status"] == "PENDING_SELECTION"
-    assert result["method_used"] is None
-    assert result["forecast"] == []
+    # 23 Nov 2026 — sistem memilih metode terbaik + analisis alasannya
+    assert result["selection_status"] == "SELECTED"
+    assert result["method_used"] == result["candidates_evaluated"][0]["method"]
+    assert result["candidates_evaluated"][0]["rank"] == 1
+    assert len(result["forecast"]) == 7
     assert all(len(c["forecast"]) == 7 for c in result["candidates_evaluated"])
-    assert body["data"]["run"]["n_pending_selection"] == 1
+    assert body["data"]["run"]["n_pending_selection"] == 0
+    analysis = result["selection_analysis"]
+    assert analysis["best_method"] == result["method_used"]
+    assert analysis["summary"] and analysis["reasons"]
     assert "ranking_metric" not in body["data"]["run"]
     assert result["status_reason"] is None
     assert len(result["history"]) == 24 and set(result["history"][0]) == {"date", "value"}
@@ -116,6 +120,7 @@ async def test_create_run_manual_mode(client, auth_headers, smooth_df):
     assert res.json()["data"]["results"][0]["selection_status"] == "SELECTED"
     assert len(res.json()["data"]["results"][0]["forecast"]) == 7
     assert res.json()["data"]["run"]["n_pending_selection"] == 0
+    assert res.json()["data"]["results"][0]["selection_analysis"] is None
 
 
 @pytest.mark.asyncio
@@ -261,6 +266,9 @@ async def test_pilih_metode_per_hasil(client, auth_headers, smooth_df):
     run = await client.get(f"/api/v1/forecast/runs/{data['run']['run_id']}", headers=auth_headers)
     assert run.json()["data"]["results"][0]["method_used"] == "xgboost"
     assert run.json()["data"]["run"]["n_pending_selection"] == 0
+    # Ganti metode tidak menghilangkan histori & analisis pemilihan sistem
+    assert len(out["history"]) == 24
+    assert out["selection_analysis"]["best_method"] == data["results"][0]["method_used"]
 
 
 @pytest.mark.asyncio

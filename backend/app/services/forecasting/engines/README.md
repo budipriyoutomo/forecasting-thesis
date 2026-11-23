@@ -3,9 +3,10 @@
 > Wajib dibaca sebelum menambah atau mengubah file di folder ini (AGENTS.md §5, docs/ARCHITECTURE.md §6.0/§6.4).
 >
 > **v3.0 (Comparative Selection):** tidak ada lagi klasifikasi kuadran ADI/CV². Seluruh metode aktif
-> dijalankan & di-backtest berdampingan. **Sejak Fase 11.15 tidak ada pemenang otomatis** — deret,
-> metrik & penjelasan tiap metode disimpan di `candidates_evaluated`, planner memilih metode per produk
-> (`forecast_selection_service`, override append-only).
+> dijalankan & di-backtest berdampingan; deret, metrik & penjelasan tiap metode disimpan di
+> `candidates_evaluated`. **Sejak 23 Nov 2026 sistem memilih metode terbaik** (`../selection.py`,
+> prioritas 1) MAD, 2) MAPE, 3) MFE) + analisis alasannya; planner tetap bisa mengganti
+> (`forecast_selection_service`, override append-only). Engine cukup mengisi `mad/mfe/mse/mape` dengan benar.
 > Engine legacy v2.0 (ETS/ARIMA/LightGBM/Croston) dipindah ke `legacy/` — nonaktif, jangan dihapus (larangan #16).
 
 ## Kontrak fungsi

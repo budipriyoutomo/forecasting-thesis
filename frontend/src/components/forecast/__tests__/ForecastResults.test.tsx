@@ -229,3 +229,27 @@ describe("ForecastResults (CR v3.6 §5 — tabel ringkasan + Sheet)", () => {
     expect(within(dialog).getByRole("link", { name: /upload data demand/i }).getAttribute("href")).toBe("/forecast/new");
   });
 });
+
+describe("ForecastResults — metode terbaik otomatis (23 Nov 2026)", () => {
+  const auto: ForecastResult = {
+    ...selected,
+    method_used: "xgboost",
+    selection_reason: null,
+    selection_analysis: {
+      best_method: "xgboost",
+      criteria: ["mad", "mape", "mfe"],
+      decided_by: "mad",
+      ranking: [],
+      summary: "XGBoost dipilih sebagai metode terbaik dari 2 metode yang diuji.",
+      reasons: ["MAPE 7,10%: Sangat baik."],
+    },
+  };
+
+  it("sumber metode = dipilih otomatis, detail menampilkan analisis", async () => {
+    render(<ForecastResults data={runOf([auto])} products={products} />);
+
+    expect(screen.getByText(/otomatis · terbaik/i)).toBeDefined();
+    await bukaDetail("SKU-001");
+    expect(await screen.findByText(/kenapa xgboost terbaik/i)).toBeDefined();
+  });
+});

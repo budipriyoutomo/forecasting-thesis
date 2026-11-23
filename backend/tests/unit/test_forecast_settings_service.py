@@ -247,10 +247,11 @@ async def test_update_service_level_dan_eoq():
 
 
 @pytest.mark.asyncio
-async def test_default_rop_formula_dan_policy_perilaku_lama():
+async def test_default_rop_formula_dan_policy_eoq():
+    # 23 Nov 2026 (keputusan user): default qty pesan = kelipatan EOQ
     svc = ForecastSettingsService(FakeSettingsRepo(), factory=_factory)
     assert await svc.rop_formula() == "with_buffer"
-    assert await svc.order_qty_policy() == "order_up_to"
+    assert await svc.order_qty_policy() == "eoq"
 
 
 @pytest.mark.asyncio

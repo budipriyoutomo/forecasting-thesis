@@ -61,6 +61,19 @@ class ReorderRecommendation(Base):
     buffer_stock_system: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     service_level_effective: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
     adjustment_source: Mapped[str | None] = mapped_column(String(10), nullable=True)  # suggested | custom
+    # 23 Nov 2026 — INPUT perhitungan yang dipakai (audit & tampilan "Perencanaan persediaan"):
+    # μ/σ kebutuhan per periode, hari per periode, lead time (hari), Z & service level, EOQ
+    # sebelum pembulatan MOQ, S (biaya pesan/pesanan) & H (biaya simpan/unit/periode).
+    # NULL = baris sebelum 23 Nov 2026. Rumus tetap hanya di reorder_service.
+    mu_period: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    sigma_period: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    period_days: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    lead_time_days_used: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    z_value: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    service_level_pct_used: Mapped[Decimal | None] = mapped_column(Numeric(6, 3), nullable=True)
+    eoq_raw_qty: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    ordering_cost_per_order: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    holding_cost_per_unit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

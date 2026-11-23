@@ -6,11 +6,12 @@ export function productLabel(r: ForecastResult, product?: Product): string {
   return product ? `${product.code} — ${product.name}` : r.product_id;
 }
 
-/** Sumber metode berlaku — tanpa pernah mengaku "dipilih otomatis" (Fase 11.15). */
+/** Sumber metode berlaku. "otomatis" hanya bila backend membawa analisis pemilihan (23 Nov 2026). */
 export function sourceLabel(r: ForecastResult): string | null {
   if (r.status !== "COMPLETED" || r.selection_status === "PENDING_SELECTION") return null;
   if (r.selection_mode === "manual") return "dipilih manual sebelum run";
   if (r.selection_reason) return "dipilih planner";
+  if (r.selection_analysis) return "otomatis · terbaik dari pengujian";
   return "hasil run lama"; // pemenang otomatis sebelum Fase 11.15
 }
 

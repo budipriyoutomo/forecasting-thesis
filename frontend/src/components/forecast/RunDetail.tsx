@@ -18,8 +18,8 @@ import { runLabel } from "@/components/forecast/RunPicker";
 import { RunStepper } from "@/components/forecast/RunStepper";
 import { ReorderOverrideDialog } from "@/components/override/ReorderOverrideDialog";
 import { CapacityAdjustmentPanel } from "@/components/planning/CapacityAdjustmentPanel";
+import { InventoryPlanBreakdown } from "@/components/planning/InventoryPlanBreakdown";
 import { PlanningSummaryCard } from "@/components/planning/PlanningSummaryCard";
-import { StockProjectionTable } from "@/components/planning/StockProjectionTable";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,9 @@ import type { ReorderRecommendation } from "@/types/reorder";
 
 // CR v3.6 §1/§4 — detail satu forecast run, bisa dibuka ulang (refresh/pindah menu) karena
 // seluruhnya dirender dari query (useForecastRun, proyeksi, reorder, biaya), BUKAN dari state
-// mutation. Alur = stepper: Forecast → Pilih metode → Perencanaan → Reorder & biaya.
+// mutation. Alur = stepper: Forecast → Metode terbaik → Perencanaan → Reorder & biaya.
+// 23 Nov 2026: langkah 2 = metode terbaik pilihan sistem (bisa diganti planner); run Fase 11.15
+// yang masih PENDING_SELECTION tetap harus dipilih manual.
 // Semua role bisa membaca (CR v3.5 §3.2); tombol aksi disembunyikan lewat useCan.
 export function RunDetail({ runId, initialStep }: { runId: string; initialStep?: RunStepKey }) {
   const runQuery = useForecastRun(runId);
@@ -201,11 +203,12 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
       {current === "select" && step.status !== "locked" && (
         <section className="flex flex-col gap-4" aria-labelledby="step-select">
           <h2 id="step-select" className="text-lg font-medium">
-            2. Pilih metode
+            2. Metode terbaik
           </h2>
           <p className="text-sm text-muted-foreground">
-            Sistem tidak memilih metode pemenang. Bandingkan metrik pengujian (MAD, MFE, MAPE) tiap metode per produk, lalu pilih —
-            per produk lewat &ldquo;Pilih metode&rdquo;, atau satu metode untuk semua produk.
+            Sistem memilih metode terbaik per produk dari pengujian peramalan (prioritas 1) MAD, 2) MAPE, 3) MFE) — buka Detail produk untuk
+            melihat analisis kenapa metode itu terbaik. Planner tetap bisa mengganti metode per produk, atau satu metode
+            untuk semua produk (alasan wajib).
           </p>
           {!canSelect && (
             <Alert>
@@ -229,8 +232,9 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
                 3. Perencanaan persediaan
               </h2>
               <p className="text-sm text-muted-foreground">
-                Satu tombol menjalankan MRP (safety stock, buffer, EOQ) → reorder → proyeksi stok & utilisasi gudang
-                material → evaluasi inventory & biaya. Stok awal dari snapshot ERP terakhir (menu Persediaan Material).
+                Satu tombol menjalankan MRP → safety & buffer stock → EOQ → ROP → kapasitas gudang per grup material →
+                simulasi stok → evaluasi inventory & biaya. Tiap tab di bawah menampilkan perhitungannya. Stok awal dari
+                snapshot ERP terakhir (menu Persediaan Material).
               </p>
             </div>
             {canPlan && (
@@ -279,7 +283,11 @@ export function RunDetail({ runId, initialStep }: { runId: string; initialStep?:
             <TableSkeleton />
           ) : hasPlanning ? (
             <>
-              <StockProjectionTable rows={projection.data ?? []} materials={materials ?? []} />
+              <InventoryPlanBreakdown
+                projection={projection.data ?? []}
+                recommendations={reorderList.data ?? []}
+                materials={materials ?? []}
+              />
               <div>
                 <Button variant="outline" onClick={() => setActive("reorder")}>
                   Lanjut: reorder & biaya

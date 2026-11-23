@@ -11,8 +11,9 @@ Kegagalan satu produk dicatat per-baris & TIDAK menggagalkan run (AGENTS.md §5)
 Metode manual tak dikenal ditolak di awal (400) sebelum run dibuat (§6.6).
 
 Metode aktif & opsi engine dibaca SEKALI per run dari master data Pengaturan Forecast
-(`settings`, Fase 11.2a). Fase 11.15: mode otomatis tidak memilih pemenang —
-`forecast_runs.ranking_metric` hanya riwayat run lama (run baru NULL).
+(`settings`, Fase 11.2a). 23 Nov 2026: mode otomatis memilih metode terbaik dengan kriteria
+metrik pengujian (`display_metrics`); kriteria disnapshot di `metrics.selection_analysis`
+(`forecast_runs.ranking_metric` tetap riwayat run lama, run baru NULL).
 Variabel eksternal aktif (`external`, Fase 11.2b) disusun per produk → `options.exog`.
 """
 from dataclasses import replace
@@ -35,12 +36,16 @@ from app.utils.exceptions import (
 HISTORY_POINTS = 24
 
 
-def result_metrics(points, history: list[dict], status_reason: str | None) -> dict:
-    """`forecast_results.metrics`: ringkasan forecast + histori aktual + alasan gagal (CR v3.6)."""
+def result_metrics(
+    points, history: list[dict], status_reason: str | None, selection_analysis: dict | None = None
+) -> dict:
+    """`forecast_results.metrics`: ringkasan forecast + histori aktual + alasan gagal (CR v3.6)
+    + analisis pemilihan metode terbaik (mode otomatis, 23 Nov 2026)."""
     return {
         **(forecast_summary(points) or {}),
         "history": history[-HISTORY_POINTS:],
         "status_reason": status_reason,
+        "selection_analysis": selection_analysis,
     }
 
 
@@ -80,6 +85,7 @@ class ForecastRunService:
         # Metode aktif dari master data, dibaca sekali per run (Fase 11.2a).
         enabled = await self._settings.enabled_methods() if self._settings else registry.get_enabled_methods()
         options = await self._settings.engine_options() if self._settings else EngineOptions()
+        criteria = await self._settings.display_metrics() if self._settings else None
 
         # Validasi metode manual di AWAL — tolak seluruh request kalau tak dikenal (§6.6).
         if method is not None and method not in enabled:
@@ -105,7 +111,7 @@ class ForecastRunService:
 
         results = []
         for product in products:
-            record, history = await self._forecast_one(product, horizon, method, enabled, options)
+            record, history = await self._forecast_one(product, horizon, method, enabled, options, criteria)
             results.append(
                 ForecastResult(
                     run_id=run.id,
@@ -121,7 +127,9 @@ class ForecastRunService:
                     mase=record.mase,
                     explanation=record.explanation,
                     forecast_data=[p.__dict__ for p in record.forecast] if record.forecast else None,
-                    metrics=result_metrics(record.forecast, history, record.status_reason),
+                    metrics=result_metrics(
+                        record.forecast, history, record.status_reason, record.selection_analysis
+                    ),
                     feature_importance=record.feature_importance,
                     hyperparameters=record.hyperparameters,
                 )
@@ -141,6 +149,7 @@ class ForecastRunService:
         method: str | None,
         enabled: set[str],
         options: EngineOptions,
+        criteria: list[str] | None = None,
     ):
         rows = await self._demand.list_for_product(str(product.id), product.code)
         # Kolom eksplisit supaya df punya skema saat rows kosong (INSUFFICIENT_DATA,
@@ -160,6 +169,7 @@ class ForecastRunService:
             options=replace(options, exog=await self._external.exog_for_product(product.id))
             if self._external
             else options,
+            selection_metrics=criteria,
         )
         return record, history
 

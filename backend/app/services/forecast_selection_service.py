@@ -1,7 +1,11 @@
 """
 ForecastSelectionService (Fase 11.15, 10 Nov 2026) — planner memilih metode per produk.
 
-Mode otomatis tidak lagi memilih pemenang (RECONCILIATION §"Fase 11.15"): seluruh metode
+23 Nov 2026: mode otomatis kembali memilih metode terbaik (`method_used` terisi), jadi run
+baru langsung SELECTED; service ini kini dipakai untuk MENGGANTI pilihan sistem (override)
+dan tetap melayani run Fase 11.15 yang masih PENDING_SELECTION.
+
+Fase 11.15 (run lama): mode otomatis tidak memilih pemenang (RECONCILIATION §"Fase 11.15"): seluruh metode
 aktif disimpan di `candidates_evaluated` beserta deret forecast-nya, `forecast_results.
 method_used`/`forecast_data` NULL. Planner memilih metode lewat OVERRIDE append-only
 (`target_type = forecast_result`, `new_value = {"method_used": ...}`, alasan wajib) —
@@ -54,7 +58,11 @@ class SelectedResult:
             fdata = candidate["forecast"]
             self.method_used = candidate["method"]
             self.forecast_data = fdata
-            self.metrics = forecast_summary([SimpleNamespace(**p) for p in fdata])
+            # Ringkasan deret diganti, histori/alasan/analisis pemilihan sistem tetap dibawa.
+            self.metrics = {
+                **(result.metrics or {}),
+                **(forecast_summary([SimpleNamespace(**p) for p in fdata]) or {}),
+            }
             for key in ("mad", "mfe", "mse", "mape", "mase", "explanation", "feature_importance", "hyperparameters"):
                 setattr(self, key, candidate.get(key))
         if result.status != "COMPLETED":

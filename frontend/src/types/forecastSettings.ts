@@ -1,6 +1,6 @@
 // Master data Pengaturan Forecast (Fase 11.2a).
-// Fase 11.15: tidak ada metode pemenang — `display_metrics` hanya mengatur metrik yang
-// DITAMPILKAN di hasil forecast; planner memilih metode per produk.
+// `display_metrics` = metrik yang DITAMPILKAN di hasil forecast sekaligus (sejak 23 Nov 2026)
+// kriteria pemilihan metode terbaik otomatis; planner tetap bisa mengganti metode per produk.
 // CR v3.6 §2: "mase" (metrik utama thesis) ditambahkan; kolom MASE selalu tampil di FE walau
 // tidak dicentang (lihat lib/metrics.ts metricColumns).
 // Pengujian peramalan hanya MAD, MFE, MAPE (keputusan user 21 Nov 2026). MSE & MASE tetap
@@ -30,7 +30,7 @@ export type AlphaMetric = "mad" | "mape";
 export type EoqMethod = "classic" | "dynamic";
 /** Fase 11.9 — standard = μ·L + SS; with_buffer = μ·L + SS + B (default). */
 export type RopFormula = "standard" | "with_buffer";
-/** Fase 11.9 — order_up_to = max(MOQ, S − stok) (default); eoq = n × EOQ. */
+/** Fase 11.9 — eoq = n × EOQ (default sejak 23 Nov 2026); order_up_to = max(MOQ, S − stok). */
 export type OrderQtyPolicy = "eoq" | "order_up_to";
 
 export interface ForecastSettingsInput {

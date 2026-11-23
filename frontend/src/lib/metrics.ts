@@ -4,7 +4,8 @@
 //
 // Keputusan user 21 Nov 2026: pengujian peramalan HANYA MAD, MFE, MAPE. MSE & MASE tetap
 // dihitung & disimpan backend, tetapi tidak ditampilkan.
-// Fase 11.15 tetap berlaku: TIDAK ada peringkat/pemenang antar metode.
+// 23 Nov 2026: metrik tampil ini juga KRITERIA pemilihan metode terbaik otomatis (backend
+// `selection.py`, prioritas MAD → MAPE → MFE); peringkat dihitung backend — frontend hanya menampilkan.
 import { mapeLabel } from "@/lib/mape";
 import type { DisplayMetric } from "@/types/forecastSettings";
 

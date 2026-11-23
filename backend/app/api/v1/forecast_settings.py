@@ -32,7 +32,7 @@ def _to_response(setting) -> dict:
         service_level_pct=float(setting.service_level_pct or 95),
         eoq_method=setting.eoq_method or "classic",
         rop_formula=getattr(setting, "rop_formula", None) or "with_buffer",
-        order_qty_policy=getattr(setting, "order_qty_policy", None) or "order_up_to",
+        order_qty_policy=getattr(setting, "order_qty_policy", None) or "eoq",
         updated_by=str(setting.updated_by) if setting.updated_by else None,
         updated_at=setting.updated_at,
     ).model_dump(mode="json")

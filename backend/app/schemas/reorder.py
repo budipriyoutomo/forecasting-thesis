@@ -45,6 +45,17 @@ class ReorderRecommendationOut(BaseModel):
     buffer_stock_system: Decimal | None = None
     service_level_effective: Decimal | None = None
     adjustment_source: str | None = None
+    # 23 Nov 2026 — input perhitungan (μ/σ per periode, hari/periode, L, Z, service level,
+    # EOQ sebelum MOQ, S & H) untuk menampilkan perhitungan; null = rekomendasi lama.
+    mu_period: Decimal | None = None
+    sigma_period: Decimal | None = None
+    period_days: Decimal | None = None
+    lead_time_days_used: Decimal | None = None
+    z_value: Decimal | None = None
+    service_level_pct_used: Decimal | None = None
+    eoq_raw_qty: Decimal | None = None
+    ordering_cost_per_order: Decimal | None = None
+    holding_cost_per_unit: Decimal | None = None
     # Fase 11.14 — override planner yang BERLAKU untuk (run, material); angka sistem tetap
     # di `recommended_order_qty`. null = belum di-override.
     override_qty: Decimal | None = None

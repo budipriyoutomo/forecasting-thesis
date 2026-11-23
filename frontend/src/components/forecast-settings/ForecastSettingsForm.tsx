@@ -14,8 +14,8 @@ import type {
   RopFormula,
 } from "@/types/forecastSettings";
 
-// Fase 11.15 — metrik yang DITAMPILKAN di hasil forecast (checkbox). Tidak ada lagi metrik
-// penentu pemenang: planner membandingkan nilainya lalu memilih metode per produk.
+// Metrik pengujian (checkbox): ditampilkan di hasil forecast DAN (23 Nov 2026) menjadi kriteria
+// pemilihan metode terbaik otomatis dengan urutan prioritas 1) MAD, 2) MAPE, 3) MFE (23 Nov 2026).
 // Pengujian peramalan hanya MAD, MFE, MAPE (keputusan user 21 Nov 2026).
 export const DISPLAY_METRIC_OPTIONS: { value: DisplayMetric; label: string; description: string }[] = [
   {
@@ -51,15 +51,16 @@ export const ROP_FORMULA_OPTIONS: { value: RopFormula; label: string; descriptio
 ];
 
 export const ORDER_QTY_POLICY_OPTIONS: { value: OrderQtyPolicy; label: string; description: string }[] = [
+  // 23 Nov 2026 (keputusan user): default kelipatan EOQ — qty pembelian = hasil EOQ.
+  {
+    value: "eoq",
+    label: "Kelipatan EOQ: n × EOQ (default)",
+    description: "Pesan EOQ (n terkecil sampai stok ≥ ROP). EOQ belum tersedia → order-up-to.",
+  },
   {
     value: "order_up_to",
     label: "Order-up-to: max(MOQ, S − stok)",
     description: "Isi stok sampai level S = ROP + μ·L.",
-  },
-  {
-    value: "eoq",
-    label: "Kelipatan EOQ: n × EOQ",
-    description: "Pesan EOQ (n terkecil sampai stok ≥ ROP). EOQ belum tersedia → order-up-to.",
   },
 ];
 
@@ -76,8 +77,8 @@ export function parseAlphaGrid(text: string): number[] | null {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
-// Metrik tampil = kolom metrik di hasil forecast (Fase 11.15, tanpa pemenang). Metode aktif =
-// metode yang dijalankan di mode otomatis sekaligus pilihan mode manual.
+// Metrik tampil = kolom metrik di hasil forecast + kriteria metode terbaik. Metode aktif =
+// metode yang dijalankan & dibandingkan di setiap forecast run.
 export function ForecastSettingsForm({
   initial,
   available,
@@ -114,7 +115,7 @@ export function ForecastSettingsForm({
   const [serviceLevel, setServiceLevel] = useState(initial.service_level_pct ?? 95);
   const [eoqMethod, setEoqMethod] = useState<EoqMethod>(initial.eoq_method ?? "classic");
   const [ropFormula, setRopFormula] = useState<RopFormula>(initial.rop_formula ?? "with_buffer");
-  const [qtyPolicy, setQtyPolicy] = useState<OrderQtyPolicy>(initial.order_qty_policy ?? "order_up_to");
+  const [qtyPolicy, setQtyPolicy] = useState<OrderQtyPolicy>(initial.order_qty_policy ?? "eoq");
 
   const toggleMetric = (metric: DisplayMetric) =>
     setMetrics((prev) => {
@@ -158,8 +159,9 @@ export function ForecastSettingsForm({
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">Metrik yang ditampilkan</legend>
         <p className="text-sm text-muted-foreground">
-          Ditampilkan berdampingan untuk tiap metode di hasil forecast. Sistem tidak memilih metode
-          pemenang — planner memilih metode per produk.
+          Ditampilkan untuk tiap metode di hasil forecast dan dipakai sistem memilih metode terbaik
+          dengan urutan prioritas: 1) MAD terkecil, 2) MAPE terkecil bila MAD seri, 3) |MFE| terkecil
+          bila masih seri. Metrik yang tidak dicentang dilewati. Planner tetap bisa mengganti metode.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {DISPLAY_METRIC_OPTIONS.map((opt) => (

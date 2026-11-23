@@ -12,13 +12,13 @@ import { formatMoney, formatNumber, formatPercent, formatQty } from "@/lib/forma
 import type { Material } from "@/types/material";
 import type { ReorderRecommendation, ReorderStatus } from "@/types/reorder";
 
-const STATUS_LABEL: Record<ReorderStatus, string> = {
+export const STATUS_LABEL: Record<ReorderStatus, string> = {
   urgent: "Segera reorder",
   safe: "Aman",
   overstock: "Kelebihan stok",
 };
 
-const STATUS_VARIANT: Record<ReorderStatus, "destructive" | "secondary" | "outline"> = {
+export const STATUS_VARIANT: Record<ReorderStatus, "destructive" | "secondary" | "outline"> = {
   urgent: "destructive",
   safe: "secondary",
   overstock: "outline",

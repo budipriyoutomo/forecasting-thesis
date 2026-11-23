@@ -84,7 +84,7 @@ describe("RunDetail (CR v3.6 §1/§4)", () => {
     const { getRun } = stub({ run: runOf([RESULT, PENDING], 1) });
     renderDetail();
 
-    expect(await screen.findByRole("heading", { name: /2\. pilih metode/i })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: /2\. metode terbaik/i })).toBeDefined();
     expect(getRun).toHaveBeenCalledWith("run1", "tok");
     expect(screen.getByText(/oleh Planner A/)).toBeDefined();
   });
@@ -95,7 +95,7 @@ describe("RunDetail (CR v3.6 §1/§4)", () => {
 
     const nav = await screen.findByRole("navigation", { name: /langkah run/i });
     const current = within(nav).getByRole("button", { current: "step" });
-    expect(current.textContent).toMatch(/pilih metode.*1 produk menunggu/i);
+    expect(current.textContent).toMatch(/metode terbaik.*1 produk menunggu/i);
     expect(within(nav).getByRole("button", { name: /reorder & biaya/i }).textContent).toMatch(/terkunci/i);
   });
 
