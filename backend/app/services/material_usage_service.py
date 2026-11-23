@@ -20,6 +20,9 @@ from app.services.bom_service import compute_standard_usage, compute_waste_facto
 from app.utils.exceptions import UploadInvalidFormatError
 from app.utils.tabular import cell, read_table, require_columns
 
+# Kolom Numeric(18, 4) → bagian bulat maksimal 14 digit; lebih dari itu ditolak DB (500).
+_MAX_VALUE = Decimal(10) ** 14
+
 
 class MaterialUsageService:
     def __init__(self, repo, materials, products, boms, factory: Callable[..., object] = MaterialUsage):
@@ -57,9 +60,15 @@ class MaterialUsageService:
                 value = Decimal(text)
             except InvalidOperation as exc:
                 raise UploadInvalidFormatError(f"Baris {line}: '{name}' bukan angka valid.") from exc
+            if not value.is_finite():
+                raise UploadInvalidFormatError(f"Baris {line}: '{name}' bukan angka valid.")
             if value < 0:
                 raise UploadInvalidFormatError(f"Baris {line}: '{name}' tidak boleh negatif.")
+            if value >= _MAX_VALUE:
+                raise UploadInvalidFormatError(f"Baris {line}: '{name}' terlalu besar.")
             return value
+
+        seen: dict[tuple, int] = {}
 
         rows = []
         for i, raw in enumerate(df.to_dict("records"), start=2):
@@ -68,9 +77,12 @@ class MaterialUsageService:
             if material is None:
                 raise UploadInvalidFormatError(f"Baris {i}: Material '{code}' tidak ditemukan.")
             try:
-                period = pd.to_datetime(cell(raw.get("period"))).date()
+                parsed = pd.to_datetime(cell(raw.get("period")))
             except (ValueError, TypeError) as exc:
                 raise UploadInvalidFormatError(f"Baris {i}: 'period' bukan tanggal valid.") from exc
+            if pd.isna(parsed):  # sel kosong → NaT, bukan exception
+                raise UploadInvalidFormatError(f"Baris {i}: 'period' wajib diisi (format YYYY-MM-DD).")
+            period = parsed.date()
 
             actual = number(raw.get("actual_usage"), "actual_usage", i)
             if actual is None:
@@ -99,6 +111,18 @@ class MaterialUsageService:
                         f"Baris {i}: BOM {product_code} → {code} belum ada; standar tidak bisa dihitung."
                     )
                 standard = Decimal(str(compute_standard_usage(float(output), float(line.qty_per_unit))))
+                if standard >= _MAX_VALUE:
+                    raise UploadInvalidFormatError(f"Baris {i}: standar hasil output × BOM terlalu besar.")
+
+            # Unique index (material, [produk], periode): duplikat dalam satu file → IntegrityError.
+            key = (str(material.id), str(product_id), period)
+            if key in seen:
+                raise UploadInvalidFormatError(
+                    f"Baris {i}: duplikat material {code}"
+                    + (f" / produk {product_code}" if product_id else "")
+                    + f" periode {period} dengan baris {seen[key]}."
+                )
+            seen[key] = i
 
             rows.append(
                 self._factory(

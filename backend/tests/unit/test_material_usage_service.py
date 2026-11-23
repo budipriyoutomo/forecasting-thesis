@@ -96,6 +96,15 @@ async def test_import_standar_langsung_dan_dari_output_x_bom():
         ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,2026-01-01,-1,10\n", "negatif"),
         ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,xx,1,10\n", "period"),
         ("material_code,period,standard_usage\nBTL-WHITE,2026-01-01,10\n", "actual_usage"),
+        # Regresi 23 Nov 2026 — dulu lolos validasi lalu crash di DB → 500 INTERNAL_ERROR.
+        ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,,1,10\n", "period"),  # NaT
+        ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,2026-01-01,Infinity,10\n", "actual_usage"),
+        ("material_code,period,actual_usage,standard_usage\nBTL-WHITE,2026-01-01,1e30,10\n", "terlalu besar"),
+        (
+            "material_code,period,actual_usage,standard_usage\n"
+            "BTL-WHITE,2026-01-01,1,10\nBTL-WHITE,2026-01-01,2,10\n",
+            "Baris 3.*duplikat.*baris 2",
+        ),
     ],
 )
 @pytest.mark.asyncio
