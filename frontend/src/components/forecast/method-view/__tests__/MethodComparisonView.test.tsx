@@ -18,7 +18,8 @@ function renderView() {
   );
 }
 
-describe("MethodComparisonView (CR v3.7 §4.2)", () => {
+// Render 3 section penuh (matriks 12 bulan + tooltip) berat di jsdom — batas waktu longgar.
+describe("MethodComparisonView (CR v3.7 §4.2)", { timeout: 20000 }, () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it("section bernomor mengikuti urutan respons + analisis di akhir", async () => {

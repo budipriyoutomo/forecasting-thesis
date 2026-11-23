@@ -1299,3 +1299,51 @@ material memakai jadwal kedatangan dari ROP dan qty pembelian dari EOQ, 7) simul
 - Biaya total dari `cost-summary`; TIC baseline kini **dirinci** `baseline_ordering_cost` + `baseline_holding_cost`
   (additive, tanpa migration). Biaya pesan/simpan per material hanya tersedia untuk usulan (rekomendasi reorder).
 
+
+## Tampilan Hasil Run Per Metode (Format Thesis) — CR v3.7 (23 Nov 2026)
+
+> Nama "CR v3.7" juga dipakai §"User Management — CR v3.7" (21 Nov 2026). Spesifikasi entri ini:
+> `docs/Change Request v3.7.md` ("Tampilan Hasil Forecast Run Per Metode", sketsa "Part 1 = Forecast").
+
+**Permintaan user.** Langkah 1 "Forecast" di `/forecast/runs/[id]` menampilkan hasil **per metode** persis struktur
+Bab 4 thesis: tiap metode → (a) hasil ramalan varian × bulan, (b) pengujian MAD · MAPE · MFE + Average; lalu
+analisis pemilihan metode terbaik. View per produk tetap ada.
+
+**Konflik CR ↔ kode (ditanyakan, dijawab user 23 Nov 2026).** CR ditulis di atas `c60671c` (seleksi **per produk**),
+sedangkan kode sudah memilih **satu metode global** (§"Metode Terbaik Global"). Keputusan user:
+1. **`run_selection` = seleksi global yang dipakai run** — bukan D8 CR (rata-rata ulang atas irisan varian, semua
+   metode diranking). Alasan: D8 bisa memberi "Terbaik" yang berbeda dari metode yang benar-benar dipakai (dua sumber
+   kebenaran, AGENTS #20). `selection_analysis` tersimpan (`scope: "global"`) dipakai apa adanya; run lama / mode manual
+   → `select_global_method` dihitung on-the-fly. `ranking_basis = "common"` bila ada `excluded_methods` atau
+   `n_common` < jumlah varian berhasil.
+2. **D9 dihapus** (`n_products_won`, `is_product_best`, dan ✓ per varian dari D10): dengan seleksi global semua produk
+   punya `best_method` sama, jadi hitungannya selalu N vs 0. Diganti tabel **varian → pilihan sistem → metode dipakai**
+   (`product_methods`, label "diganti planner"; fallback per produk ditandai). Kolom "Varian dimenangkan" di tabel
+   peringkat diganti "Varian" (`n_products` yang dirata-rata).
+3. Pekerjaan seleksi global yang belum di-commit di-commit dulu sebagai commit tersendiri sebelum Fase A.
+4. Pertanyaan terbuka CR §7 → **default**: label bulan id-ID (`Jan-26 … Des-26`), prioritas MAD → MAPE → MFE, view
+   default "Per metode".
+
+**Keputusan D1–D10 CR yang berlaku:** D1 (Tabs di langkah 1, default "Per metode (format thesis)", `?view=method|product`,
+langkah 2–5 tidak berubah), D2 (section bertumpuk + chip lompat), D3 (`THESIS_METHOD_ORDER`, metode lain di belakang
+abjad, metode tanpa kandidat tidak dirender), D4 (label = `product.code`, fallback id 8 char; urutan `results[]`),
+D5 (id-ID), D6 (qty bulat, metrik 2 desimal, MFE bertanda), D7 (Average + "n = x dari y varian"), D8 → diganti
+keputusan 1, D9 → dihapus, D10 → hanya badge "Terbaik" di section metode terbaik run.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- Fungsi murni `forecasting/method_comparison.py` memakai `selection._finite`, `selection._mean` (rata-rata), dan
+  `select_global_method` — tidak ada logika peringkat/rata-rata kedua. `selection.py` tidak diubah.
+- Respons memakai `product_methods` (bukan `product_winners` CR §3.1) karena isinya bukan pemenang per varian lagi.
+  `run_selection` menambah `criteria`, `n_completed`, `excluded_methods`.
+- Baris membawa **`total`** (Σ deret) dari backend, supaya kolom Total matriks juga bukan hitungan FE.
+- `SelectedResult.system_method` (baru, read-only) = `method_used` asli hasil sebelum override planner.
+- Endpoint dites di `tests/unit/test_method_comparison_api.py` (pola `test_forecast_api.py`, tanpa DB) — repo tidak punya
+  pola integrasi endpoint di `tests/integration/` selain golden thesis.
+- Kolom metrik view = `criteria` endpoint (urutan prioritas, tersaring Pengaturan Forecast), jadi MAD · MAPE · MFE
+  tanpa hardcode baru; `ALL_METRICS` (MAD, MFE, MAPE) untuk view lain tidak berubah.
+- `?view=` disinkronkan dengan `history.replaceState` (param lain, mis. `?step=`, dipertahankan; tidak ada navigasi ulang).
+- Tombol **Salin** (D1/P1) menyusun TSV dari data & formatter yang sama dengan tampilan; MAPE tanpa label Lewis.
+- Sheet Excel **"Format Thesis"** (P1) dibangun dari `build_method_comparison` yang sama; label bulan id-ID di backend
+  (`_period_label`, cermin `formatPeriodLabel`); qty dibulatkan; gagal → "—". Sheet "Forecast" tidak berubah.
+- Catatan metodologis (rata-rata MAD lintas varian bergantung skala volume; MAPE lebih adil) ditampilkan di §analisis
+  dan di sheet export.

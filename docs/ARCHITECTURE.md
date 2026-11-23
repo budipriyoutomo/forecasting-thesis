@@ -494,6 +494,7 @@ GET    /api/v1/products/demand-coverage       # CR v3.6 §5 — [{product_id, n_
 GET    /api/v1/forecast/results?product_id=...
 POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; role selain admin/ppic → 403 AUTH_FORBIDDEN (`forecast.select`)
 POST   /api/v1/forecast/runs/{run_id}/selection        # Fase 11.15 — satu metode untuk semua produk di run {method, reason} → {n_selected, skipped_product_ids, results}; produk tanpa metode itu dilewati
+GET    /api/v1/forecast/runs/{run_id}/method-comparison  # CR v3.7 (§6.1c) — hasil per metode format thesis: {run_id, periods[], criteria[], methods[{method,label,rows[{product_id,status OK|FAILED|NO_SERIES,forecast{periode→qty},total,mad,mape,mfe}],average{mad,mape,mfe,n,n_total}}], run_selection{best_method,criteria,ranking_basis all|common,n_common,n_completed,excluded_methods,ranking[],decided_by,summary,reasons}|null, product_methods[{product_id,status,system_method,method_used,is_overridden}]}; semua role (get_current_user); run tak ada → 404 FORECAST_RUN_NOT_FOUND
 
 POST   /api/v1/reorder/recommendations    # generate & persist rekomendasi (body: run_id, current_stock per material — lihat catatan di §4 `reorder_recommendations`)
 GET    /api/v1/reorder/recommendations
@@ -753,6 +754,19 @@ memilih metode terbaik (§6.1b), jadi run baru langsung `SELECTED`; service ini 
    - `selection_analysis` tiap hasil = analisis global yang sama: `+ {scope: "global", n_products, excluded_methods}`; `ranking[]` berisi metrik **rata-rata** + `n_products`. `candidates_evaluated` tetap membawa metrik **produk itu**, tetapi `rank`/`rank_<metrik>` = peringkat global (metode yang dikeluarkan → `rank: null`).
    - UI: panel "Metode terbaik untuk seluruh produk" (`GlobalSelectionPanel`) di atas tabel hasil run, berisi tabel rata-rata pengujian per metode.
    - Satu produk (`run_forecast_for_product`) = kasus khusus dengan `n_products = 1` → hasilnya sama dengan pemilihan per produk.
+
+### 6.1c Perbandingan Per Metode — Format Thesis (CR v3.7, 23 Nov 2026)
+
+`app/services/forecasting/method_comparison.py` — fungsi murni read-only `build_method_comparison(results, criteria)`
+atas hasil tersimpan (`ForecastSelectionService.list_results`, tanpa DB/migrasi baru), dipakai endpoint
+`GET /forecast/runs/{id}/method-comparison` dan sheet **"Format Thesis"** export forecast (`build_forecast_xlsx`).
+
+- Urutan metode `THESIS_METHOD_ORDER` = RF → LSTM → XGBoost → MA → ES; metode lain di belakang (abjad); metode tanpa kandidat di run → tidak muncul.
+- Baris per varian (urutan `results[]`): `OK`, `FAILED` (metode gagal/dikecualikan, atau produk gagal), `NO_SERIES` (run sebelum Fase 11.15: metrik ada, deret tidak). NaN/inf → `null` (`selection._finite`). `total` = Σ deret (kolom Total).
+- `average` = rata-rata aritmetika atas varian yang metodenya berhasil (`selection._mean`), **MFE bertanda**; `n`/`n_total` untuk catatan "n = x dari y varian".
+- `run_selection` = **seleksi global yang dipakai run** (§6.1b butir 6): `selection_analysis` tersimpan (`scope: "global"`) dipakai apa adanya; run lama / mode manual → `select_global_method` dihitung on-the-fly dengan `criteria` snapshot (`run_criteria`). `ranking_basis = "common"` bila ada `excluded_methods` atau `n_common` < jumlah varian berhasil. Tidak ada logika peringkat baru (AGENTS #20).
+- `product_methods` = pilihan sistem (`SelectedResult.system_method`) vs metode berlaku (override planner), bukan "varian dimenangkan" (D9 CR dihapus — RECONCILIATION §"CR v3.7").
+- FE: `components/forecast/method-view/` di langkah 1 run (`Tabs` "Per metode (format thesis)" default | "Per produk", `?view=method|product`); FE tidak menghitung rata-rata/peringkat.
 
 ### 6.2 Metrik Evaluasi (`evaluation.py`)
 
