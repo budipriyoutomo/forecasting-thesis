@@ -168,6 +168,8 @@ export interface MethodComparisonRow {
   mad: number | null;
   mape: number | null;
   mfe: number | null;
+  /** Alasan metode gagal di varian ini (sejak 24 Nov 2026); null/absen = tidak tercatat. */
+  reason?: string | null;
 }
 
 export interface MethodAverage {

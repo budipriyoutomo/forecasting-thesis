@@ -8,7 +8,8 @@ lalu kesimpulan metode terbaik level run.
 
 Aturan (RECONCILIATION §"CR v3.7"):
   - Urutan metode = `THESIS_METHOD_ORDER`; metode lain di belakang (abjad). Metode tanpa
-    kandidat sama sekali di run → tidak muncul.
+    kandidat sama sekali di run → tidak muncul, KECUALI metode aktif yang gagal (tercatat di
+    `selection_analysis.failed_methods`, 24 Nov 2026) → tampil dengan baris FAILED + `reason`.
   - Status baris: OK · FAILED (metode gagal/dikecualikan, atau produk gagal) · NO_SERIES
     (run sebelum Fase 11.15: metrik ada, deret tidak disimpan).
   - Average = rata-rata aritmetika atas varian yang metodenya berhasil; MFE BERTANDA.
@@ -55,17 +56,26 @@ def run_criteria(results) -> Sequence[str]:
     return next((sa["criteria"] for sa in map(_analysis, results) if sa and sa.get("criteria")), DEFAULT_CRITERIA)
 
 
+def _failed_methods(result) -> dict[str, str]:
+    """{metode aktif yang gagal: alasan} tersimpan di `selection_analysis` (sejak 24 Nov 2026)."""
+    failed = (_analysis(result) or {}).get("failed_methods")
+    return failed if isinstance(failed, dict) else {}
+
+
 def _ordered_methods(results) -> list[str]:
     present = {c["method"] for r in results if _completed(r) for c in r.candidates_evaluated}
+    # Metode aktif yang gagal di SEMUA produk tetap tampil (status FAILED + alasan), bukan hilang.
+    present |= {m for r in results if _completed(r) for m in _failed_methods(r)}
     thesis = [m for m in THESIS_METHOD_ORDER if m in present]
     return thesis + sorted(present - set(THESIS_METHOD_ORDER))
 
 
-def _row(product_id: str, candidate: dict | None) -> dict:
+def _row(product_id: str, candidate: dict | None, reason: str | None = None) -> dict:
     if candidate is None:
         return {
             "product_id": product_id, "status": "FAILED", "forecast": {}, "total": None,
             "mad": None, "mape": None, "mfe": None,
+            "reason": reason,  # None = alasan tidak tercatat (run lama / produk gagal)
         }
     series = candidate.get("forecast") or []
     forecast = {str(p["date"])[:10]: float(p["value"]) for p in series}
@@ -75,6 +85,7 @@ def _row(product_id: str, candidate: dict | None) -> dict:
         "forecast": forecast,
         "total": sum(forecast.values()) if forecast else None,  # kolom Total matriks
         **{m: _finite(candidate.get(m)) for m in _METRICS},
+        "reason": None,
     }
 
 
@@ -123,7 +134,7 @@ def build_method_comparison(results: list, criteria: Sequence[str]) -> dict:
         rows = []
         for r in results:
             cands = {c["method"]: c for c in r.candidates_evaluated} if _completed(r) else {}
-            rows.append(_row(str(r.product_id), cands.get(method)))
+            rows.append(_row(str(r.product_id), cands.get(method), _failed_methods(r).get(method)))
         methods.append({"method": method, "label": method_label(method), "rows": rows, "average": _average(rows)})
 
     periods = sorted({d for m in methods for row in m["rows"] for d in row["forecast"]})

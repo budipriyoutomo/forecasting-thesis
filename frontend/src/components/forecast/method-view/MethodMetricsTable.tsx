@@ -58,7 +58,7 @@ export function MethodMetricsTable({
                 <TableCell className={`${STICKY} font-medium`}>{variantLabel(row.product_id)}</TableCell>
                 {criteria.map((m) => (
                   <TableCell key={m} className={NUM}>
-                    {row.status === "FAILED" ? <MissingValue status="FAILED" /> : <MetricValue metric={m} value={row[m]} />}
+                    {row.status === "FAILED" ? <MissingValue status="FAILED" reason={row.reason} /> : <MetricValue metric={m} value={row[m]} />}
                   </TableCell>
                 ))}
               </TableRow>

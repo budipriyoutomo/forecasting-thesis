@@ -15,6 +15,18 @@ from app.main import app
 settings = get_settings()
 
 
+@pytest.fixture(autouse=True)
+def _lstm_cepat(request, monkeypatch):
+    """Sejak TF terpasang di 3.11 (24 Nov 2026) LSTM benar-benar dilatih di setiap test mode
+    otomatis (100 epoch × 2 fit per produk) → suite 35 dtk jadi ±14 menit. Di luar
+    test_lstm_engine.py, epoch dikecilkan: yang diuji orkestrasi, bukan kualitas model."""
+    if request.module.__name__.endswith("test_lstm_engine"):
+        return
+    from app.services.forecasting.engines import lstm_engine
+
+    monkeypatch.setattr(lstm_engine, "_EPOCHS", 1)
+
+
 @pytest_asyncio.fixture
 async def client():
     transport = ASGITransport(app=app)

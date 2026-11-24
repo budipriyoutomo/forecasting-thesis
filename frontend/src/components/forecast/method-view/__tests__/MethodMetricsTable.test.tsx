@@ -32,6 +32,14 @@ describe("MethodMetricsTable (CR v3.7 §4.2)", () => {
     expect(within(sb).getAllByLabelText("Metode gagal untuk varian ini")).toHaveLength(3); // satu per metrik
   });
 
+  it("varian gagal dengan alasan dari backend → tooltip memakai alasan itu", () => {
+    const reason = "TensorFlow belum terpasang di server.";
+    const method = { ...LSTM, rows: LSTM.rows.map((r) => (r.status === "FAILED" ? { ...r, reason } : r)) };
+    render(<MethodMetricsTable method={method} criteria={COMPARISON.criteria} variantLabel={variantLabel} />);
+    const sb = screen.getAllByRole("row").find((r) => r.textContent?.startsWith("SB"))!;
+    expect(within(sb).getAllByLabelText(reason)).toHaveLength(3);
+  });
+
   it("kolom mengikuti criteria (metrik tidak dicentang tidak tampil)", () => {
     render(<MethodMetricsTable method={RF} criteria={["mad", "mfe"]} variantLabel={variantLabel} />);
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Varian", "MAD", "MFE"]);

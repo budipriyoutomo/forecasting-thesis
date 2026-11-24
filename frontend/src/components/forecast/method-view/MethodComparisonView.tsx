@@ -1,10 +1,13 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
+
 import { EmptyState } from "@/components/common/EmptyState";
 import { TableSkeleton } from "@/components/common/TableSkeleton";
 import { BestMethodAnalysis } from "@/components/forecast/method-view/BestMethodAnalysis";
 import { MethodForecastMatrix } from "@/components/forecast/method-view/MethodForecastMatrix";
 import { MethodMetricsTable } from "@/components/forecast/method-view/MethodMetricsTable";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useMethodComparison } from "@/hooks/useForecast";
 import type { MethodComparisonMethod, MetricCriterion } from "@/types/forecast";
@@ -84,12 +87,25 @@ function MethodSection({
   criteria: MetricCriterion[];
   variantLabel: (productId: string) => string;
 }) {
+  const failedAll = method.rows.length > 0 && method.rows.every((r) => r.status === "FAILED");
+  const reasons = [...new Set(method.rows.map((r) => r.reason).filter((r): r is string => !!r))];
   return (
     <section id={sectionId(method.method)} className="flex scroll-mt-4 flex-col gap-4">
       <h3 className="flex items-center gap-2 text-base font-semibold">
         {index}. Metode {method.label}
         {isBest && <Badge variant="success">Terbaik</Badge>}
+        {failedAll && <Badge variant="destructive">Gagal</Badge>}
       </h3>
+      {failedAll && (
+        <Alert variant="warning">
+          <AlertTriangle className="size-4" />
+          <AlertDescription>
+            Metode {method.label} aktif di Pengaturan Forecast tetapi gagal dijalankan di semua varian, sehingga
+            tidak ikut dibandingkan.
+            {reasons.length > 0 && <> Alasan: {reasons.join("; ")}</>}
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-medium">a. Hasil ramalan (forecasting)</h4>
         <MethodForecastMatrix method={method} periods={periods} variantLabel={variantLabel} />

@@ -63,7 +63,7 @@ def test_matriks_dua_produk_dua_metode_urutan_thesis():
     assert [r["product_id"] for r in rf["rows"]] == ["p1", "p2"]  # urutan results[]
     assert rf["rows"][0] == {
         "product_id": "p1", "status": "OK", "forecast": {P1: 7.0, P2: 8.0}, "total": 15.0,
-        "mad": 2.0, "mape": 8.0, "mfe": -1.0,
+        "mad": 2.0, "mape": 8.0, "mfe": -1.0, "reason": None,
     }
     assert _by(out)["moving_average"]["rows"][1]["forecast"] == {P1: 3.0, P2: 4.0}
 
@@ -94,6 +94,7 @@ def test_metode_gagal_di_satu_produk():
     lstm = _by(out)["lstm"]
     assert lstm["rows"][1] == {
         "product_id": "p2", "status": "FAILED", "forecast": {}, "total": None, "mad": None, "mape": None, "mfe": None,
+        "reason": None,  # run tanpa `failed_methods` (sebelum 24 Nov 2026) → FE pakai teks umum
     }
     assert lstm["average"]["n"] == 1 and lstm["average"]["n_total"] == 2
     sel = out["run_selection"]
@@ -219,3 +220,29 @@ def test_tanpa_hasil_berhasil_run_selection_null():
     out = build_method_comparison([_result("p1", [], status="INSUFFICIENT_DATA")], DEFAULT_CRITERIA)
     assert out["methods"] == [] and out["periods"] == []
     assert out["run_selection"] is None
+
+
+# 7 ─ 24 Nov 2026: metode AKTIF yang gagal di semua produk tetap tampil (status FAILED + alasan)
+def test_metode_aktif_gagal_total_tetap_tampil_dengan_alasan():
+    analysis = {"failed_methods": {"lstm": "TensorFlow belum terpasang di server."}}
+    results = [
+        _result("p1", [_cand("random_forest", 2, 10, 0)], analysis=analysis),
+        _result("p2", [_cand("random_forest", 4, 10, 0)], analysis=analysis),
+    ]
+    out = build_method_comparison(results, DEFAULT_CRITERIA)
+    assert [m["method"] for m in out["methods"]] == ["random_forest", "lstm"]  # urutan thesis
+    lstm = _by(out)["lstm"]
+    assert [r["status"] for r in lstm["rows"]] == ["FAILED", "FAILED"]
+    assert lstm["rows"][0]["reason"] == "TensorFlow belum terpasang di server."
+    assert lstm["average"]["n"] == 0
+    assert out["run_selection"]["best_method"] == "random_forest"
+
+
+def test_alasan_gagal_per_produk():
+    results = [
+        _result("p1", [_cand("random_forest", 2, 10, 0), _cand("lstm", 1, 5, 0)]),
+        _result("p2", [_cand("random_forest", 4, 10, 0)], analysis={"failed_methods": {"lstm": "ValueError: x"}}),
+    ]
+    rows = _by(build_method_comparison(results, DEFAULT_CRITERIA))["lstm"]["rows"]
+    assert rows[0]["reason"] is None and rows[0]["status"] == "OK"
+    assert rows[1]["reason"] == "ValueError: x"

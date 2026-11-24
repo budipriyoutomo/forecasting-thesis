@@ -137,19 +137,51 @@ def _run_manual(df, horizon, method, enabled, options) -> ForecastResultRecord:
     return _completed(method, "manual", result, [_candidate_row(method, result)])
 
 
-def _evaluate_all(df, horizon, enabled, options) -> dict[str, EngineResult]:
-    """Jalankan seluruh metode aktif; yang gagal dikecualikan (AGENTS §5 langkah 4)."""
+_REASON_MAX = 200
+
+
+def _failure_reason(exc: Exception) -> str:
+    """Alasan bahasa natural kenapa satu metode gagal (24 Nov 2026) — ditampilkan di run supaya
+    metode aktif yang gagal tidak hilang diam-diam dari perbandingan."""
+    if isinstance(exc, ImportError) and (getattr(exc, "name", None) or "").split(".")[0] == "tensorflow":
+        return (
+            "TensorFlow belum terpasang di server (LSTM butuh TensorFlow, Python ≤ 3.13) — "
+            "metode tidak bisa dijalankan."
+        )
+    text = f"{type(exc).__name__}: {exc}".strip()
+    if len(text) > _REASON_MAX:
+        text = text[: _REASON_MAX - 1] + "…"
+    return f"Gagal saat backtest/fit — {text}"
+
+
+def _evaluate_all(df, horizon, enabled, options) -> tuple[dict[str, EngineResult], dict[str, str]]:
+    """Jalankan seluruh metode aktif; yang gagal dikecualikan (AGENTS §5 langkah 4) dan
+    alasannya dicatat → (hasil per metode, {metode gagal: alasan})."""
     evaluated: dict[str, EngineResult] = {}
+    failures: dict[str, str] = {}
     for method_name in sorted(enabled):  # sorted → ranking stabil saat seri
         forecast_fn = registry.MODEL_REGISTRY[method_name]
         try:
             evaluated[method_name] = forecast_fn(df, horizon, options=options)
-        except Exception:
+        except Exception as exc:
             log.warning("Metode '%s' gagal saat backtest/fit, dikecualikan", method_name, exc_info=True)
-    return evaluated
+            failures[method_name] = _failure_reason(exc)
+    return evaluated, failures
 
 
-def _apply_global(evaluated: dict[str, EngineResult], outcome, metrics) -> ForecastResultRecord:
+def _failed_everywhere_line(failures: list[dict[str, str]]) -> str | None:
+    """Metode aktif yang gagal di SELURUH produk dinilai — tidak terlihat di `excluded_methods`
+    (yang hanya memuat metode gagal sebagian), jadi disebut eksplisit di alasan pemilihan."""
+    common = set.intersection(*(set(f) for f in failures)) if failures else set()
+    if not common:
+        return None
+    parts = [f"{method_label(m)} ({failures[0][m]})" for m in sorted(common)]
+    return "Metode aktif yang gagal dijalankan di semua produk sehingga tidak dibandingkan: " + "; ".join(parts)
+
+
+def _apply_global(
+    evaluated: dict[str, EngineResult], failures: dict[str, str], outcome, metrics
+) -> ForecastResultRecord:
     """Hasil satu produk memakai metode terbaik GLOBAL; bila metode itu gagal di produk ini →
     metode terbaik produk ini sendiri (dicatat di `selection_analysis.fallback_reason`)."""
     candidates = [_candidate_row(name, r) for name, r in evaluated.items()]
@@ -160,6 +192,7 @@ def _apply_global(evaluated: dict[str, EngineResult], outcome, metrics) -> Forec
     candidates.sort(key=lambda c: (c["rank"] is None, c["rank"] or 0, c["method"]))
 
     analysis = outcome.to_dict()
+    analysis["failed_methods"] = dict(failures)  # metode aktif yang gagal di produk ini + alasan
     chosen = outcome.best_method
     if chosen not in evaluated:
         own = select_best_method(candidates, metrics)
@@ -195,7 +228,7 @@ def run_forecast_for_products(
         )
 
     records: list[ForecastResultRecord | None] = []
-    evaluations: list[dict[str, EngineResult] | None] = []
+    evaluations: list[tuple[dict[str, EngineResult], dict[str, str]] | None] = []
     for df, options in items:
         failed = _precheck(df, requested_method)
         if failed is not None:
@@ -206,27 +239,32 @@ def run_forecast_for_products(
             records.append(_run_manual(df, horizon, requested_method, enabled, options))
             evaluations.append(None)
         else:
-            evaluated = _evaluate_all(df, horizon, enabled, options)
+            evaluated, failures = _evaluate_all(df, horizon, enabled, options)
             if not evaluated:
+                detail = "; ".join(f"{method_label(m)}: {r}" for m, r in sorted(failures.items()))
                 records.append(
                     ForecastResultRecord(
                         status="MODEL_SELECTION_FAILED",
-                        status_reason="Semua metode aktif gagal saat backtest/fit untuk data produk ini.",
+                        status_reason="Semua metode aktif gagal saat backtest/fit untuk data produk ini"
+                        + (f" — {detail}" if detail else "."),
                     )
                 )
                 evaluations.append(None)
             else:
                 records.append(None)
-                evaluations.append(evaluated)
+                evaluations.append((evaluated, failures))
 
     # ── MODE OTOMATIS: metode terbaik global dari rata-rata seluruh produk ──
     pending = [e for e in evaluations if e is not None]
     if pending:
-        per_product = [[_candidate_row(name, r) for name, r in e.items()] for e in pending]
+        per_product = [[_candidate_row(name, r) for name, r in ev.items()] for ev, _ in pending]
         outcome = select_global_method(per_product, selection_metrics)
+        line = _failed_everywhere_line([f for _, f in pending])
+        if line:
+            outcome.reasons.append(line)
         for i, e in enumerate(evaluations):
             if e is not None:
-                records[i] = _apply_global(e, outcome, selection_metrics)
+                records[i] = _apply_global(*e, outcome, selection_metrics)
     return records  # type: ignore[return-value]
 
 

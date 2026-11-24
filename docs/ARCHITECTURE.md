@@ -494,7 +494,7 @@ GET    /api/v1/products/demand-coverage       # CR v3.6 §5 — [{product_id, n_
 GET    /api/v1/forecast/results?product_id=...
 POST   /api/v1/forecast/results/{result_id}/selection  # Fase 11.15 — planner memilih metode 1 produk {method, reason}; alasan kosong → 400 OVERRIDE_REASON_REQUIRED; metode bukan kandidat (atau run lama tanpa deret) → 400 UNSUPPORTED_FORECAST_METHOD; hasil tak ada → 404 OVERRIDE_TARGET_NOT_FOUND; role selain admin/ppic → 403 AUTH_FORBIDDEN (`forecast.select`)
 POST   /api/v1/forecast/runs/{run_id}/selection        # Fase 11.15 — satu metode untuk semua produk di run {method, reason} → {n_selected, skipped_product_ids, results}; produk tanpa metode itu dilewati
-GET    /api/v1/forecast/runs/{run_id}/method-comparison  # CR v3.7 (§6.1c) — hasil per metode format thesis: {run_id, periods[], criteria[], methods[{method,label,rows[{product_id,status OK|FAILED|NO_SERIES,forecast{periode→qty},total,mad,mape,mfe}],average{mad,mape,mfe,n,n_total}}], run_selection{best_method,criteria,ranking_basis all|common,n_common,n_completed,excluded_methods,ranking[],decided_by,summary,reasons}|null, product_methods[{product_id,status,system_method,method_used,is_overridden}]}; semua role (get_current_user); run tak ada → 404 FORECAST_RUN_NOT_FOUND
+GET    /api/v1/forecast/runs/{run_id}/method-comparison  # CR v3.7 (§6.1c) — hasil per metode format thesis: {run_id, periods[], criteria[], methods[{method,label,rows[{product_id,status OK|FAILED|NO_SERIES,forecast{periode→qty},total,mad,mape,mfe,reason}],average{mad,mape,mfe,n,n_total}}], run_selection{best_method,criteria,ranking_basis all|common,n_common,n_completed,excluded_methods,ranking[],decided_by,summary,reasons}|null, product_methods[{product_id,status,system_method,method_used,is_overridden}]}; semua role (get_current_user); run tak ada → 404 FORECAST_RUN_NOT_FOUND
 
 POST   /api/v1/reorder/recommendations    # generate & persist rekomendasi (body: run_id, current_stock per material — lihat catatan di §4 `reorder_recommendations`)
 GET    /api/v1/reorder/recommendations
@@ -834,6 +834,8 @@ def get_enabled_methods(enabled: Iterable[str] | None = None) -> set[str]:
 | LSTM | `lstm_engine.py` | Min-Max scaling, sequence window 12 periode, arsitektur 2× `LSTM(units=50)` + `Dense(1)`, optimizer Adam, loss MSE, `epochs=100, batch_size=32` |
 
 Setiap fungsi **self-contained**: melakukan holdout backtest (untuk MAD/MFE/MSE/MAPE), fit ulang di seluruh data, predict `horizon` ke depan, dan generate `explanation` — semua dalam satu fungsi.
+
+**Metode aktif yang gagal tidak boleh hilang diam-diam (24 Nov 2026).** Di mode otomatis, metode yang melempar error tetap dikecualikan dari pemilihan (AGENTS #8), tetapi alasannya dicatat: `selection_analysis.failed_methods = {metode: alasan}` per produk (`forecast_service._failure_reason`; TensorFlow tidak terpasang → "TensorFlow belum terpasang di server…"). Metode yang gagal di **semua** produk disebut di `selection_analysis.reasons`. Status `MODEL_SELECTION_FAILED` (semua metode gagal) menyebut alasan tiap metode di `status_reason`. Endpoint `method-comparison` (§6.1c) menampilkan metode itu sebagai section dengan baris `status: FAILED` + `reason`; FE menampilkan badge "Gagal" + peringatan berisi alasan.
 
 ### 6.5 Environment Variables
 
@@ -1219,7 +1221,7 @@ Cron pembersih file temp (§7) dijadwalkan di crontab VPS:
 - **Migrasi jalan di entrypoint backend**, dan `set -e` membuat container gagal start kalau migrasi gagal — disengaja, supaya aplikasi tidak pernah hidup di atas skema yang salah. Bisa dimatikan lewat `RUN_MIGRATIONS=false`.
 - **Firewall VPS**: buka 22, 80, 443 saja. Postgres tidak di-publish ke host oleh compose production.
 - CI: lint + test + coverage gate sebelum merge (GitHub Actions) — belum ada deploy otomatis, deploy masih manual lewat SSH.
-- **LSTM**: `tensorflow` masih di-comment di `requirements.txt`, jadi engine `lstm` di-exclude otomatis (§6.4). Sejak Fase 11.2a daftar metode aktif ada di master data Pengaturan Forecast: di production admin **menonaktifkan LSTM** di sana supaya perilakunya eksplisit (tanpa baris pengaturan, seluruh metode — termasuk LSTM — dianggap aktif; di mode otomatis LSTM tetap di-exclude karena gagal, tapi di mode manual akan muncul di dropdown dan gagal). Untuk mengaktifkan: uncomment `tensorflow>=2.16` (image Python 3.11 mendukung), perhatikan ukuran image (+±1 GB) dan waktu build.
+- **LSTM** (24 Nov 2026): `tensorflow>=2.16; python_version < "3.14"` aktif di `requirements.txt` → image Docker & CI (Python 3.11) memasang TF, sehingga LSTM yang dicentang di Pengaturan Forecast benar-benar ikut dibandingkan. venv dev Python 3.14 tidak punya wheel TF → LSTM tercatat gagal dengan alasan "TensorFlow belum terpasang" (tampil di run, bukan hilang). Konsekuensi: image +±1 GB, RAM training naik, dan run otomatis lebih lama (LSTM dilatih 2× per produk: backtest + fit penuh, 100 epoch).
 
 ---
 *Lihat `RECONCILIATION.md` §"Rekonsiliasi v3.0" dan §"Rekonsiliasi v3.1" untuk daftar lengkap perubahan dari v2.0 dan alasannya.*

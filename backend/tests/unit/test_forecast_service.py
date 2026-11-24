@@ -12,11 +12,11 @@ _ACTIVE = {"moving_average", "exponential_smoothing", "random_forest", "xgboost"
 
 def test_auto_mode_memilih_metode_terbaik(smooth_df):
     """23 Nov 2026 (membalik Fase 11.15): mode otomatis memilih metode terbaik dari pengujian."""
-    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None)
+    record = run_forecast_for_product(smooth_df, horizon=7, requested_method=None, enabled_methods=_ACTIVE)
 
     assert record.status == "COMPLETED"
     assert record.selection_mode == "auto"
-    # candidates_evaluated menyimpan SEMUA kandidat yang berhasil (lstm auto-excluded, TF absen)
+    # candidates_evaluated menyimpan SEMUA kandidat yang berhasil
     assert {c["method"] for c in record.candidates_evaluated} == _ACTIVE
     assert record.method_used in _ACTIVE
     assert len(record.forecast) == 7
@@ -38,7 +38,7 @@ def test_auto_mode_kandidat_membawa_deret_forecast_dan_penjelasan(smooth_df):
 
 
 def test_auto_mode_kandidat_membawa_peringkat(smooth_df):
-    record = run_forecast_for_product(smooth_df, horizon=7)
+    record = run_forecast_for_product(smooth_df, horizon=7, enabled_methods=_ACTIVE)
 
     ranks = sorted(c["rank"] for c in record.candidates_evaluated)
     assert ranks == list(range(1, len(_ACTIVE) + 1))
@@ -85,13 +85,13 @@ def test_manual_mode_metode_tak_dikenal_error(smooth_df):
         run_forecast_for_product(smooth_df, horizon=7, requested_method="prophet")
 
 
-def test_manual_gagal_tidak_fallback(smooth_df):
+def test_manual_gagal_tidak_fallback(smooth_df, monkeypatch):
     # LSTM tanpa TensorFlow → fungsi raise. Mode manual TIDAK fallback (AGENTS.md §5/#14):
-    # harus MODEL_SELECTION_FAILED, bukan diam-diam ganti metode lain.
-    import importlib.util
+    # harus MODEL_SELECTION_FAILED, bukan diam-diam ganti metode lain. Engine palsu supaya
+    # skenario tetap teruji di runtime yang TF-nya terpasang (image/CI 3.11).
+    from app.services.forecasting import registry
 
-    if importlib.util.find_spec("tensorflow") is not None:
-        pytest.skip("TensorFlow terpasang — LSTM tidak gagal, skenario tak berlaku")
+    monkeypatch.setitem(registry.MODEL_REGISTRY, "lstm", _tf_absent)
     record = run_forecast_for_product(smooth_df, horizon=5, requested_method="lstm")
     assert record.status == "MODEL_SELECTION_FAILED"
     assert record.selection_mode == "manual"
@@ -320,3 +320,69 @@ def test_multi_produk_fallback_bila_metode_global_gagal_di_produk(monkeypatch):
     assert a["best_method"] == "moving_average"
     assert a["fallback_reason"] and "Moving Average" in a["fallback_reason"]
     assert records[0].selection_analysis.get("fallback_reason") is None
+
+
+# ── 24 Nov 2026 — metode aktif yang gagal TIDAK hilang diam-diam: alasannya dicatat ──
+def _tf_absent(df, horizon, options=None):
+    raise ModuleNotFoundError("No module named 'tensorflow'", name="tensorflow")
+
+
+def test_metode_aktif_gagal_dicatat_alasannya(monkeypatch):
+    from app.services.forecasting import registry
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    _global_registry(monkeypatch)
+    monkeypatch.setitem(registry.MODEL_REGISTRY, "lstm", _tf_absent)
+    records = run_forecast_for_products(
+        [(_monthly([10.0] * 14), None), (_monthly([20.0] * 14), None)],
+        horizon=3,
+        enabled_methods={"moving_average", "xgboost", "lstm"},
+    )
+    for r in records:
+        failed = r.selection_analysis["failed_methods"]
+        assert set(failed) == {"lstm"}
+        assert "TensorFlow" in failed["lstm"]
+    # gagal di SEMUA produk → disebut di alasan pemilihan (bukan hanya yang gagal sebagian)
+    assert any("LSTM" in line and "TensorFlow" in line for line in records[0].selection_analysis["reasons"])
+
+
+def test_alasan_gagal_umum_memuat_pesan_error(monkeypatch):
+    from app.services.forecasting import registry
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    def boom(df, horizon, options=None):
+        raise ValueError("Data tidak cukup untuk membentuk sequence LSTM.")
+
+    _global_registry(monkeypatch)
+    monkeypatch.setitem(registry.MODEL_REGISTRY, "lstm", boom)
+    record = run_forecast_for_products(
+        [(_monthly([10.0] * 14), None)], horizon=3, enabled_methods={"moving_average", "lstm"}
+    )[0]
+    assert "sequence LSTM" in record.selection_analysis["failed_methods"]["lstm"]
+
+
+def test_tanpa_kegagalan_failed_methods_kosong(monkeypatch):
+    from app.services.forecasting.forecast_service import run_forecast_for_products
+
+    _global_registry(monkeypatch)
+    record = run_forecast_for_products(
+        [(_monthly([10.0] * 14), None)], horizon=3, enabled_methods={"moving_average", "xgboost"}
+    )[0]
+    assert record.selection_analysis["failed_methods"] == {}
+
+
+def test_semua_metode_gagal_alasan_menyebut_tiap_metode(smooth_df, monkeypatch):
+    from app.services.forecasting import registry
+
+    monkeypatch.setattr(registry, "MODEL_REGISTRY", {"lstm": _tf_absent})
+    record = run_forecast_for_product(smooth_df, horizon=3, enabled_methods={"lstm"})
+    assert record.status == "MODEL_SELECTION_FAILED"
+    assert "LSTM" in record.status_reason and "TensorFlow" in record.status_reason
+
+
+def test_alasan_gagal_panjang_dipotong():
+    from app.services.forecasting.forecast_service import _REASON_MAX, _failure_reason
+
+    reason = _failure_reason(RuntimeError("x" * 1000))
+    assert reason.endswith("…")
+    assert len(reason) <= _REASON_MAX + len("Gagal saat backtest/fit — ")

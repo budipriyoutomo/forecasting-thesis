@@ -577,23 +577,19 @@ core) kalau CPU menganggur dan RAM lega.
 
 ## 9. Catatan LSTM
 
-`tensorflow` masih di-comment di `backend/requirements.txt`, jadi engine `lstm` otomatis
-dikeluarkan dari perbandingan (`ARCHITECTURE.md` §6.4). Sejak Fase 11.2a daftar metode
-aktif bukan env lagi, melainkan master data **Pengaturan Forecast**. Setelah deploy pertama
-yang memuat migrasi `e6f7a8b9c0d1`, admin wajib membuka Master Data → Pengaturan Forecast
-dan **menonaktifkan LSTM** — tanpa baris pengaturan, seluruh metode dianggap aktif, sehingga
-LSTM muncul di pilihan mode manual dan gagal (`MODEL_SELECTION_FAILED`).
+Sejak 24 Nov 2026 `tensorflow>=2.16; python_version < "3.14"` **aktif** di
+`backend/requirements.txt` (image memakai Python 3.11), sehingga LSTM yang dicentang di
+Master Data → Pengaturan Forecast benar-benar dijalankan. Bila LSTM gagal (mis. image lama
+tanpa TF), run tetap selesai: LSTM tampil di hasil per metode dengan status **Gagal** +
+alasannya, dan tidak ikut dibandingkan (`ARCHITECTURE.md` §6.4).
 
-Untuk mengaktifkan:
-
-1. Uncomment `tensorflow>=2.16` di `backend/requirements.txt` (image memakai Python 3.11,
-   yang punya wheel resmi TF).
-2. `make prod-deploy`.
-3. Centang LSTM di Master Data → Pengaturan Forecast.
+Setelah `make prod-deploy` pertama yang memuat TF, cek: buka satu run baru → section
+"Metode LSTM" berisi angka (bukan peringatan "TensorFlow belum terpasang").
 
 Konsekuensi: image bertambah ±1 GB, build jauh lebih lama, dan RAM saat training naik
-signifikan. `LSTM_ENGINE_TIMEOUT_SECONDS` (default 120 detik) mungkin perlu dinaikkan di
-VPS yang lambat. Di VPS 4 GB dengan banyak SKU, pertimbangkan `UVICORN_WORKERS=1`.
+signifikan; run otomatis juga lebih lama karena LSTM dilatih 2× per produk (backtest + fit
+penuh). Di VPS 4 GB dengan banyak SKU, pertimbangkan `UVICORN_WORKERS=1`. Kalau ingin
+mematikan LSTM, hapus centangnya di Pengaturan Forecast (tidak perlu ubah kode).
 
 ---
 

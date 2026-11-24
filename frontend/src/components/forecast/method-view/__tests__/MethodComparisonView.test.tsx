@@ -68,6 +68,32 @@ describe("MethodComparisonView (CR v3.7 §4.2)", { timeout: 20000 }, () => {
     expect(screen.getAllByText(/b\. pengujian peramalan/i)).toHaveLength(3);
   });
 
+  it("metode aktif gagal di semua varian → section tetap tampil + alasannya", async () => {
+    const reason = "TensorFlow belum terpasang di server.";
+    const lstm = COMPARISON.methods[1];
+    const allFailed = {
+      ...lstm,
+      rows: lstm.rows.map((r) => ({ ...r, status: "FAILED" as const, forecast: {}, total: null, mad: null, mape: null, mfe: null, reason })),
+      average: { mad: null, mape: null, mfe: null, n: 0, n_total: 3 },
+    };
+    const data = { ...COMPARISON, methods: [COMPARISON.methods[0], allFailed, COMPARISON.methods[2]] };
+    vi.spyOn(api.forecast, "getMethodComparison").mockResolvedValue({ success: true, data } as never);
+    renderView();
+
+    const section = (await screen.findByText(/2\. metode lstm/i)).closest("section")!;
+    const alert = within(section).getByRole("alert");
+    expect(alert.textContent).toMatch(/gagal dijalankan di semua varian/i);
+    expect(alert.textContent).toContain(reason);
+  });
+
+  it("metode gagal sebagian → tanpa peringatan section", async () => {
+    vi.spyOn(api.forecast, "getMethodComparison").mockResolvedValue({ success: true, data: COMPARISON } as never);
+    renderView();
+
+    const section = (await screen.findByText(/2\. metode lstm/i)).closest("section")!;
+    expect(within(section).queryByRole("alert")).toBeNull();
+  });
+
   it("error → EmptyState dengan pesan backend", async () => {
     vi.spyOn(api.forecast, "getMethodComparison").mockResolvedValue({
       success: false, error: { code: "FORECAST_RUN_NOT_FOUND", message: "Forecast run tidak ditemukan." },

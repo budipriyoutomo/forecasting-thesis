@@ -38,9 +38,11 @@ scikit-learn>=1.5.2   # RandomForestRegressor
 xgboost-cpu>=2.1.0; sys_platform == "linux"
 xgboost>=2.1.0; sys_platform != "linux"
 numpy>=1.26
-# tensorflow>=2.16    # LSTM — TIDAK ada wheel utk Python 3.14 (env dev). Aktifkan di
-#                       runtime yg didukung TF (≤3.13); lstm_engine.py import lazy →
-#                       tanpa TF, engine ini auto-excluded di mode otomatis (docs §6.4).
+# LSTM (24 Nov 2026 — diaktifkan: metode aktif di Pengaturan Forecast wajib benar-benar jalan).
+# Wheel TF hanya ada utk Python ≤3.13 → image Docker & CI (3.11) memasangnya; venv dev 3.14
+# tidak. lstm_engine.py import lazy → tanpa TF, LSTM tercatat GAGAL dengan alasan
+# "TensorFlow belum terpasang" (tampil di run), bukan hilang diam-diam (docs §6.4).
+tensorflow>=2.16; python_version < "3.14"
 
 # Engine legacy v2.0 (nonaktif default, docs §6.9) — dipertahankan utk reuse raw material
 statsmodels>=0.14.6   # ETS/ARIMA legacy

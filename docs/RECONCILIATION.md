@@ -1347,3 +1347,25 @@ keputusan 1, D9 → dihapus, D10 → hanya badge "Terbaik" di section metode ter
   (`_period_label`, cermin `formatPeriodLabel`); qty dibulatkan; gagal → "—". Sheet "Forecast" tidak berubah.
 - Catatan metodologis (rata-rata MAD lintas varian bergantung skala volume; MAPE lebih adil) ditampilkan di §analisis
   dan di sheet export.
+
+## LSTM Aktif & Metode Gagal Tidak Disembunyikan (24 Nov 2026)
+
+**Laporan user.** Halaman `/forecast/run` tidak menampilkan LSTM padahal LSTM dicentang di
+`/forecast-settings`. Permintaan: metode yang dipakai run harus **semua metode aktif** di Pengaturan.
+
+**Akar masalah.** Daftar metode aktif sudah benar diteruskan ke engine; LSTM *dijalankan* tetapi selalu melempar
+`ModuleNotFoundError: tensorflow` karena `tensorflow` masih di-comment di `requirements.txt`. Mode otomatis
+mengecualikan engine yang gagal (AGENTS #8) **tanpa mencatat alasannya**, dan `method-comparison` hanya menampilkan
+metode yang punya kandidat — jadi LSTM hilang tanpa jejak.
+
+**Keputusan.**
+1. `tensorflow>=2.16; python_version < "3.14"` diaktifkan — image Docker & CI (3.11) memasang TF. venv dev 3.14 tetap
+   tanpa TF (belum ada wheel). Membalik catatan lama "TensorFlow tetap di-comment" (§Deployment VPS butir 8).
+2. Pengecualian engine gagal tetap (AGENTS #8), tetapi alasannya dicatat di `selection_analysis.failed_methods`; metode
+   yang gagal di semua produk disebut di `reasons`; `method-comparison` menampilkan metode itu dengan baris `FAILED` +
+   `reason` (field baru, aditif). Aturan pemilihan metode terbaik **tidak berubah**.
+3. Test yang dulu mengandalkan "TF tidak terpasang" diganti engine palsu supaya deterministik di runtime mana pun.
+
+**Konsekuensi.** Image +±1 GB, RAM training naik, run otomatis lebih lama (LSTM dilatih 2× per produk, 100 epoch).
+Run lama (sebelum perubahan ini) tidak punya `failed_methods` → LSTM tetap tidak muncul di run lama; jalankan run baru.
+

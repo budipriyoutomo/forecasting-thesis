@@ -50,11 +50,11 @@ export function MethodForecastMatrix({
                 <TableCell className={`${STICKY} font-medium`}>{variantLabel(row.product_id)}</TableCell>
                 {periods.map((d) => (
                   <TableCell key={d} className={NUM}>
-                    {row.forecast[d] != null ? formatNumber(row.forecast[d], 0) : <MissingValue status={row.status} />}
+                    {row.forecast[d] != null ? formatNumber(row.forecast[d], 0) : <MissingValue status={row.status} reason={row.reason} />}
                   </TableCell>
                 ))}
                 <TableCell className={`${NUM} font-medium`}>
-                  {row.total != null ? formatNumber(row.total, 0) : <MissingValue status={row.status} />}
+                  {row.total != null ? formatNumber(row.total, 0) : <MissingValue status={row.status} reason={row.reason} />}
                 </TableCell>
               </TableRow>
             ))}

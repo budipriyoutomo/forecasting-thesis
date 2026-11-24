@@ -8,9 +8,10 @@ const REASON: Record<Exclude<MethodRowStatus, "OK">, string> = {
   NO_SERIES: "Run lama: deret per metode tidak disimpan",
 };
 
-/** "—" + tooltip alasan (CR v3.7 §4.2). Butuh TooltipProvider di atasnya. */
-export function MissingValue({ status }: { status: MethodRowStatus }) {
-  const reason = status === "OK" ? null : REASON[status];
+/** "—" + tooltip alasan (CR v3.7 §4.2). `reason` dari backend (alasan metode gagal) menggantikan
+ *  teks umum. Butuh TooltipProvider di atasnya. */
+export function MissingValue({ status, reason: detail }: { status: MethodRowStatus; reason?: string | null }) {
+  const reason = status === "OK" ? null : (status === "FAILED" && detail) || REASON[status];
   if (!reason) return <span className="text-muted-foreground">—</span>;
   return (
     <Tooltip>

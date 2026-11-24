@@ -231,7 +231,7 @@ Planner override (FR-5) dapat menyentuh dua titik dalam alur ini: hasil forecast
 | Baseline konvensional | Exponential Smoothing | Pembanding klasik untuk metode ML | MVP |
 | Machine Learning | Random Forest | Regressor atas fitur lag | MVP |
 | Machine Learning | XGBoost | Regressor atas fitur lag | MVP |
-| Machine Learning | LSTM | Butuh histori lebih panjang (`LSTM_MIN_PERIODS`, default 24) dan TensorFlow | MVP — **belum terverifikasi jalan di image Docker**, lihat `TASK_BREAKDOWN.md` §10 |
+| Machine Learning | LSTM | Butuh histori lebih panjang (`LSTM_MIN_PERIODS`, default 24) dan TensorFlow | MVP — TensorFlow aktif di `requirements.txt` sejak 24 Nov 2026 (Python ≤ 3.13: image & CI). Bila gagal (mis. TF tak terpasang), LSTM tetap tampil di hasil run dengan status gagal + alasannya |
 | **[DROPPED]** Legacy v2.0 | ETS, ARIMA, LightGBM, Croston/SBA, Prophet | Dipindah ke `engines/legacy/`, tidak terdaftar di `MODEL_REGISTRY` (tidak muncul di Pengaturan Forecast). **Tidak dihapus** — kandidat reuse untuk forecasting raw material intermittent di luar scope thesis | Nonaktif |
 | Post-MVP | SARIMA, Holt-Winters, Theta, TBATS, N-HiTS, TFT | Musiman kompleks / long-horizon multivariate | Post-MVP |
 
