@@ -1369,3 +1369,9 @@ metode yang punya kandidat — jadi LSTM hilang tanpa jejak.
 **Konsekuensi.** Image +±1 GB, RAM training naik, run otomatis lebih lama (LSTM dilatih 2× per produk, 100 epoch).
 Run lama (sebelum perubahan ini) tidak punya `failed_methods` → LSTM tetap tidak muncul di run lama; jalankan run baru.
 
+**Susulan — 502 saat generate di VPS (24 Nov 2026).** Setelah deploy, generate membalas "Permintaan gagal
+(status 502)": TensorFlow mematikan proses worker uvicorn (OOM-kill / SIGILL), yang tidak bisa ditangkap
+`except Exception`. Keputusan: training LSTM dipindah ke **child process** (`engines/_isolation.py`) — tetap sync,
+tanpa Celery/Redis (AGENTS #11). Crash/timeout → LSTM gagal dengan alasan, run selesai. Kontrak engine tetap
+1 fungsi murni (`forecast_lstm`), isolasi adalah detail implementasinya.
+

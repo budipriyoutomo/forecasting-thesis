@@ -54,7 +54,7 @@ def forecast_<method>(df: pd.DataFrame, horizon: int) -> EngineResult:
 | Exponential Smoothing | `exponential_smoothing_engine.py` | `forecast_exponential_smoothing` | 12 | SES manual, α tuned grid 0.1–0.9 |
 | Random Forest | `random_forest_engine.py` | `forecast_random_forest` | 12 | fitur lag [1,12] + bulan, rekursif |
 | XGBoost | `xgboost_engine.py` | `forecast_xgboost` | 12 | fitur lag [1,2,12] + bulan, rekursif |
-| LSTM | `lstm_engine.py` | `forecast_lstm` | `LSTM_MIN_PERIODS` (24) | TF lazy-import (`tensorflow` aktif di requirements utk Python ≤ 3.13); bila TF absen → dikecualikan dari pemilihan, alasan tercatat di `selection_analysis.failed_methods` & tampil di run |
+| LSTM | `lstm_engine.py` | `forecast_lstm` | `LSTM_MIN_PERIODS` (24) | TF lazy-import (`tensorflow` aktif di requirements utk Python ≤ 3.13); bila TF absen → dikecualikan dari pemilihan, alasan tercatat di `selection_analysis.failed_methods` & tampil di run. Training di child process (`_isolation.py`): crash/OOM/timeout tidak mematikan worker |
 
 > Legacy (nonaktif, di `legacy/`): `ets_engine.py`, `arima_engine.py`, `lightgbm_engine.py`, `croston_engine.py`, `prophet_engine.py` (TODO). Lihat docs/ARCHITECTURE.md §6.9.
 >

@@ -7,11 +7,19 @@ wheel untuk versi Python berjalan), import modul registry TIDAK ikut gagal — f
 ini yang melempar error saat dipanggil, sehingga di mode otomatis engine ini otomatis
 dikecualikan (AGENTS.md §5 failure per-engine) dan di mode manual errornya jelas.
 
+Training jalan di CHILD PROCESS (`_isolation.run_isolated`, 24 Nov 2026): OOM-kill / SIGILL
+TensorFlow tidak lagi mematikan worker uvicorn (dulu → 502 di VPS), dan
+`LSTM_ENGINE_TIMEOUT_SECONDS` berlaku. Backtest + fit penuh digabung dalam satu child supaya
+TensorFlow cukup di-import sekali per produk.
+
 Kontrak: docs/ARCHITECTURE.md §6.4 dan engines/README.md.
 """
+import importlib.util
+
 import numpy as np
 
 from app.config import get_settings
+from app.services.forecasting.engines._isolation import run_isolated
 from app.services.forecasting.engines._common import build_points, resid_std
 from app.services.forecasting.evaluation import backtest_metrics
 from app.services.forecasting.metrics import train_test_split_series
@@ -33,7 +41,7 @@ def _build_sequences(scaled: np.ndarray, window: int):
     return X, np.asarray(y, dtype=float)
 
 
-def _lstm_forecast(values: np.ndarray, steps: int, window: int) -> np.ndarray:
+def _lstm_forecast(values: np.ndarray, steps: int, window: int, epochs: int = _EPOCHS) -> np.ndarray:
     import tensorflow as tf  # lazy — lihat docstring modul
 
     tf.keras.utils.set_random_seed(42)
@@ -57,7 +65,7 @@ def _lstm_forecast(values: np.ndarray, steps: int, window: int) -> np.ndarray:
         ]
     )
     model.compile(optimizer="adam", loss="mse")
-    model.fit(X, y, epochs=_EPOCHS, batch_size=_BATCH, verbose=0)
+    model.fit(X, y, epochs=epochs, batch_size=_BATCH, verbose=0)
 
     history = list(scaled)
     preds = []
@@ -70,18 +78,31 @@ def _lstm_forecast(values: np.ndarray, steps: int, window: int) -> np.ndarray:
     return np.asarray(preds, dtype=float) * scale + vmin
 
 
+def _backtest_and_forecast(train, test_len: int, full, horizon: int, window: int, epochs: int):
+    """Dijalankan di child process — kedua training dalam satu proses (satu import TF)."""
+    return (
+        _lstm_forecast(train, test_len, window, epochs),
+        _lstm_forecast(full, horizon, window, epochs),
+    )
+
+
 def forecast_lstm(df, horizon: int, options=None) -> EngineResult:  # options: tak dipakai (Fase 11.2)
+    if importlib.util.find_spec("tensorflow") is None:  # gagal cepat, tanpa spawn child
+        raise ModuleNotFoundError("No module named 'tensorflow'", name="tensorflow")
     settings = get_settings()
     series = to_period_series(df)
     _, test = train_test_split_series(series, horizon)
     train = series.iloc[: len(series) - len(test)]
 
-    test_pred = _lstm_forecast(train.to_numpy(), len(test), _WINDOW)
+    test_pred, values = run_isolated(
+        _backtest_and_forecast,
+        (train.to_numpy(), len(test), series.to_numpy(), horizon, _WINDOW, _EPOCHS),
+        timeout=settings.LSTM_ENGINE_TIMEOUT_SECONDS,
+    )
     metrics = backtest_metrics(
         test.to_numpy(), test_pred, train.to_numpy(), compute_mase=settings.COMPUTE_MASE
     )
 
-    values = _lstm_forecast(series.to_numpy(), horizon, _WINDOW)
     std = resid_std(test.to_numpy(), test_pred, series)
     points = build_points(series, values, std)
     explanation = (

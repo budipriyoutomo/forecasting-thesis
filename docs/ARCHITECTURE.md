@@ -837,6 +837,8 @@ Setiap fungsi **self-contained**: melakukan holdout backtest (untuk MAD/MFE/MSE/
 
 **Metode aktif yang gagal tidak boleh hilang diam-diam (24 Nov 2026).** Di mode otomatis, metode yang melempar error tetap dikecualikan dari pemilihan (AGENTS #8), tetapi alasannya dicatat: `selection_analysis.failed_methods = {metode: alasan}` per produk (`forecast_service._failure_reason`; TensorFlow tidak terpasang → "TensorFlow belum terpasang di server…"). Metode yang gagal di **semua** produk disebut di `selection_analysis.reasons`. Status `MODEL_SELECTION_FAILED` (semua metode gagal) menyebut alasan tiap metode di `status_reason`. Endpoint `method-comparison` (§6.1c) menampilkan metode itu sebagai section dengan baris `status: FAILED` + `reason`; FE menampilkan badge "Gagal" + peringatan berisi alasan.
 
+**LSTM di child process (24 Nov 2026).** `forecast_lstm` menjalankan backtest + fit penuh di satu child process `spawn` (`engines/_isolation.run_isolated`). Alasan: TensorFlow bisa mematikan proses (OOM-kill, SIGILL di CPU tanpa AVX) — di worker uvicorn itu berarti 502 dan seluruh run gagal. Kini crash/timeout → `EngineCrashError` (alasan bahasa natural: kehabisan memori / AVX / batas waktu), LSTM tercatat gagal, run tetap selesai. `LSTM_ENGINE_TIMEOUT_SECONDS` berlaku sebagai batas per produk; memori TF dilepas tiap child selesai. TF absen → `ModuleNotFoundError` langsung di parent (tanpa spawn).
+
 ### 6.5 Environment Variables
 
 ```env

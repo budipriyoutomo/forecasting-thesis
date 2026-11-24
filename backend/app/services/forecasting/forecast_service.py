@@ -26,6 +26,7 @@ import pandas as pd
 
 from app.config import get_settings
 from app.services.forecasting import registry
+from app.services.forecasting.engines._isolation import EngineCrashError
 from app.services.forecasting.preprocessing import to_period_series
 from app.services.forecasting.evaluation import mape_interpretation
 from app.services.forecasting.selection import (
@@ -148,6 +149,8 @@ def _failure_reason(exc: Exception) -> str:
             "TensorFlow belum terpasang di server (LSTM butuh TensorFlow, Python ≤ 3.13) — "
             "metode tidak bisa dijalankan."
         )
+    if isinstance(exc, EngineCrashError):  # child process engine mati / timeout — pesan sudah jelas
+        return str(exc)
     text = f"{type(exc).__name__}: {exc}".strip()
     if len(text) > _REASON_MAX:
         text = text[: _REASON_MAX - 1] + "…"

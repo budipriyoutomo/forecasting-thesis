@@ -586,6 +586,11 @@ alasannya, dan tidak ikut dibandingkan (`ARCHITECTURE.md` §6.4).
 Setelah `make prod-deploy` pertama yang memuat TF, cek: buka satu run baru → section
 "Metode LSTM" berisi angka (bukan peringatan "TensorFlow belum terpasang").
 
+Training LSTM jalan di child process: kalau TensorFlow di-OOM-kill atau crash (CPU tanpa AVX),
+run tetap selesai dan alasan muncul di section LSTM. Cek cepat dukungan AVX di VPS:
+`grep -o -m1 avx /proc/cpuinfo` (kosong → TensorFlow resmi tidak bisa jalan; nonaktifkan LSTM di
+Pengaturan). Jejak OOM: `dmesg | grep -i -E "killed process|out of memory"`.
+
 Konsekuensi: image bertambah ±1 GB, build jauh lebih lama, dan RAM saat training naik
 signifikan; run otomatis juga lebih lama karena LSTM dilatih 2× per produk (backtest + fit
 penuh). Di VPS 4 GB dengan banyak SKU, pertimbangkan `UVICORN_WORKERS=1`. Kalau ingin
