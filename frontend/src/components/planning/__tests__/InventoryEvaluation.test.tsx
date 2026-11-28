@@ -84,6 +84,42 @@ describe("InventoryEvaluation — evaluasi usulan inventory", () => {
     expect(rowOf(/ordering cost/i).textContent).toContain("—");
   });
 
+  // 28 Nov 2026 — basis proyeksi: biaya pesan = Σ qty pembelian × harga; biaya simpan = Σ stok akhir × tarif H
+  const PROJ: CostSummary = {
+    ...COST,
+    cost_basis: "projection",
+    holding_rate_per_dus: "2000",
+    n_materials_without_order_price: 1,
+    n_materials_without_capacity: 0,
+    materials: [
+      { material_id: "m1", ordering_cost: "111000", holding_cost: "22000", baseline_ordering_cost: "333000", baseline_holding_cost: "44000" },
+      { material_id: "m2", ordering_cost: null, holding_cost: "5000", baseline_ordering_cost: null, baseline_holding_cost: "6000" },
+    ],
+  };
+
+  it("basis proyeksi: hint rumus qty pembelian × harga & tarif H", () => {
+    renderIt(PROJ);
+    expect(rowOf(/ordering cost/i).textContent).toMatch(/qty pembelian × harga/i);
+    expect(rowOf(/holding cost/i).textContent).toMatch(/Rp 2\.000/);
+  });
+
+  it("basis proyeksi: rincian per material biaya pesan & simpan E dan U", () => {
+    renderIt(PROJ);
+    const m1 = rowOf(/CAP-01/);
+    for (const v of ["Rp 111.000", "Rp 22.000", "Rp 333.000", "Rp 44.000"]) expect(m1.textContent).toContain(v);
+    expect(m1.textContent).not.toContain("Rp 200.000"); // bukan holding cost EOQ rekomendasi
+  });
+
+  it("basis proyeksi: peringatan material tanpa harga", () => {
+    renderIt(PROJ);
+    expect(screen.getByText(/1 material belum punya harga/i)).toBeDefined();
+  });
+
+  it("basis proyeksi tanpa tarif H → peringatan template/kapasitas", () => {
+    renderIt({ ...PROJ, holding_rate_per_dus: null, n_materials_without_order_price: 0 });
+    expect(screen.getByText(/tarif biaya simpan belum tersedia/i)).toBeDefined();
+  });
+
   it("belum ada metrik → empty state", () => {
     render(<InventoryEvaluation metrics={[]} recommendations={[]} materials={[]} products={[]} />);
     expect(screen.getByText(/belum ada metrik/i)).toBeDefined();

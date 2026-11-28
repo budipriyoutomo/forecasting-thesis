@@ -22,7 +22,7 @@ from app.api.deps import (
     get_inventory_metrics_service,
 )
 from app.services.export_service import ExportService
-from app.schemas.metrics import CostSummaryOut, InventoryMetricOut
+from app.schemas.metrics import CostSummaryOut, InventoryMetricOut, MaterialCostOut
 from app.services.cost_service import CostService
 from app.services.inventory_metrics_service import InventoryMetricsService
 
@@ -54,6 +54,11 @@ async def cost_summary(
             baseline_ordering_cost=summary.baseline_ordering_cost,
             baseline_holding_cost=summary.baseline_holding_cost,
             savings_pct=summary.savings_pct,
+            cost_basis=summary.cost_basis,
+            holding_rate_per_dus=summary.holding_rate_per_dus,
+            n_materials_without_order_price=summary.n_materials_without_order_price,
+            n_materials_without_capacity=summary.n_materials_without_capacity,
+            materials=[MaterialCostOut(**vars(m)) for m in summary.materials],
         ).model_dump(mode="json"),
     }
 

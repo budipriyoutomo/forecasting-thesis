@@ -14,6 +14,8 @@ import type { ReorderRecommendation } from "@/types/reorder";
 // turnover, holding cost, ordering cost & shortage cost. Metrik per material dihitung backend
 // (inventory_metrics_service); di sini hanya rata-rata antar material untuk ringkasan. Biaya total
 // dari cost-summary (TIC baseline dirinci pesan + simpan).
+// 28 Nov 2026 — basis proyeksi (cost_basis "projection"): biaya pesan = Σ qty pembelian × harga material,
+// biaya simpan = Σ stok akhir (dus) × tarif H (overhead + perawatan + depresiasi ÷ kapasitas gudang).
 
 const num = (v: string | number | null | undefined): number | null => {
   if (v === null || v === undefined || v === "") return null;
@@ -91,6 +93,8 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
   const avg = (scope: MetricScope, f: (m: InventoryMetric) => string | null | undefined) =>
     mean(byScope(scope).map((m) => num(f(m))));
 
+  const projection = cost?.cost_basis === "projection";
+  const rate = num(cost?.holding_rate_per_dus);
   const rows: SummaryRow[] = [
     {
       label: "Fulfilment rate (β) — service level",
@@ -126,7 +130,9 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
     },
     {
       label: "Ordering cost (biaya pesan)",
-      hint: "Σ material, per tahun: (A ÷ Q) × S",
+      hint: projection
+        ? "Σ material: qty pembelian × harga material per unit (dari proyeksi stok)"
+        : "Σ material, per tahun: (A ÷ Q) × S",
       kind: "money",
       higherIsBetter: false,
       baseline: num(cost?.baseline_ordering_cost),
@@ -134,7 +140,9 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
     },
     {
       label: "Holding cost (biaya simpan)",
-      hint: "Σ material, per tahun: (Q ÷ 2) × i × C (klasik) atau Σ stok akhir × H (dinamis)",
+      hint: projection
+        ? `Σ material: stok akhir per bulan (dus) × tarif H ${rate === null ? "—" : `${formatMoney(rate)}/dus/bulan`} (overhead + perawatan + depresiasi ÷ kapasitas gudang)`
+        : "Σ material, per tahun: (Q ÷ 2) × i × C (klasik) atau Σ stok akhir × H (dinamis)",
       kind: "money",
       higherIsBetter: false,
       baseline: num(cost?.baseline_holding_cost),
@@ -161,6 +169,17 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
 
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const recById = new Map(recommendations.map((r) => [r.material_id, r]));
+  const costById = new Map((cost?.materials ?? []).map((c) => [c.material_id, c]));
+  const warnings = projection
+    ? [
+        rate === null &&
+          "Tarif biaya simpan belum tersedia — aktifkan template biaya dan isi kapasitas gudang agar biaya simpan terhitung.",
+        (cost?.n_materials_without_order_price ?? 0) > 0 &&
+          `${cost?.n_materials_without_order_price} material belum punya harga — biaya pesannya tidak dihitung.`,
+        (cost?.n_materials_without_capacity ?? 0) > 0 &&
+          `${cost?.n_materials_without_capacity} material belum punya kapasitas grup (pcs/dus) — biaya simpannya tidak dihitung.`,
+      ].filter((w): w is string => Boolean(w))
+    : [];
   const metricOf = new Map(materialMetrics.map((m) => [`${m.target_id}:${m.scope}`, m]));
   const materialIds = [...new Set(materialMetrics.map((m) => m.target_id))].sort((a, b) =>
     (materialById.get(a)?.code ?? a).localeCompare(materialById.get(b)?.code ?? b),
@@ -183,6 +202,13 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
           Existing = pemakaian dari planning perusahaan; usulan = pemakaian dari forecast ForecastIQ dengan kebijakan
           pesan hasil perencanaan (SS, buffer, EOQ, ROP).
         </p>
+        {warnings.length > 0 && (
+          <ul className="flex flex-col gap-1 text-sm text-warning">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -219,8 +245,9 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
         <div className="flex flex-col gap-2">
           <h3 className="font-medium">Rincian per material</h3>
           <p className="text-sm text-muted-foreground">
-            E = existing (planning), U = usulan ForecastIQ. Biaya pesan & simpan per material tersedia untuk usulan
-            (dari rekomendasi reorder); baseline hanya total di ringkasan.
+            {projection
+              ? "E = existing (planning), U = usulan ForecastIQ. Biaya pesan = qty pembelian × harga; biaya simpan = stok akhir × tarif H."
+              : "E = existing (planning), U = usulan ForecastIQ. Biaya pesan & simpan per material tersedia untuk usulan (dari rekomendasi reorder); baseline hanya total di ringkasan."}
           </p>
           <div className="overflow-x-auto rounded-lg border">
             <Table>
@@ -233,7 +260,9 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
                   <TableHead className="text-right">Stockout U</TableHead>
                   <TableHead className="text-right">Turnover E</TableHead>
                   <TableHead className="text-right">Turnover U</TableHead>
+                  {projection && <TableHead className="text-right">Ordering cost E</TableHead>}
                   <TableHead className="text-right">Ordering cost U</TableHead>
+                  {projection && <TableHead className="text-right">Holding cost E</TableHead>}
                   <TableHead className="text-right">Holding cost U</TableHead>
                   <TableHead className="text-right">Shortage cost E</TableHead>
                   <TableHead className="text-right">Shortage cost U</TableHead>
@@ -243,14 +272,26 @@ export function InventoryEvaluation({ metrics, cost, recommendations, materials 
                 {materialIds.map((id) => {
                   const m = materialById.get(id);
                   const rec = recById.get(id);
+                  const c = costById.get(id);
                   return (
                     <TableRow key={id}>
                       <TableCell className="whitespace-nowrap">{m ? `${m.code} — ${m.name}` : id}</TableCell>
                       {pair(id, (x) => x.fill_rate, ratio)}
                       {pair(id, (x) => x.stock_out_rate, ratio)}
                       {pair(id, (x) => x.inventory_turnover, times)}
-                      <TableCell className="text-right tabular-nums">{money(num(rec?.ordering_cost))}</TableCell>
-                      <TableCell className="text-right tabular-nums">{money(num(rec?.holding_cost))}</TableCell>
+                      {projection ? (
+                        <>
+                          <TableCell className="text-right tabular-nums">{money(num(c?.baseline_ordering_cost))}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(num(c?.ordering_cost))}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(num(c?.baseline_holding_cost))}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(num(c?.holding_cost))}</TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell className="text-right tabular-nums">{money(num(rec?.ordering_cost))}</TableCell>
+                          <TableCell className="text-right tabular-nums">{money(num(rec?.holding_cost))}</TableCell>
+                        </>
+                      )}
                       {pair(id, (x) => x.shortage_cost, money)}
                     </TableRow>
                   );

@@ -536,6 +536,7 @@ GET    /api/v1/dashboard/summary         # latest_run = run terbaru organisasi; 
 > - `GET /boms` menambah field read-only `line_cost` (= `qty_per_unit × unit_price`, null bila material tanpa harga).
 > - `GET /forecast/runs/{run_id}/cost-summary` menambah `purchase_cost`, `n_materials_without_price`, dan `cost_source` (`template` / `env`) — additive, TIC tidak berubah.
 > - **23 Nov 2026:** `cost-summary` menambah `baseline_ordering_cost` & `baseline_holding_cost` (rincian TIC baseline; `baseline_inventory_cost` = jumlah keduanya) untuk langkah "4. Evaluasi usulan inventory" — additive.
+> - **28 Nov 2026:** `cost-summary` menambah `cost_basis` (`projection`/`eoq`), `holding_rate_per_dus`, `n_materials_without_order_price`, `n_materials_without_capacity`, `materials[]` — additive. Dengan basis `projection`, nilai `total_*`/`baseline_*` memakai rumus proyeksi stok (§6.8).
 
 > **Pola `POST` sebelum `GET` untuk resource yang di-generate** (bukan sekadar CRUD): `reorder_recommendations` di-generate dari hasil forecast + BOM + `current_stock` request-time, jadi wajib ada `POST` yang menghitung & menyimpan, baru `GET` yang memfilter/menampilkan hasil tersimpan. Ikuti pola yang sama bila menambah resource turunan baru di masa depan — lihat `AGENTS.md` §11.
 
@@ -1031,6 +1032,24 @@ aktif saat ringkasan diminta — generate ulang reorder setelah mengganti templa
 **Biaya pembelian (informasi, 2 Oktober 2026):** `purchase_cost` di cost-summary =
 Σ kebutuhan material sepanjang horizon × `materials.unit_price` (material tanpa harga
 dilewati, dihitung di `n_materials_without_price`). **Tidak masuk TIC.**
+
+**Biaya evaluasi berbasis proyeksi stok (28 Nov 2026, `cost_basis = "projection"`):** bila run sudah
+punya proyeksi stok, `cost-summary` (langkah "4. Evaluasi usulan inventory" & dashboard) menghitung per
+skenario (`proposed` = usulan, `baseline` = existing), per material:
+
+```
+biaya pesan  = Σ order_qty (qty pembelian proyeksi) × materials.unit_price
+biaya simpan = Σ ending_qty ÷ pcs_per_dus(grup material) × H × bulan/periode
+H (Rp/dus/bulan) = (overhead + perawatan + depresiasi aset) per bulan ÷ total kapasitas gudang (dus)
+                 = "Saran H" ringkasan template biaya aktif (summarize_template)
+TIC = biaya pesan + biaya simpan;  savings_pct dari TIC kedua skenario
+```
+
+Material tanpa harga → biaya pesan dilewati (`n_materials_without_order_price`); tanpa kapasitas grup
+(konversi pcs/dus) → biaya simpan dilewati (`n_materials_without_capacity`); tanpa template aktif /
+kapasitas → `holding_rate_per_dus = null`, biaya simpan 0. Rincian per material di `materials[]`.
+**EOQ & qty pesan tidak berubah** — tetap memakai S/H/i manual template (di atas). Run tanpa proyeksi →
+`cost_basis = "eoq"` (rumus EOQ lama).
 
 ### 6.9 Engine Legacy (Nonaktif Default — dari Arsitektur v2.0)
 

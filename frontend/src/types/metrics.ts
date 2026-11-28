@@ -20,6 +20,21 @@ export interface CostSummary {
   // 23 Nov 2026 — rincian TIC baseline (biaya pesan + biaya simpan)
   baseline_ordering_cost?: string | null;
   baseline_holding_cost?: string | null;
+  // 28 Nov 2026 — basis biaya evaluasi: "projection" = biaya pesan Σ qty pembelian × harga,
+  // biaya simpan Σ stok akhir (dus) × tarif H; "eoq" = belum ada proyeksi (rumus EOQ lama)
+  cost_basis?: "projection" | "eoq";
+  holding_rate_per_dus?: string | null; // Rp/dus/bulan = Saran H template aktif
+  n_materials_without_order_price?: number;
+  n_materials_without_capacity?: number;
+  materials?: MaterialCost[];
+}
+
+export interface MaterialCost {
+  material_id: string;
+  ordering_cost: string | null; // usulan
+  holding_cost: string | null;
+  baseline_ordering_cost: string | null; // existing
+  baseline_holding_cost: string | null;
 }
 
 export type MetricScope = "baseline" | "forecastiq";

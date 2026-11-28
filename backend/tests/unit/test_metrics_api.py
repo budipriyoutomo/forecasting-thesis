@@ -94,6 +94,41 @@ async def test_cost_summary_ok(client):
 
 
 @pytest.mark.asyncio
+async def test_cost_summary_basis_proyeksi(client):
+    """28 Nov 2026 — field basis proyeksi (additive): cost_basis, tarif H, rincian per material."""
+    from tests.unit.test_cost_projection_basis import M1, _group_config, _overhead, _proj, _service, _template
+
+    rows = [
+        _proj("M1", "proposed", "2026-01-01", 1000, 500), _proj("M1", "proposed", "2026-02-01", 0, 0),
+        _proj("M1", "baseline", "2026-01-01", 2000, 1500), _proj("M1", "baseline", "2026-02-01", 0, 0),
+    ]
+    app.dependency_overrides[get_cost_service] = lambda: _service(
+        rows, [M1], [_group_config("cap", 100, 500)], _template([_overhead(1_000_000)])
+    )
+    res = await client.get("/api/v1/forecast/runs/r1/cost-summary", headers=_headers())
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["cost_basis"] == "projection"
+    assert Decimal(data["holding_rate_per_dus"]) == Decimal("2000")
+    assert Decimal(data["total_ordering_cost"]) == Decimal("100000")
+    assert Decimal(data["total_holding_cost"]) == Decimal("10000")  # 5 dus × 2.000
+    assert data["n_materials_without_order_price"] == 0
+    assert data["n_materials_without_capacity"] == 0
+    assert data["materials"][0]["material_id"] == "M1"
+    assert Decimal(data["materials"][0]["baseline_ordering_cost"]) == Decimal("200000")
+    assert Decimal(data["materials"][0]["baseline_holding_cost"]) == Decimal("30000")
+
+
+@pytest.mark.asyncio
+async def test_cost_summary_basis_eoq_default(client):
+    _override_cost(SimpleNamespace(id="r1", user_id=USER_SUB))
+    data = (await client.get("/api/v1/forecast/runs/r1/cost-summary", headers=_headers())).json()["data"]
+    assert data["cost_basis"] == "eoq"
+    assert data["holding_rate_per_dus"] is None
+    assert data["materials"] == []
+
+
+@pytest.mark.asyncio
 async def test_cost_summary_tanpa_token_401(client):
     _override_cost(SimpleNamespace(id="r1", user_id=USER_SUB))
     res = await client.get("/api/v1/forecast/runs/r1/cost-summary")

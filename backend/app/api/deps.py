@@ -268,6 +268,8 @@ def get_cost_service(session: AsyncSession = Depends(get_db)) -> CostService:
         materials=SqlMaterialRepository(session),
         settings=ForecastSettingsService(SqlForecastSettingsRepository(session)),
         metrics_repo=SqlInventoryMetricsRepository(session),
+        projections=SqlStockProjectionRepository(session),
+        warehouse_configs=SqlWarehouseConfigRepository(session),
     )
 
 

@@ -1375,3 +1375,22 @@ Run lama (sebelum perubahan ini) tidak punya `failed_methods` → LSTM tetap tid
 tanpa Celery/Redis (AGENTS #11). Crash/timeout → LSTM gagal dengan alasan, run selesai. Kontrak engine tetap
 1 fungsi murni (`forecast_lstm`), isolasi adalah detail implementasinya.
 
+## Biaya Evaluasi Inventory Berbasis Proyeksi Stok (28 Nov 2026)
+
+**Masalah.** Langkah "4. Evaluasi usulan inventory" menampilkan biaya pesan/simpan 0 walau ringkasan template
+biaya sudah terisi: rumus EOQ memakai S manual template (seed thesis = 0), dan S = 0 → EOQ klasik & dinamis
+sama-sama menghasilkan biaya 0. Ringkasan template (overhead, depresiasi, Saran H) hanya referensi.
+
+**Keputusan user.**
+1. Biaya pesan = qty pembelian material × harga material per unit.
+2. Biaya simpan dari ringkasan template: overhead + perawatan + depresiasi aset per bulan → dipakai sebagai
+   **tarif H per dus per bulan** (÷ kapasitas gudang = "Saran H") × stok akhir per bulan, per skenario —
+   dipilih dari opsi "total tetap × bulan" (tidak membedakan existing vs usulan) dan "alokasi nilai stok".
+3. Cakupan: **hanya cost-summary** (Evaluasi & dashboard). EOQ/qty pesan tetap S/H/i manual template.
+
+**Keputusan teknis (assistant, bisa dikoreksi):**
+- Qty pembelian & stok akhir = `stock_projections.order_qty` / `ending_qty` skenario `proposed` & `baseline`.
+- Stok material (pcs) dikonversi ke dus lewat `pcs_per_dus` kapasitas grup material; unit dus-like → 1.
+- Periode non-bulanan diskalakan hari ÷ (365/12). Run tanpa proyeksi → `cost_basis = "eoq"` (perilaku lama).
+- Tanpa migration; field cost-summary additive. Biaya kekurangan tidak berubah (qty tak terpenuhi × harga jual).
+
